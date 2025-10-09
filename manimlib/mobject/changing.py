@@ -77,50 +77,80 @@ class AnimatedBoundary(VGroup):
             lambda m, dt: self.update_boundary_copies(dt)
         )
 
-    def update_boundary_copies(self, dt: float) -> Self:
-        # Not actual time, but something which passes at
-        # an altered rate to make the implementation below
-        # cleaner
-        time = self.total_time * self.cycle_rate
-        growing, fading = self.boundary_copies
-        colors = self.colors
-        msw = self.max_stroke_width
-        vmobject = self.vmobject
+ def update_boundary_copies(self, dt: float) -> Self:
+    """
+    更新边界副本的状态，实现动画效果
+    dt: 时间增量，即从上一帧到当前帧的时间间隔
+    """
+    # 不是实际时间，而是经过调整速率的时间，使下面的实现更简洁
+    # 用于控制动画的进度，结合循环速率调整时间流逝速度
+    time = self.total_time * self.cycle_rate
+    # 分别获取用于"生长"和"淡出"的两个边界副本
+    growing, fading = self.boundary_copies
+    # 获取颜色序列
+    colors = self.colors
+    # 获取最大描边宽度
+    msw = self.max_stroke_width
+    # 获取原始向量图形对象
+    vmobject = self.vmobject
 
-        index = int(time % len(colors))
-        alpha = time % 1
-        draw_alpha = self.draw_rate_func(alpha)
-        fade_alpha = self.fade_rate_func(alpha)
+    # 根据时间计算当前应使用的颜色索引（循环使用颜色序列）
+    index = int(time % len(colors))
+    # 计算当前周期内的进度（0到1之间）
+    alpha = time % 1
+    # 根据绘制速率函数计算绘制进度
+    draw_alpha = self.draw_rate_func(alpha)
+    # 根据淡出速率函数计算淡出进度
+    fade_alpha = self.fade_rate_func(alpha)
 
-        if self.back_and_forth and int(time) % 2 == 1:
-            bounds = (1 - draw_alpha, 1)
-        else:
-            bounds = (0, draw_alpha)
-        self.full_family_become_partial(growing, vmobject, *bounds)
-        growing.set_stroke(colors[index], width=msw)
+    # 如果是来回模式且处于奇数周期，反转绘制方向
+    if self.back_and_forth and int(time) % 2 == 1:
+        # 边界范围为从(1-draw_alpha)到1（反向绘制）
+        bounds = (1 - draw_alpha, 1)
+    else:
+        # 边界范围为从0到draw_alpha（正向绘制）
+        bounds = (0, draw_alpha)
+    # 更新"生长"中的边界副本，使其显示原始图形的指定部分
+    self.full_family_become_partial(growing, vmobject, *bounds)
+    # 设置"生长"边界的颜色和宽度
+    growing.set_stroke(colors[index], width=msw)
 
-        if time >= 1:
-            self.full_family_become_partial(fading, vmobject, 0, 1)
-            fading.set_stroke(
-                color=colors[index - 1],
-                width=(1 - fade_alpha) * msw
-            )
+    # 当时间超过1（即至少完成一个周期），开始处理"淡出"效果
+    if time >= 1:
+        # 让"淡出"的边界副本显示原始图形的完整部分
+        self.full_family_become_partial(fading, vmobject, 0, 1)
+        # 设置"淡出"边界的颜色（上一个颜色）和宽度（随时间减小）
+        fading.set_stroke(
+            color=colors[index - 1],
+            width=(1 - fade_alpha) * msw
+        )
 
-        self.total_time += dt
-        return self
+    # 累加总时间
+    self.total_time += dt
+    # 返回自身实例，支持链式调用
+    return self
 
-    def full_family_become_partial(
-        self,
-        mob1: VMobject,
-        mob2: VMobject,
-        a: float,
-        b: float
-    ) -> Self:
-        family1 = mob1.family_members_with_points()
-        family2 = mob2.family_members_with_points()
-        for sm1, sm2 in zip(family1, family2):
-            sm1.pointwise_become_partial(sm2, a, b)
-        return self
+def full_family_become_partial(
+    self,
+    mob1: VMobject,
+    mob2: VMobject,
+    a: float,
+    b: float
+) -> Self:
+    """
+    使一个图形对象(mob1)的所有子对象成为另一个图形对象(mob2)子对象的部分副本
+    a和b定义了部分副本的范围（0到1之间的比例）
+    """
+    # 获取mob1中所有包含点数据的子对象
+    family1 = mob1.family_members_with_points()
+    # 获取mob2中所有包含点数据的子对象
+    family2 = mob2.family_members_with_points()
+    # 遍历两个图形对象的子对象并一一对应
+    for sm1, sm2 in zip(family1, family2):
+        # 使sm1成为sm2从a到b比例范围内的部分副本
+        sm1.pointwise_become_partial(sm2, a, b)
+    # 返回自身实例，支持链式调用
+    return self
 
 
 class TracedPath(VMobject):
