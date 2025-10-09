@@ -69,15 +69,34 @@ if TYPE_CHECKING:
     # 从 manimlib.typing 模块导入三维向量类型注解
     from manimlib.typing import Vect3
 
+# 从配置中获取"选择"操作的按键绑定，用于在交互模式中选择对象
 SELECT_KEY = manim_config.key_bindings.select
+
+# 从配置中获取"取消选择"操作的按键绑定，用于在交互模式中取消选择对象
 UNSELECT_KEY = manim_config.key_bindings.unselect
+
+# 从配置中获取"抓取"操作的按键绑定，用于在交互模式中自由拖动对象
 GRAB_KEY = manim_config.key_bindings.grab
+
+# 从配置中获取"X轴抓取"操作的按键绑定，用于在交互模式中仅沿X轴拖动对象
 X_GRAB_KEY = manim_config.key_bindings.x_grab
+
+# 从配置中获取"Y轴抓取"操作的按键绑定，用于在交互模式中仅沿Y轴拖动对象
 Y_GRAB_KEY = manim_config.key_bindings.y_grab
+
+# 定义所有抓取相关的按键列表，包含自由抓取和轴向抓取的按键
 GRAB_KEYS = [GRAB_KEY, X_GRAB_KEY, Y_GRAB_KEY]
+
+# 从配置中获取"调整大小"操作的按键绑定（标注为TODO，可能尚未完全实现）
 RESIZE_KEY = manim_config.key_bindings.resize  # TODO
+
+# 从配置中获取"颜色调整"操作的按键绑定，用于在交互模式中修改对象颜色
 COLOR_KEY = manim_config.key_bindings.color
+
+# 从配置中获取"信息显示"操作的按键绑定，用于在交互模式中显示对象信息
 INFORMATION_KEY = manim_config.key_bindings.information
+
+# 从配置中获取"光标控制"操作的按键绑定，用于在交互模式中控制光标行为
 CURSOR_KEY = manim_config.key_bindings.cursor
 
 # For keyboard interactions
