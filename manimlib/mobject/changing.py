@@ -154,70 +154,109 @@ def full_family_become_partial(
 
 
 class TracedPath(VMobject):
+    """
+    用于追踪某个点的运动轨迹并生成平滑路径的类
+    核心功能：根据传入的点函数，实时记录点的位置，形成动态更新的轨迹图形
+    """
     def __init__(
         self,
-        traced_point_func: Callable[[], Vect3],
-        time_traced: float = np.inf,
-        time_per_anchor: float = 1.0 / 15,
-        stroke_width: float | Iterable[float] = 2.0,
-        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,
-        **kwargs
+        traced_point_func: Callable[[], Vect3],  # 无参函数，返回要追踪的点的3D坐标（Vect3）
+        time_traced: float = np.inf,            # 轨迹保留时间（默认无限久，即不自动删除历史轨迹）
+        time_per_anchor: float = 1.0 / 15,      # 每个锚点的时间间隔（控制轨迹平滑度，默认15帧/秒）
+        stroke_width: float | Iterable[float] = 2.0,  # 轨迹描边宽度（可传入单个值或可迭代的渐变值）
+        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,  # 轨迹描边颜色（默认使用全局默认颜色）
+        **kwargs                                # 传递给父类VMobject的关键字参数（如位置、旋转等）
     ):
-        super().__init__(**kwargs)
+        # 调用父类VMobject的初始化方法，处理通用图形属性
+        super().__init__(** kwargs)
+        # 存储追踪点的函数（后续每帧会调用该函数获取最新点坐标）
         self.traced_point_func = traced_point_func
+        # 存储轨迹保留时间（超过该时间的历史点会被删除）
         self.time_traced = time_traced
+        # 存储每个锚点的时间间隔（用于控制轨迹采样频率）
         self.time_per_anchor = time_per_anchor
+        # 记录轨迹累计时间（用于计算采样进度）
         self.time: float = 0
+        # 存储所有追踪到的点坐标（历史轨迹数据）
         self.traced_points: list[np.ndarray] = []
+        # 添加更新器：每帧调用update_path方法，传入时间增量dt，更新轨迹
         self.add_updater(lambda m, dt: m.update_path(dt))
+        # 永久设置轨迹的描边样式（颜色和宽度，后续可通过其他方法修改）
         self.always.set_stroke(stroke_color, stroke_width)
 
     def update_path(self, dt: float) -> Self:
+        """
+        轨迹更新方法：每帧调用，根据时间增量dt更新追踪点并刷新轨迹
+        dt: 上一帧到当前帧的时间间隔（单位：秒）
+        """
+        # 若时间增量为0（无时间流逝），直接返回，不更新轨迹
         if dt == 0:
             return self
+        # 调用追踪点函数，获取当前帧的点坐标，并创建副本（避免原数据被修改）
         point = self.traced_point_func().copy()
+        # 将当前点坐标添加到历史轨迹列表中
         self.traced_points.append(point)
 
+        # 处理轨迹保留时间：若设置了有限保留时间，筛选出最近的相关点
         if self.time_traced < np.inf:
+            # 计算需要保留的点的数量（保留时间 / 时间增量，四舍五入）
             n_relevant_points = int(self.time_traced / dt + 0.5)
+            # 获取当前已追踪的总点数
             n_tps = len(self.traced_points)
+            
+            # 若当前点数不足需保留的数量，用当前点填充（避免轨迹过短）
             if n_tps < n_relevant_points:
                 points = self.traced_points + [point] * (n_relevant_points - n_tps)
+            # 若当前点数超过需保留的数量，只保留最近的n_relevant_points个点
             else:
                 points = self.traced_points[n_tps - n_relevant_points:]
-            # Every now and then refresh the list
+            
+            # 优化内存：当总点数超过需保留数量的10倍时，直接截取最近的点（避免列表过大）
             if n_tps > 10 * n_relevant_points:
                 self.traced_points = self.traced_points[-n_relevant_points:]
+        # 若保留时间为无限久，直接使用所有历史点
         else:
             points = self.traced_points
 
+        # 若存在有效点，用这些点生成平滑路径（通过插值使轨迹无棱角）
         if points:
             self.set_points_smoothly(points)
 
+        # 累加累计时间，记录轨迹总时长
         self.time += dt
+        # 返回自身实例，支持方法链式调用
         return self
 
 
 class TracingTail(TracedPath):
+    """
+    TracedPath的子类，专用于生成"尾随轨迹"效果
+    特点：支持基于Mobject对象或自定义函数追踪，轨迹可实现宽度/透明度渐变，模拟"尾巴"消失效果
+    """
     def __init__(
         self,
-        mobject_or_func: Mobject | Callable[[], np.ndarray],
-        time_traced: float = 1.0,
-        stroke_width: float | Iterable[float] = (0, 3),
-        stroke_opacity: float | Iterable[float] = (0, 1),
-        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,
-        **kwargs
+        mobject_or_func: Mobject | Callable[[], np.ndarray],  # 追踪目标：Mobject对象或返回点坐标的函数
+        time_traced: float = 1.0,            # 轨迹保留时间（默认1秒，即尾巴长度对应1秒内的运动）
+        stroke_width: float | Iterable[float] = (0, 3),  # 描边宽度（默认从0渐变到3，模拟尾巴从细到粗）
+        stroke_opacity: float | Iterable[float] = (0, 1),  # 描边透明度（默认从0渐变到1，模拟尾巴从透明到不透明）
+        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,  # 轨迹颜色（默认使用全局默认颜色）
+        **kwargs                                # 传递给父类TracedPath的关键字参数
     ):
+        # 判断追踪目标类型：若为Mobject对象，自动追踪其中心点；若为函数，直接使用该函数
         if isinstance(mobject_or_func, Mobject):
-            func = mobject_or_func.get_center
+            func = mobject_or_func.get_center  # Mobject的get_center()方法返回中心点坐标
         else:
-            func = mobject_or_func
+            func = mobject_or_func  # 直接使用自定义点函数
+        
+        # 调用父类TracedPath的初始化方法，传递必要参数
         super().__init__(
-            func,
-            time_traced=time_traced,
-            stroke_width=stroke_width,
-            stroke_opacity=stroke_opacity,
-            stroke_color=stroke_color,
-            **kwargs
+            func,                          # 追踪点函数（中心点函数或自定义函数）
+            time_traced=time_traced,       # 轨迹保留时间
+            stroke_width=stroke_width,     # 描边宽度（支持渐变）
+            stroke_opacity=stroke_opacity, # 描边透明度（支持渐变）
+            stroke_color=stroke_color,     # 描边颜色
+            **kwargs                       # 其他父类参数
         )
+        
+        # 添加更新器：每帧重新设置描边样式（确保宽度和透明度的渐变效果实时生效）
         self.add_updater(lambda m: m.set_stroke(width=stroke_width, opacity=stroke_opacity))
