@@ -1,23 +1,32 @@
+# 从 __future__ 导入 annotations，支持在类型注解中使用尚未定义的类型（延迟解析）
 from __future__ import annotations
 
+# 导入 deepcopy 用于深拷贝对象（完全复制对象及其所有嵌套结构）
 from copy import deepcopy
 
-from manimlib.mobject.mobject import _AnimationBuilder
-from manimlib.mobject.mobject import Mobject
-from manimlib.utils.iterables import remove_list_redundancies
-from manimlib.utils.rate_functions import smooth
-from manimlib.utils.simple_functions import clip
+# 从 manimlib 的 mobject 模块导入动画构建器类和基本可渲染对象类
+from manimlib.mobject.mobject import _AnimationBuilder  # 用于构建动画的工具类
+from manimlib.mobject.mobject import Mobject  # 所有可渲染对象的基类
 
+# 导入工具函数：移除列表冗余元素、平滑速率函数、数值截断函数
+from manimlib.utils.iterables import remove_list_redundancies  # 移除列表中重复元素并保持顺序
+from manimlib.utils.rate_functions import smooth  # 平滑过渡的速率函数（控制动画节奏）
+from manimlib.utils.simple_functions import clip  # 将数值限制在特定范围内的截断函数
+
+# 导入类型检查相关工具
 from typing import TYPE_CHECKING
 
+# 类型检查条件块：仅在静态类型检查时执行，运行时不执行
 if TYPE_CHECKING:
+    # 导入Callable用于注解可调用对象（如函数、方法）
     from typing import Callable
-
+    # 导入Scene类用于类型注解（场景类，动画的容器）
     from manimlib.scene.scene import Scene
 
 
-DEFAULT_ANIMATION_RUN_TIME = 1.0
-DEFAULT_ANIMATION_LAG_RATIO = 0
+# 动画默认参数定义
+DEFAULT_ANIMATION_RUN_TIME = 1.0  # 默认动画运行时间为1秒
+DEFAULT_ANIMATION_LAG_RATIO = 0  # 默认动画延迟比例为0（无延迟）
 
 
 class Animation(object):
