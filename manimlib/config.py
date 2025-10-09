@@ -1,24 +1,27 @@
+# 从 __future__ 模块导入 annotations，支持在类型注解中使用尚未定义的类型（延迟解析）
 from __future__ import annotations
 
-import argparse
-import colour
-import importlib
-import inspect
-import os
-import sys
-import yaml
-from pathlib import Path
-from ast import literal_eval
-from addict import Dict
+# 导入标准库模块
+import argparse  # 用于解析命令行参数，处理用户从终端输入的指令
+import colour  # 用于颜色处理相关操作，可能涉及颜色空间转换、颜色值解析等
+import importlib  # 提供动态导入模块的功能，可在运行时根据名称导入模块
+import inspect  # 用于检查活对象（如模块、类、函数）的源代码信息，如参数、文档等
+import os  # 提供与操作系统交互的功能，如文件路径操作、环境变量访问等
+import sys  # 提供对Python解释器相关变量和函数的访问，如命令行参数、标准输入输出等
+import yaml  # 用于解析和生成YAML格式的文件，常用于读取配置文件
+from pathlib import Path  # 提供面向对象的文件路径操作，比os.path更直观易用
+from ast import literal_eval  # 用于安全地将字符串解析为Python字面量（如字典、列表等），避免eval的安全风险
+from addict import Dict  # 导入addict库的Dict类，这是一个增强版字典，支持通过属性方式访问键值对
 
-from manimlib.logger import log
-from manimlib.utils.dict_ops import merge_dicts_recursively
+# 从manimlib内部模块导入
+from manimlib.logger import log  # 导入日志工具，用于输出程序运行中的日志信息（如调试、警告、错误等）
+from manimlib.utils.dict_ops import merge_dicts_recursively  # 导入递归合并字典的工具函数，用于合并多层级配置
 
+# 类型检查相关导入，仅在静态类型检查时执行（运行时不执行）
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from argparse import Namespace
-    from typing import Optional
-
+    from argparse import Namespace  # 用于注解命令行参数解析后的结果类型
+    from typing import Optional  # 用于注解可选类型（即变量可能为None或指定类型）
 
 def initialize_manim_config() -> Dict:
     """
