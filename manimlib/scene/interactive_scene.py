@@ -1,41 +1,73 @@
+# 从__future__模块导入 annotations，用于支持延迟类型注解解析（Python 3.7+ 特性）
 from __future__ import annotations
 
+# 导入 itertools 模块并简写为 it，用于创建迭代器和处理迭代相关操作
 import itertools as it
+# 导入 numpy 库并简写为 np，用于数值计算和数组操作
 import numpy as np
+# 导入 pyperclip 模块，用于实现剪贴板功能（复制粘贴）
 import pyperclip
+# 从 IPython 核心模块导入 get_ipython 函数，用于获取当前 IPython 解释器实例
 from IPython.core.getipython import get_ipython
+# 从 pyglet.window 模块导入 key 并简写为 PygletWindowKeys，用于处理窗口按键事件
 from pyglet.window import key as PygletWindowKeys
 
+# 从 manimlib.animation.fading 模块导入 FadeIn 类，用于实现淡入动画效果
 from manimlib.animation.fading import FadeIn
+# 从 manimlib.config 模块导入 manim_config，用于访问 Manim 的配置参数
 from manimlib.config import manim_config
+# 从 manimlib.constants 模块导入方向向量常量：左下、下、右下、左、原点、右、左上、上、右上
 from manimlib.constants import DL, DOWN, DR, LEFT, ORIGIN, RIGHT, UL, UP, UR
+# 从 manimlib.constants 模块导入帧尺寸常量：帧宽度、帧高度、小间距
 from manimlib.constants import FRAME_WIDTH, FRAME_HEIGHT, SMALL_BUFF
+# 从 manimlib.constants 模块导入圆周率常量
 from manimlib.constants import PI
+# 从 manimlib.constants 模块导入角度单位常量（度）
 from manimlib.constants import DEG
+# 从 manimlib.constants 模块导入颜色常量：Manim 颜色字典、白色、灰色A、灰色C
 from manimlib.constants import MANIM_COLORS, WHITE, GREY_A, GREY_C
+# 从 manimlib.mobject.geometry 模块导入几何图形类：线段
 from manimlib.mobject.geometry import Line
+# 从 manimlib.mobject.geometry 模块导入几何图形类：矩形
 from manimlib.mobject.geometry import Rectangle
+# 从 manimlib.mobject.geometry 模块导入几何图形类：正方形
 from manimlib.mobject.geometry import Square
+# 从 manimlib.mobject.mobject 模块导入组合对象类：Group（用于组合多个可移动对象）
 from manimlib.mobject.mobject import Group
+# 从 manimlib.mobject.mobject 模块导入基础可移动对象类：Mobject（所有可移动对象的基类）
 from manimlib.mobject.mobject import Mobject
+# 从 manimlib.mobject.numbers 模块导入十进制数字类：DecimalNumber（用于显示数字）
 from manimlib.mobject.numbers import DecimalNumber
+# 从 manimlib.mobject.svg.tex_mobject 模块导入 Tex 类（用于显示 LaTeX 公式）
 from manimlib.mobject.svg.tex_mobject import Tex
+# 从 manimlib.mobject.svg.text_mobject 模块导入 Text 类（用于显示文本）
 from manimlib.mobject.svg.text_mobject import Text
+# 从 manimlib.mobject.types.dot_cloud 模块导入点云类：DotCloud（用于显示点的集合）
 from manimlib.mobject.types.dot_cloud import DotCloud
+# 从 manimlib.mobject.types.vectorized_mobject 模块导入向量组合类：VGroup
 from manimlib.mobject.types.vectorized_mobject import VGroup
+# 从 manimlib.mobject.types.vectorized_mobject 模块导入向量高亮类：VHighlight
 from manimlib.mobject.types.vectorized_mobject import VHighlight
+# 从 manimlib.mobject.types.vectorized_mobject 模块导入向量可移动对象类：VMobject
 from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从 manimlib.scene.scene 模块导入场景基类：Scene（所有场景的父类）
 from manimlib.scene.scene import Scene
+# 从 manimlib.scene.scene 模块导入场景状态类：SceneState（用于管理场景状态）
 from manimlib.scene.scene import SceneState
+# 从 manimlib.utils.family_ops 模块导入提取对象家族成员的函数
 from manimlib.utils.family_ops import extract_mobject_family_members
+# 从 manimlib.utils.space_ops 模块导入计算向量范数（长度）的函数
 from manimlib.utils.space_ops import get_norm
+# 从 manimlib.utils.tex_file_writing 模块导入 LaTeX 错误类（用于处理 LaTeX 相关错误）
 from manimlib.utils.tex_file_writing import LatexError
 
+# 从 typing 模块导入 TYPE_CHECKING 常量，用于条件性导入类型注解（仅在类型检查时生效）
 from typing import TYPE_CHECKING
 
+# 如果处于类型检查阶段（非运行时执行），导入特定的类型注解
 if TYPE_CHECKING:
+    # 从 manimlib.typing 模块导入三维向量类型注解
     from manimlib.typing import Vect3
-
 
 SELECT_KEY = manim_config.key_bindings.select
 UNSELECT_KEY = manim_config.key_bindings.unselect
