@@ -1,8 +1,18 @@
+# 从 __future__ 模块导入 annotations 特性。
+# 这是一个非常有用的特性，它允许在函数注解（类型提示）中直接使用尚未完全定义的类名或函数名，
+# 而无需将其放在字符串中。这使得代码更具可读性。
+# 例如，在类定义内部，你可以写 `def get_parent(self) -> Node:`，而不是 `def get_parent(self) -> 'Node':`。
 from __future__ import annotations
 
+# 导入 Python 标准库中的 math 模块，用于执行各种数学运算，如 sqrt, sin, cos, pi 等。
 import math
+
+# 导入 Python 标准库中的 copy 模块，用于创建对象的副本。
+# 例如，copy.copy() 用于浅拷贝，copy.deepcopy() 用于深拷贝。
 import copy
 
+# 导入 NumPy 库，并将其别名为 np。NumPy 是 Python 进行科学计算的核心库，
+# 提供了高性能的多维数组对象（ndarray）以及大量用于数组操作的函数。
 import numpy as np
 
 from manimlib.constants import DEFAULT_MOBJECT_TO_MOBJECT_BUFF, SMALL_BUFF
