@@ -1,22 +1,39 @@
+# 从__future__模块导入annotations，支持延迟类型注解解析（Python 3.7+特性）
 from __future__ import annotations
 
+# 导入argparse模块，用于解析命令行参数
 import argparse
+# 导入colour模块，用于颜色处理和转换
 import colour
+# 导入importlib模块，用于动态导入Python模块
 import importlib
+# 导入inspect模块，用于获取对象的信息（如模块、函数的结构等）
 import inspect
+# 导入os模块，用于与操作系统交互（如文件路径、环境变量等）
 import os
+# 导入sys模块，用于访问Python解释器的相关变量和功能
 import sys
+# 导入yaml模块，用于解析和生成YAML格式的配置文件
 import yaml
+# 从pathlib模块导入Path类，用于面向对象的文件路径操作
 from pathlib import Path
+# 从ast模块导入literal_eval函数，用于安全地解析字符串为Python字面量
 from ast import literal_eval
+# 从addict库导入Dict类，提供支持属性访问的字典扩展功能
 from addict import Dict
 
+# 从manimlib.logger模块导入log对象，用于日志记录
 from manimlib.logger import log
+# 从manimlib.utils.dict_ops模块导入merge_dicts_recursively函数，用于递归合并字典
 from manimlib.utils.dict_ops import merge_dicts_recursively
 
+# 从typing模块导入TYPE_CHECKING常量，用于条件性导入类型注解（仅在类型检查时生效）
 from typing import TYPE_CHECKING
+# 如果处于类型检查阶段（非运行时执行），导入特定的类型注解
 if TYPE_CHECKING:
+    # 从argparse模块导入Namespace类型，用于命令行参数解析结果的类型注解
     from argparse import Namespace
+    # 从typing模块导入Optional类型，用于表示可选值（可为None的类型）
     from typing import Optional
 
 
