@@ -101,62 +101,74 @@ CURSOR_KEY = manim_config.key_bindings.cursor
 
 # For keyboard interactions
 
+# 定义方向键符号列表，包含左右上下四个方向键
 ARROW_SYMBOLS: list[int] = [
-    PygletWindowKeys.LEFT,
-    PygletWindowKeys.UP,
-    PygletWindowKeys.RIGHT,
-    PygletWindowKeys.DOWN,
+    PygletWindowKeys.LEFT,    # 左方向键
+    PygletWindowKeys.UP,      # 上方向键
+    PygletWindowKeys.RIGHT,   # 右方向键
+    PygletWindowKeys.DOWN,    # 下方向键
 ]
 
+# 定义所有修饰键的组合，包括Ctrl、Command和Shift键
+# 使用按位或操作符组合这些修饰键的常量值
 ALL_MODIFIERS = PygletWindowKeys.MOD_CTRL | PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_SHIFT
-
-# Note, a lot of the functionality here is still buggy and very much a work in progress.
 
 
 class InteractiveScene(Scene):
     """
-    To select mobjects on screen, hold ctrl and move the mouse to highlight a region,
-    or just tap ctrl to select the mobject under the cursor.
-
-    Pressing command + t will toggle between modes where you either select top level
-    mobjects part of the scene, or low level pieces.
-
-    Hold 'g' to grab the selection and move it around
-    Hold 'h' to drag it constrained in the horizontal direction
-    Hold 'v' to drag it constrained in the vertical direction
-    Hold 't' to resize selection, adding 'shift' to resize with respect to a corner
-
-    Command + 'c' copies the ids of selections to clipboard
-    Command + 'v' will paste either:
-        - The copied mobject
-        - A Tex mobject based on copied LaTeX
-        - A Text mobject based on copied Text
-    Command + 'z' restores selection back to its original state
-    Command + 's' saves the selected mobjects to file
+    交互场景类，继承自基础场景类Scene
+    
+    交互操作说明：
+    - 要选择屏幕上的图形对象(mobjects)，按住Ctrl键并移动鼠标以框选区域，
+      或者直接点击Ctrl键选择光标下的图形对象
+    - 按下Command + t可以切换选择模式：选择场景中的顶级图形对象
+      或选择低级别的图形组件
+    - 按住'g'键可以抓取选中的对象并移动它们
+    - 按住'h'键可以沿水平方向拖动选中的对象
+    - 按住'v'键可以沿垂直方向拖动选中的对象
+    - 按住't'键可以调整选中对象的大小，按住Shift键可以相对于角点调整大小
+    
+    快捷键功能：
+    - Command + 'c'：将选中对象的ID复制到剪贴板
+    - Command + 'v'：粘贴内容，可以是：
+        - 复制的图形对象
+        - 基于复制的LaTeX代码创建的Tex图形对象
+        - 基于复制的文本创建的Text图形对象
+    - Command + 'z'：将选中的对象恢复到原始状态
+    - Command + 's'：将选中的对象保存到文件
     """
+    # 定义选中区域角点的样式配置
     corner_dot_config = dict(
-        color=WHITE,
-        radius=0.05,
-        glow_factor=2.0,
+        color=WHITE,           # 颜色为白色
+        radius=0.05,           # 半径为0.05
+        glow_factor=2.0,       # 发光系数为2.0
     )
+    # 选择矩形框的描边颜色
     selection_rectangle_stroke_color = WHITE
+    # 选择矩形框的描边宽度
     selection_rectangle_stroke_width = 1.0
+    # 调色板颜色，使用MANIM_COLORS预定义颜色集
     palette_colors = MANIM_COLORS
+    # 选中对象的微调大小
     selection_nudge_size = 0.05
+    # 光标位置显示的配置
     cursor_location_config = dict(
-        font_size=24,
-        fill_color=GREY_C,
-        num_decimal_places=3,
+        font_size=24,          # 字体大小为24
+        fill_color=GREY_C,     # 填充颜色为灰色C
+        num_decimal_places=3,  # 保留3位小数
     )
+    # 时间标签的配置
     time_label_config = dict(
-        font_size=24,
-        fill_color=GREY_C,
-        num_decimal_places=1,
+        font_size=24,          # 字体大小为24
+        fill_color=GREY_C,     # 填充颜色为灰色C
+        num_decimal_places=1,  # 保留1位小数
     )
+    # 十字准星的宽度
     crosshair_width = 0.2
+    # 十字准星的样式配置
     crosshair_style = dict(
-        stroke_color=GREY_A,
-        stroke_width=[3, 0, 3],
+        stroke_color=GREY_A,   # 描边颜色为灰色A
+        stroke_width=[3, 0, 3],# 描边宽度，可能用于不同部分的宽度设置
     )
 
     def setup(self):
