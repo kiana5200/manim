@@ -1,7 +1,19 @@
+# 从 __future__ 模块导入 annotations 特性。
+# 这允许在类型注解中直接使用尚未完全定义的类名或函数名，
+# 而无需将其放在字符串中，从而使代码更具可读性。
+# 例如，可以写 `def get_item(self) -> MyClass:` 而不是 `def get_item(self) -> 'MyClass':`。
 from __future__ import annotations
 
+# 导入 NumPy 库，并将其别名为 np。NumPy 是 Python 进行科学计算的核心库，
+# 提供了高性能的多维数组对象（ndarray）和大量的数组操作函数。
 import numpy as np
+
+# 导入 itertools 模块，并将其别名为 it。这个模块提供了一系列用于创建
+# 高效迭代器的工具，常用于循环、排列组合、笛卡尔积等场景。
 import itertools as it
+
+# 导入 random 模块。这个模块提供了各种生成伪随机数的函数，
+# 用于实现随机选择、洗牌、生成随机数等功能。
 import random
 
 from manimlib.animation.composition import AnimationGroup
@@ -69,24 +81,32 @@ from manimlib.utils.space_ops import get_norm
 from manimlib.utils.space_ops import midpoint
 from manimlib.utils.space_ops import rotate_vector
 
+# 导入 TYPE_CHECKING，用于条件导入
 from typing import TYPE_CHECKING
 
+# 如果在进行类型检查，则导入类型提示
 if TYPE_CHECKING:
     from typing import Tuple, Sequence, Callable
     from manimlib.typing import ManimColor, Vect3
 
-
+# 定义一个 Checkmark 类，继承自预设字符串的 TexText
 class Checkmark(TexTextFromPresetString):
+    # LaTeX 代码，用于显示一个绿色的勾选符号
     tex: str = R"\ding{51}"
+    # 默认颜色为绿色
     default_color: ManimColor = GREEN
 
-
+# 定义一个 Exmark 类，继承自预设字符串的 TexText
 class Exmark(TexTextFromPresetString):
+    # LaTeX 代码，用于显示一个红色的叉号
     tex: str = R"\ding{55}"
+    # 默认颜色为红色
     default_color: ManimColor = RED
 
 
+# 定义一个 Lightbulb 类，它继承自 SVGMobject，用于显示 SVG 图像。
 class Lightbulb(SVGMobject):
+    # 指定要加载的 SVG 文件的名称（不含 .svg 后缀）。
     file_name = "lightbulb"
 
     def __init__(
@@ -97,6 +117,7 @@ class Lightbulb(SVGMobject):
         fill_opacity: float = 0.0,
         **kwargs
     ):
+        # 调用父类 SVGMobject 的构造函数，传递所有参数来初始化 SVG 对象。
         super().__init__(
             height=height,
             color=color,
@@ -104,9 +125,11 @@ class Lightbulb(SVGMobject):
             fill_opacity=fill_opacity,
             **kwargs
         )
+        # 增加 SVG 路径的曲线分段数，使其在进行变形动画时更加平滑。
         self.insert_n_curves(25)
 
 
+# 定义一个 Speedometer 类，继承自 VMobject，使其成为一个可独立操作的组合对象。
 class Speedometer(VMobject):
     def __init__(
         self,
@@ -118,8 +141,10 @@ class Speedometer(VMobject):
         needle_color: ManimColor = YELLOW,
         **kwargs,
     ):
+        # 调用父类构造函数，完成基础初始化。
         super().__init__(**kwargs)
 
+        # 存储所有参数为实例属性，以便后续使用和修改。
         self.arc_angle = arc_angle
         self.num_ticks = num_ticks
         self.tick_length = tick_length
@@ -127,42 +152,73 @@ class Speedometer(VMobject):
         self.needle_height = needle_height
         self.needle_color = needle_color
 
-        start_angle = PI / 2 + arc_angle / 2
-        end_angle = PI / 2 - arc_angle / 2
+        # 1. 计算弧形刻度盘的几何参数
+        # 速度表通常是一个从左下方到右下方的弧形。
+        # PI/2 是向上的垂直方向，以此为中心，向左右各延伸 arc_angle/2，得到弧形的起止点。
+        start_angle = PI / 2 + arc_angle / 2  # 左侧起始点（例如，210度）
+        end_angle = PI / 2 - arc_angle / 2    # 右侧结束点（例如，-30度）
+        
+        # 2. 创建并添加弧形刻度盘
+        # 创建一个从 start_angle 开始，逆时针旋转 arc_angle 角度的弧形。
         self.arc = Arc(
             start_angle=start_angle,
-            angle=-self.arc_angle
+            angle=-self.arc_angle  # 负号表示逆时针绘制
         )
         self.add(self.arc)
+
+        # 3. 创建并添加刻度线和数字标签
+        # 使用 np.linspace 在起始和结束角度之间均匀生成 num_ticks 个角度值。
         tick_angle_range = np.linspace(start_angle, end_angle, num_ticks)
         for index, angle in enumerate(tick_angle_range):
+            # 计算该角度对应的单位向量，用于定位刻度和标签。
             vect = rotate_vector(RIGHT, angle)
+            # 创建刻度线：从圆上的一点 (1 - tick_length) * vect 指向圆周 vect。
             tick = Line((1 - tick_length) * vect, vect)
+            # 创建数字标签：值为 10 * index (如 0, 10, 20...)。
             label = Integer(10 * index)
+            # 调整标签大小，使其与刻度线长度协调。
             label.set_height(tick_length)
+            # 将标签移动到刻度线外侧一点的位置。
             label.shift((1 + tick_length) * vect)
+            # 将刻度线和标签添加到速度表组件中。
             self.add(tick, label)
 
+        # 4. 创建并添加指针
+        # 创建一个等腰三角形作为指针。
         needle = Polygon(
             LEFT, UP, RIGHT,
-            stroke_width=0,
-            fill_opacity=1,
+            stroke_width=0,      # 无描边
+            fill_opacity=1,      # 完全填充
             fill_color=self.needle_color
         )
+        # 按指定尺寸拉伸三角形，使其成为细长的指针形状。
         needle.stretch_to_fit_width(needle_width)
         needle.stretch_to_fit_height(needle_height)
+        # 将指针旋转到起始角度位置（即速度为0的位置）。
+        # 三角形默认尖端朝上(UP)，需要旋转到 start_angle 方向。
+        # 减去 PI/2 是为了将其从朝上的方向旋转到与 start_angle 对齐。
         needle.rotate(start_angle - np.pi / 2, about_point=ORIGIN)
         self.add(needle)
+        # 将指针保存为实例属性，以便后续通过动画旋转它。
         self.needle = needle
 
+        # 5. 记录中心点偏移量
+        # 计算整个速度表的几何中心，并存储起来。
         self.center_offset = self.get_center()
 
+
+    # 计算并返回速度表的“逻辑”中心。
+    # 这个方法重写了父类的 `get_center`，目的是将速度表的中心定义为其弧形的圆心，
+    # 而不是整个图形（包括标签）的几何中心。
     def get_center(self):
-        result = VMobject.get_center(self)
+        result = VMobject.get_center(self) # 1. 调用父类方法获取几何中心
+        # 2. 如果存在偏移量，则进行修正
         if hasattr(self, "center_offset"):
+            # 通过减去这个偏移量，将几何中心“修正”回弧形的圆心位置。
             result -= self.center_offset
         return result
 
+    # 获取指针尖端的坐标。
     def get_needle_tip(self):
         return self.needle.get_anchors()[1]
 
