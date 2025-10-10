@@ -866,65 +866,118 @@ def nudge_selection(self, vect: np.ndarray, large: bool = False):
         nudge *= 10
     # 按照“幅度×方向”移动选中对象
     self.selection.shift(nudge * vect)
-    # Key actions
-    def on_key_press(self, symbol: int, modifiers: int) -> None:
-        super().on_key_press(symbol, modifiers)
-        char = chr(symbol)
-        if char == SELECT_KEY and (modifiers & ALL_MODIFIERS) == 0:
-            self.enable_selection()
-        if char == UNSELECT_KEY:
-            self.clear_selection()
-        elif char in GRAB_KEYS and (modifiers & ALL_MODIFIERS) == 0:
-            self.prepare_grab()
-        elif char == RESIZE_KEY and (modifiers & PygletWindowKeys.MOD_SHIFT):
-            self.prepare_resizing(about_corner=((modifiers & PygletWindowKeys.MOD_SHIFT) > 0))
-        elif symbol == PygletWindowKeys.LSHIFT:
-            if self.window.is_key_pressed(ord("t")):
-                self.prepare_resizing(about_corner=True)
-        elif char == COLOR_KEY and (modifiers & ALL_MODIFIERS) == 0:
-            self.toggle_color_palette()
-        elif char == INFORMATION_KEY and (modifiers & ALL_MODIFIERS) == 0:
-            self.display_information()
-        elif char == "c" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.copy_selection()
-        elif char == "v" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.paste_selection()
-        elif char == "x" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.copy_selection()
-            self.delete_selection()
-        elif symbol == PygletWindowKeys.BACKSPACE:
-            self.delete_selection()
-        elif char == "a" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.clear_selection()
-            self.add_to_selection(*self.mobjects)
-        elif char == "g" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.group_selection()
-        elif char == "g" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL | PygletWindowKeys.MOD_SHIFT)):
-            self.ungroup_selection()
-        elif char == "t" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.toggle_selection_mode()
-        elif char == "d" and (modifiers & PygletWindowKeys.MOD_SHIFT):
-            self.copy_frame_positioning()
-        elif char == "c" and (modifiers & PygletWindowKeys.MOD_SHIFT):
-            self.copy_cursor_position()
-        elif symbol in ARROW_SYMBOLS:
-            self.nudge_selection(
-                vect=[LEFT, UP, RIGHT, DOWN][ARROW_SYMBOLS.index(symbol)],
-                large=(modifiers & PygletWindowKeys.MOD_SHIFT),
-            )
-        # Adding crosshair
-        if char == CURSOR_KEY:
-            if self.crosshair in self.mobjects:
-                self.remove(self.crosshair)
-            else:
-                self.add(self.crosshair)
-        if char == SELECT_KEY:
-            self.add(self.crosshair)
+    # 键盘事件处理相关方法（Key actions）
+def on_key_press(self, symbol: int, modifiers: int) -> None:
+    """
+    重写键盘按下事件处理方法，核心用于响应不同按键+修饰键组合，触发对应的交互功能
+    例如选择、拖拽、复制粘贴、调整大小等操作，是交互场景的核心输入处理入口
+    
+    参数说明：
+        symbol: 按下的键盘按键对应的整数编码（如字母键、方向键、功能键等的唯一标识）
+        modifiers: 按下的修饰键组合（如Ctrl、Command、Shift的组合，用按位或运算结果表示）
+    """
+    # 先调用父类（Scene）的on_key_press方法，确保基础场景的键盘事件逻辑正常执行
+    super().on_key_press(symbol, modifiers)
+    # 将按键编码转换为对应的字符（如符号65对应'A'，注意：部分特殊键可能转换后无意义）
+    char = chr(symbol)
 
-        # Conditions for saving state
-        if char in [GRAB_KEY, X_GRAB_KEY, Y_GRAB_KEY, RESIZE_KEY]:
-            self.save_state()
+    # 1. 启用框选功能：按下“选择键”（SELECT_KEY，需提前定义的常量）且无任何修饰键（Ctrl/Command/Shift都不按）
+    if char == SELECT_KEY and (modifiers & ALL_MODIFIERS) == 0:
+        self.enable_selection()  # 启动框选，显示框选矩形并记录起点
 
+    # 2. 清空选中状态：按下“取消选择键”（UNSELECT_KEY，需提前定义的常量）
+    if char == UNSELECT_KEY:
+        self.clear_selection()  # 移除所有对象的选中状态，重置选中组
+
+    # 3. 准备拖拽选中对象：按下“拖拽键”（GRAB_KEYS，需提前定义的键列表）且无任何修饰键
+    elif char in GRAB_KEYS and (modifiers & ALL_MODIFIERS) == 0:
+        self.prepare_grab()  # 计算鼠标与选中对象中心的偏移，标记“正在拖拽”状态
+
+    # 4. 准备按角点调整大小：按下“调整大小键”（RESIZE_KEY，需提前定义）且按住Shift键
+    elif char == RESIZE_KEY and (modifiers & PygletWindowKeys.MOD_SHIFT):
+        # 确认是否“相对于角点缩放”（Shift按下时条件为True，否则为False）
+        self.prepare_resizing(about_corner=((modifiers & PygletWindowKeys.MOD_SHIFT) > 0))
+
+    # 5. 补充调整大小逻辑：按住左Shift键的同时按下't'键，同样触发“相对于角点缩放”的准备
+    elif symbol == PygletWindowKeys.LSHIFT:
+        # 检查当前是否同时按下't'键（通过窗口的实时按键状态判断）
+        if self.window.is_key_pressed(ord("t")):
+            self.prepare_resizing(about_corner=True)
+
+    # 6. 切换颜色调色板显示/隐藏：按下“颜色键”（COLOR_KEY，需提前定义）且无任何修饰键
+    elif char == COLOR_KEY and (modifiers & ALL_MODIFIERS) == 0:
+        self.toggle_color_palette()  # 若调色板显示则隐藏，隐藏则显示（仅当有选中对象时生效）
+
+    # 7. 显示信息标签：按下“信息键”（INFORMATION_KEY，需提前定义）且无任何修饰键
+    elif char == INFORMATION_KEY and (modifiers & ALL_MODIFIERS) == 0:
+        self.display_information()  # 显示光标坐标和时间的标签
+
+    # 8. 复制选中对象：按下 Ctrl/Command + 'c'（兼容Windows/macOS的修饰键）
+    elif char == "c" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.copy_selection()  # 将选中对象的标识（变量名或ID）复制到剪贴板
+
+    # 9. 粘贴对象：按下 Ctrl/Command + 'v'
+    elif char == "v" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.paste_selection()  # 从剪贴板读取内容，生成对应对象（图形/LaTeX/文本）并添加到场景
+
+    # 10. 剪切对象：按下 Ctrl/Command + 'x'（复制后删除原对象）
+    elif char == "x" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.copy_selection()  # 先复制选中对象到剪贴板
+        self.delete_selection()  # 再从场景中删除原选中对象
+
+    # 11. 删除选中对象：按下 Backspace 键
+    elif symbol == PygletWindowKeys.BACKSPACE:
+        self.delete_selection()  # 移除选中对象并清空选中状态
+
+    # 12. 全选场景对象：按下 Ctrl/Command + 'a'
+    elif char == "a" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.clear_selection()  # 先清空原有选中状态，避免重复选中
+        self.add_to_selection(*self.mobjects)  # 将场景中所有对象加入选中组
+
+    # 13. 组合选中对象：按下 Ctrl/Command + 'g'（将多个选中对象合并为一个Group）
+    elif char == "g" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.group_selection()  # 创建Group并添加选中对象，后续操作针对整个Group
+
+    # 14. 拆分组合对象：按下 Ctrl/Command + Shift + 'g'（将选中的Group拆分为单个子对象）
+    elif char == "g" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL | PygletWindowKeys.MOD_SHIFT)):
+        self.ungroup_selection()  # 移除原Group，添加拆分后的子对象并选中
+
+    # 15. 切换选择模式：按下 Ctrl/Command + 't'（在“选顶级对象”和“选子组件”间切换）
+    elif char == "t" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.toggle_selection_mode()  # 反转选择模式标志，刷新可选择对象集合
+
+    # 16. 复制帧定位信息：按下 Shift + 'd'（具体功能依赖copy_frame_positioning方法，需额外实现）
+    elif char == "d" and (modifiers & PygletWindowKeys.MOD_SHIFT):
+        self.copy_frame_positioning()  # 推测为复制相机帧的位置、缩放等参数到剪贴板
+
+    # 17. 复制光标位置：按下 Shift + 'c'（具体功能依赖copy_cursor_position方法，需额外实现）
+    elif char == "c" and (modifiers & PygletWindowKeys.MOD_SHIFT):
+        self.copy_cursor_position()  # 推测为复制当前鼠标在场景中的坐标到剪贴板
+
+    # 18. 微调选中对象位置：按下方向键（上下左右）
+    elif symbol in ARROW_SYMBOLS:
+        # 匹配方向键与对应的方向向量（ARROW_SYMBOLS列表顺序与[LEFT,UP,RIGHT,DOWN]一致）
+        vect = [LEFT, UP, RIGHT, DOWN][ARROW_SYMBOLS.index(symbol)]
+        # 判断是否“大步微调”：按住Shift时为True（微调幅度×10），否则为普通幅度
+        large = (modifiers & PygletWindowKeys.MOD_SHIFT)
+        # 执行微调（按方向和幅度移动选中对象）
+        self.nudge_selection(vect=vect, large=large)
+
+    # 19. 切换十字准星显示/隐藏：按下“光标键”（CURSOR_KEY，需提前定义）
+    if char == CURSOR_KEY:
+        if self.crosshair in self.mobjects:
+            self.remove(self.crosshair)  # 若十字准星已显示，则从场景中移除（隐藏）
+        else:
+            self.add(self.crosshair)     # 若未显示，则添加到场景（显示）
+
+    # 20. 辅助逻辑：按下“选择键”（SELECT_KEY）时，强制显示十字准星（提升框选时的定位精度）
+    if char == SELECT_KEY:
+        self.add(self.crosshair)
+
+    # 21. 保存场景状态：按下“拖拽/调整类按键”时保存状态（便于后续操作失误后恢复）
+    # 涉及的按键：GRAB_KEY（普通拖拽）、X_GRAB_KEY（水平拖拽）、Y_GRAB_KEY（垂直拖拽）、RESIZE_KEY（调整大小）
+    if char in [GRAB_KEY, X_GRAB_KEY, Y_GRAB_KEY, RESIZE_KEY]:
+        self.save_state()  # 保存当前场景的对象状态（位置、大小等）
     def on_key_release(self, symbol: int, modifiers: int) -> None:
         super().on_key_release(symbol, modifiers)
         if chr(symbol) == SELECT_KEY:
