@@ -212,9 +212,19 @@ class CoordinateSystem(ABC):
         self,
         label_tex: str,
         edge: Vect3 = UP,
-        direction: Vect3 = DR,
-        **kwargs
+        direction: Vect3 = DR,** kwargs
     ) -> Tex:
+        """
+        创建Y轴的标签
+        
+        参数:
+            label_tex: 标签的TeX文本
+            edge: 标签靠近Y轴的边缘方向
+            direction: 标签相对于轴边缘的方向
+            **kwargs: 传递给get_axis_label的其他参数
+        返回:
+            标签对象（Tex）
+        """
         return self.get_axis_label(
             label_tex, self.get_y_axis(),
             edge, direction, **kwargs
@@ -229,11 +239,27 @@ class CoordinateSystem(ABC):
         buff: float = MED_SMALL_BUFF,
         ensure_on_screen: bool = False
     ) -> Tex:
+        """
+        为指定轴创建标签
+        
+        参数:
+            label_tex: 标签的TeX文本
+            axis: 要添加标签的轴
+            edge: 标签靠近轴的边缘方向
+            direction: 标签相对于轴边缘的方向
+            buff: 标签与轴之间的缓冲距离
+            ensure_on_screen: 是否确保标签在屏幕内
+        返回:
+            标签对象（Tex）
+        """
+        # 创建TeX文本标签
         label = Tex(label_tex)
+        # 将标签放置在轴的指定边缘和方向
         label.next_to(
             axis.get_edge_center(edge), direction,
             buff=buff
         )
+        # 如果需要，将标签移到屏幕内
         if ensure_on_screen:
             label.shift_onto_screen(buff=MED_SMALL_BUFF)
         return label
@@ -243,13 +269,22 @@ class CoordinateSystem(ABC):
         x_label_tex: str = "x",
         y_label_tex: str = "y"
     ) -> VGroup:
+        """
+        创建并返回X轴和Y轴的标签组
+        
+        参数:
+            x_label_tex: X轴标签的TeX文本，默认为"x"
+            y_label_tex: Y轴标签的TeX文本，默认为"y"
+        返回:
+            包含X轴和Y轴标签的组（VGroup）
+        """
         self.axis_labels = VGroup(
             self.get_x_axis_label(x_label_tex),
             self.get_y_axis_label(y_label_tex),
         )
         return self.axis_labels
 
-    def get_line_from_axis_to_point(
+def get_line_from_axis_to_point(
         self, 
         index: int,
         point: Vect3,
@@ -257,61 +292,123 @@ class CoordinateSystem(ABC):
         color: ManimColor = GREY_A,
         stroke_width: float = 2
     ) -> T:
-        axis = self.get_axis(index)
-        line = line_func(axis.get_projection(point), point)
-        line.set_stroke(color, stroke_width)
-        return line
+    """
+    创建从指定轴到给定点的连接线
+    
+    参数:
+        index: 轴的索引（0为X轴，1为Y轴等）
+        point: 目标点的坐标
+        line_func: 用于创建线的类（默认为虚线DashedLine）
+        color: 线的颜色（默认为灰色GREY_A）
+        stroke_width: 线的宽度（默认为2）
+    返回:
+        创建的线对象
+    """
+    # 获取指定索引的轴
+    axis = self.get_axis(index)
+    # 创建从点在轴上的投影到该点的线
+    line = line_func(axis.get_projection(point), point)
+    # 设置线的颜色和宽度
+    line.set_stroke(color, stroke_width)
+    return line
 
-    def get_v_line(self, point: Vect3, **kwargs):
-        return self.get_line_from_axis_to_point(0, point, **kwargs)
+def get_v_line(self, point: Vect3, **kwargs):
+    """
+    创建从X轴到给定点的垂直线（vertical line）
+    
+    参数:
+        point: 目标点的坐标
+        **kwargs: 传递给get_line_from_axis_to_point的其他参数
+    返回:
+        创建的垂直线对象
+    """
+    # 调用通用方法，指定索引0（X轴）
+    return self.get_line_from_axis_to_point(0, point,** kwargs)
 
-    def get_h_line(self, point: Vect3, **kwargs):
-        return self.get_line_from_axis_to_point(1, point, **kwargs)
+def get_h_line(self, point: Vect3, **kwargs):
+    """
+    创建从Y轴到给定点的水平线（horizontal line）
+    
+    参数:
+        point: 目标点的坐标
+        **kwargs: 传递给get_line_from_axis_to_point的其他参数
+    返回:
+        创建的水平线对象
+    """
+    # 调用通用方法，指定索引1（Y轴）
+    return self.get_line_from_axis_to_point(1, point,** kwargs)
 
-    # Useful for graphing
-    def get_graph(
-        self,
-        function: Callable[[float], float],
-        x_range: Sequence[float] | None = None,
-        bind: bool = False,
-        **kwargs
-    ) -> ParametricCurve:
-        x_range = x_range or self.x_range
-        t_range = np.ones(3)
-        t_range[:len(x_range)] = x_range
-        # For axes, the third coordinate of x_range indicates
-        # tick frequency.  But for functions, it indicates a
-        # sample frequency
-        t_range[2] /= self.num_sampled_graph_points_per_tick
+# 用于图形绘制的工具方法
+def get_graph(
+    self,
+    function: Callable[[float], float],
+    x_range: Sequence[float] | None = None,
+    bind: bool = False,
+    **kwargs
+) -> ParametricCurve:
+    """
+    根据给定的函数创建参数曲线（图形）
+    
+    参数:
+        function: 要绘制的函数，形式为y = f(x)
+        x_range: X轴范围，形式为(最小值, 最大值, 采样间隔)，默认为坐标系的x_range
+        bind: 是否将图形与函数绑定（用于动态更新）
+        **kwargs: 传递给ParametricCurve的其他参数
+    返回:
+        创建的参数曲线对象
+    """
+    # 如果未指定x_range，使用坐标系的默认x_range
+    x_range = x_range or self.x_range
+    # 初始化t_range为全1数组，用于参数化曲线的采样范围
+    t_range = np.ones(3)
+    # 将x_range的值赋给t_range（确保长度匹配）
+    t_range[:len(x_range)] = x_range
+    # 调整采样间隔：每个刻度间隔内采样num_sampled_graph_points_per_tick次
+    t_range[2] /= self.num_sampled_graph_points_per_tick
 
-        def parametric_function(t: float) -> Vect3:
-            return self.c2p(t, function(t))
+    def parametric_function(t: float) -> Vect3:
+        """参数化函数，将t映射到坐标系中的点"""
+        return self.c2p(t, function(t))
 
-        graph = ParametricCurve(
-            parametric_function,
-            t_range=tuple(t_range),
-            **kwargs
-        )
-        graph.underlying_function = function
-        graph.x_range = x_range
+    # 创建参数曲线对象
+    graph = ParametricCurve(
+        parametric_function,
+        t_range=tuple(t_range),** kwargs
+    )
+    # 存储原始函数引用，便于后续使用
+    graph.underlying_function = function
+    # 存储使用的x范围
+    graph.x_range = x_range
 
-        if bind:
-            self.bind_graph_to_func(graph, function)
+    # 如果需要绑定，将图形与函数绑定以支持动态更新
+    if bind:
+        self.bind_graph_to_func(graph, function)
 
-        return graph
+    return graph
 
-    def get_parametric_curve(
-        self,
-        function: Callable[[float], Vect3],
-        **kwargs
-    ) -> ParametricCurve:
-        dim = self.dimension
-        graph = ParametricCurve(
-            lambda t: self.coords_to_point(*function(t)[:dim]),
-            **kwargs
-        )
-        graph.underlying_function = function
-        return graph
+def get_parametric_curve(
+    self,
+    function: Callable[[float], Vect3],
+    **kwargs
+) -> ParametricCurve:
+    """
+    创建参数曲线（适用于多变量参数函数）
+    
+    参数:
+        function: 参数函数，输入参数t，输出坐标值
+        **kwargs: 传递给ParametricCurve的其他参数
+    返回:
+        创建的参数曲线对象
+    """
+    # 获取坐标系维度
+    dim = self.dimension
+    # 创建参数曲线，将函数输出转换为坐标系中的点
+    graph = ParametricCurve(
+        lambda t: self.coords_to_point(*function(t)[:dim]),** kwargs
+    )
+    # 存储原始函数引用
+    graph.underlying_function = function
+    return graph
 
     def input_to_graph_point(
         self,
