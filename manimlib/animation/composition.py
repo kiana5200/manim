@@ -1,24 +1,30 @@
+# 从__future__导入annotations，支持在类型注解中使用尚未定义的类
 from __future__ import annotations
 
+# 从manimlib的animation模块导入Animation基类和prepare_animation函数
 from manimlib.animation.animation import Animation
 from manimlib.animation.animation import prepare_animation
-from manimlib.mobject.mobject import _AnimationBuilder
-from manimlib.mobject.mobject import Group
-from manimlib.mobject.types.vectorized_mobject import VGroup
-from manimlib.mobject.types.vectorized_mobject import VMobject
-from manimlib.utils.bezier import integer_interpolate
-from manimlib.utils.bezier import interpolate
-from manimlib.utils.iterables import remove_list_redundancies
-from manimlib.utils.simple_functions import clip
 
+# 从mobject模块导入动画构建器和组合对象类
+from manimlib.mobject.mobject import _AnimationBuilder  # 动画构建器，用于简化动画创建
+from manimlib.mobject.mobject import Group  # 普通对象组合类
+
+# 从vectorized_mobject模块导入矢量对象相关类
+from manimlib.mobject.types.vectorized_mobject import VGroup  # 矢量对象组合类
+from manimlib.mobject.types.vectorized_mobject import VMobject  # 矢量图形对象基类
+
+# 从工具模块导入插值和贝塞尔曲线相关函数
+from manimlib.utils.bezier import integer_interpolate  # 整数插值函数
+from manimlib.utils.bezier import interpolate  # 通用插值函数
+from manimlib.utils.iterables import remove_list_redundancies  # 移除列表中的冗余元素
+from manimlib.utils.simple_functions import clip  # 截断函数，将值限制在指定范围内
+
+# 导入类型检查相关模块
 from typing import TYPE_CHECKING, Union, Iterable
-AnimationType = Union[Animation, _AnimationBuilder]
-
+# 如果是类型检查阶段，则导入相关类型（避免运行时循环导入问题）
 if TYPE_CHECKING:
-    from typing import Callable, Optional
-
-    from manimlib.mobject.mobject import Mobject
-    from manimlib.scene.scene import Scene
+    # 定义AnimationType类型别名，表示可以是Animation实例或_AnimationBuilder
+    AnimationType = Union[Animation, _AnimationBuilder]
 
 
 DEFAULT_LAGGED_START_LAG_RATIO = 0.05
