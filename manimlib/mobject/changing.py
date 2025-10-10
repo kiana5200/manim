@@ -77,7 +77,7 @@ class AnimatedBoundary(VGroup):
             lambda m, dt: self.update_boundary_copies(dt)
         )
 
- def update_boundary_copies(self, dt: float) -> Self:
+def update_boundary_copies(self, dt: float) -> Self:
     """
     更新边界副本的状态，实现动画效果
     dt: 时间增量，即从上一帧到当前帧的时间间隔
