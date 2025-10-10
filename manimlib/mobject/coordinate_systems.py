@@ -1,51 +1,87 @@
+# 从__future__导入annotations，用于支持字符串类型注解（Python 3.7+特性）
 from __future__ import annotations
 
+# 从abc模块导入ABC（抽象基类）和abstractmethod（抽象方法装饰器）
 from abc import ABC, abstractmethod
+# 导入numbers模块，用于处理数值类型相关操作
 import numbers
 
+# 导入numpy库并简写为np，用于数值计算和数组操作
 import numpy as np
+# 导入itertools库并简写为it，用于处理迭代器和组合操作
 import itertools as it
 
+# 从manimlib.constants导入各种常量：
+# 颜色常量（黑色、蓝色系列、绿色、灰色、红色、默认物体颜色）
 from manimlib.constants import BLACK, BLUE, BLUE_D, BLUE_E, GREEN, GREY_A, RED, DEFAULT_MOBJECT_COLOR
+# 角度相关常量（度、π）
 from manimlib.constants import DEG, PI
+# 方向向量常量（左下、左上、下、右下、左、原点、外、右、上）
 from manimlib.constants import DL, UL, DOWN, DR, LEFT, ORIGIN, OUT, RIGHT, UP
+# 帧尺寸相关常量（帧的X半径、Y半径）
 from manimlib.constants import FRAME_X_RADIUS, FRAME_Y_RADIUS
+# 缓冲距离常量（中小编号缓冲、小编号缓冲）
 from manimlib.constants import MED_SMALL_BUFF, SMALL_BUFF
-from manimlib.mobject.functions import ParametricCurve
-from manimlib.mobject.geometry import Arrow
-from manimlib.mobject.geometry import DashedLine
-from manimlib.mobject.geometry import Line
-from manimlib.mobject.geometry import Rectangle
-from manimlib.mobject.number_line import NumberLine
-from manimlib.mobject.svg.tex_mobject import Tex
-from manimlib.mobject.types.dot_cloud import DotCloud
-from manimlib.mobject.types.surface import ParametricSurface
-from manimlib.mobject.types.vectorized_mobject import VGroup
-from manimlib.mobject.types.vectorized_mobject import VMobject
-from manimlib.utils.bezier import inverse_interpolate
-from manimlib.utils.dict_ops import merge_dicts_recursively
-from manimlib.utils.simple_functions import binary_search
-from manimlib.utils.space_ops import angle_of_vector
-from manimlib.utils.space_ops import get_norm
-from manimlib.utils.space_ops import rotate_vector
-from manimlib.utils.space_ops import normalize
 
+# 从manimlib.mobject.functions导入ParametricCurve（参数曲线类）
+from manimlib.mobject.functions import ParametricCurve
+# 从manimlib.mobject.geometry导入几何相关类：
+# Arrow（箭头）、DashedLine（虚线）、Line（直线）、Rectangle（矩形）
+from manimlib.mobject.geometry import Arrow, DashedLine, Line, Rectangle
+# 从manimlib.mobject.number_line导入NumberLine（数轴类）
+from manimlib.mobject.number_line import NumberLine
+# 从manimlib.mobject.svg.tex_mobject导入Tex（TeX文本对象类）
+from manimlib.mobject.svg.tex_mobject import Tex
+# 从manimlib.mobject.types.dot_cloud导入DotCloud（点云类）
+from manimlib.mobject.types.dot_cloud import DotCloud
+# 从manimlib.mobject.types.surface导入ParametricSurface（参数曲面类）
+from manimlib.mobject.types.surface import ParametricSurface
+# 从manimlib.mobject.types.vectorized_mobject导入：
+# VGroup（向量对象组）、VMobject（向量化物体基类）
+from manimlib.mobject.types.vectorized_mobject import VGroup, VMobject
+
+# 从manimlib.utils.bezier导入inverse_interpolate（贝塞尔曲线反插值函数）
+from manimlib.utils.bezier import inverse_interpolate
+# 从manimlib.utils.dict_ops导入merge_dicts_recursively（字典递归合并函数）
+from manimlib.utils.dict_ops import merge_dicts_recursively
+# 从manimlib.utils.simple_functions导入binary_search（二分查找函数）
+from manimlib.utils.simple_functions import binary_search
+# 从manimlib.utils.space_ops导入空间操作相关函数：
+# angle_of_vector（向量角度计算）、get_norm（向量范数计算）
+# rotate_vector（向量旋转）、normalize（向量归一化）
+from manimlib.utils.space_ops import angle_of_vector, get_norm, rotate_vector, normalize
+
+# 导入typing模块中的类型检查相关工具
 from typing import TYPE_CHECKING
 
+# 条件导入，仅在类型检查时生效（不影响运行时）
 if TYPE_CHECKING:
+    # 从typing导入各种类型提示工具
     from typing import Callable, Iterable, Sequence, Type, TypeVar, Optional
+    # 导入manimlib中的Mobject（物体基类）
     from manimlib.mobject.mobject import Mobject
+    # 导入manimlib中的自定义类型
     from manimlib.typing import ManimColor, Vect3, Vect3Array, VectN, RangeSpecifier, Self
-
+    # 定义类型变量T，约束为Mobject的子类
     T = TypeVar("T", bound=Mobject)
 
 
+# 定义一个极小值，用于避免除以零或处理浮点数精度问题
 EPSILON = 1e-8
+# 默认X轴范围：(最小值, 最大值, 刻度间隔)
 DEFAULT_X_RANGE = (-8.0, 8.0, 1.0)
+# 默认Y轴范围：(最小值, 最大值, 刻度间隔)
 DEFAULT_Y_RANGE = (-4.0, 4.0, 1.0)
 
 
 def full_range_specifier(range_args):
+    """
+    确保范围参数是完整的三元组形式
+    
+    如果输入的范围参数只有两个值（最小值和最大值），
+    则自动补充第三个值为1.0作为刻度间隔；
+    如果已经是三元组，则直接返回
+    """
     if len(range_args) == 2:
         return (*range_args, 1)
     return range_args
@@ -53,8 +89,9 @@ def full_range_specifier(range_args):
 
 class CoordinateSystem(ABC):
     """
-    Abstract class for Axes and NumberPlane
+    坐标系的抽象基类，为Axes（坐标轴）和NumberPlane（坐标系）提供基础功能
     """
+    # 维度默认为2D（二维）
     dimension: int = 2
 
     def __init__(
@@ -63,56 +100,109 @@ class CoordinateSystem(ABC):
         y_range: RangeSpecifier = DEFAULT_Y_RANGE,
         num_sampled_graph_points_per_tick: int = 5,
     ):
+        """
+        初始化坐标系
+        
+        参数:
+            x_range: X轴范围，形式为(最小值, 最大值, 刻度间隔)
+            y_range: Y轴范围，形式为(最小值, 最大值, 刻度间隔)
+            num_sampled_graph_points_per_tick: 每个刻度间隔内用于绘制图形的采样点数
+        """
+        # 处理X轴范围，确保是三元组形式
         self.x_range = full_range_specifier(x_range)
+        # 处理Y轴范围，确保是三元组形式
         self.y_range = full_range_specifier(y_range)
+        # 每个刻度的采样点数
         self.num_sampled_graph_points_per_tick = num_sampled_graph_points_per_tick
 
     @abstractmethod
     def coords_to_point(self, *coords: float | VectN) -> Vect3 | Vect3Array:
+        """
+        抽象方法：将坐标值转换为场景中的点（像素坐标）
+        
+        需要在子类中实现具体转换逻辑
+        """
         raise Exception("Not implemented")
 
     @abstractmethod
     def point_to_coords(self, point: Vect3 | Vect3Array) -> tuple[float | VectN, ...]:
+        """
+        抽象方法：将场景中的点（像素坐标）转换为坐标系中的坐标值
+        
+        需要在子类中实现具体转换逻辑
+        """
         raise Exception("Not implemented")
 
     def c2p(self, *coords: float) -> Vect3 | Vect3Array:
-        """Abbreviation for coords_to_point"""
+        """coords_to_point方法的缩写，用于快速调用"""
         return self.coords_to_point(*coords)
 
     def p2c(self, point: Vect3) -> tuple[float | VectN, ...]:
-        """Abbreviation for point_to_coords"""
+        """point_to_coords方法的缩写，用于快速调用"""
         return self.point_to_coords(point)
 
     def get_origin(self) -> Vect3:
+        """获取坐标系原点在场景中的位置"""
         return self.c2p(*[0] * self.dimension)
 
     @abstractmethod
     def get_axes(self) -> VGroup:
+        """
+        抽象方法：获取所有坐标轴组成的组
+        
+        需要在子类中实现具体逻辑
+        """
         raise Exception("Not implemented")
 
     @abstractmethod
     def get_all_ranges(self) -> list[np.ndarray]:
+        """
+        抽象方法：获取所有轴的范围信息
+        
+        需要在子类中实现具体逻辑
+        """
         raise Exception("Not implemented")
 
     def get_axis(self, index: int) -> NumberLine:
+        """
+        根据索引获取特定的轴
+        
+        参数:
+            index: 轴的索引（0通常为X轴，1为Y轴，2为Z轴）
+        返回:
+            指定的坐标轴（NumberLine对象）
+        """
         return self.get_axes()[index]
 
     def get_x_axis(self) -> NumberLine:
+        """获取X轴（索引为0的轴）"""
         return self.get_axis(0)
 
     def get_y_axis(self) -> NumberLine:
+        """获取Y轴（索引为1的轴）"""
         return self.get_axis(1)
 
     def get_z_axis(self) -> NumberLine:
+        """获取Z轴（索引为2的轴）"""
         return self.get_axis(2)
 
     def get_x_axis_label(
         self,
         label_tex: str,
         edge: Vect3 = RIGHT,
-        direction: Vect3 = DL,
-        **kwargs
+        direction: Vect3 = DL,** kwargs
     ) -> Tex:
+        """
+        创建X轴的标签
+        
+        参数:
+            label_tex: 标签的TeX文本
+            edge: 标签靠近X轴的边缘方向
+            direction: 标签相对于轴边缘的方向
+            **kwargs: 传递给get_axis_label的其他参数
+        返回:
+            标签对象（Tex）
+        """
         return self.get_axis_label(
             label_tex, self.get_x_axis(),
             edge, direction, **kwargs
