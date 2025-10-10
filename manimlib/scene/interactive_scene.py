@@ -277,52 +277,83 @@ def update_selection_highlight(self, highlight: Mobject):
     except ValueError:
         # 如果找不到对应位置，则不做处理
         pass
-    def get_crosshair(self):
-        lines = VMobject().replicate(2)
-        lines[0].set_points([LEFT, ORIGIN, RIGHT])
-        lines[1].set_points([UP, ORIGIN, DOWN])
-        crosshair = VGroup(*lines)
+def get_crosshair(self):
+    """创建并返回十字准星组件，用于显示鼠标在场景中的位置"""
+    # 创建一个向量对象组，并复制出2个线条（水平和垂直）
+    lines = VMobject().replicate(2)
+    # 设置第一条线为水平线：从左到原点再到右
+    lines[0].set_points([LEFT, ORIGIN, RIGHT])
+    # 设置第二条线为垂直线：从上到原点再到下
+    lines[1].set_points([UP, ORIGIN, DOWN])
+    # 将两条线组合成十字准星
+    crosshair = VGroup(*lines)
 
-        crosshair.set_width(self.crosshair_width)
-        crosshair.set_style(**self.crosshair_style)
-        crosshair.set_animating_status(True)
-        crosshair.fix_in_frame()
-        return crosshair
+    # 设置十字准星的宽度
+    crosshair.set_width(self.crosshair_width)
+    # 应用预定义的十字准星样式（颜色、线宽等）
+    crosshair.set_style(** self.crosshair_style)
+    # 设置十字准星为可动画状态
+    crosshair.set_animating_status(True)
+    # 将十字准星固定在场景帧中，不受相机移动影响
+    crosshair.fix_in_frame()
+    return crosshair
 
-    def get_color_palette(self):
-        palette = VGroup(*(
-            Square(fill_color=color, fill_opacity=1, side_length=1)
-            for color in self.palette_colors
-        ))
-        palette.set_stroke(width=0)
-        palette.arrange(RIGHT, buff=0.5)
-        palette.set_width(FRAME_WIDTH - 0.5)
-        palette.to_edge(DOWN, buff=SMALL_BUFF)
-        palette.fix_in_frame()
-        return palette
+def get_color_palette(self):
+    """创建并返回颜色选择面板，用于快速选择对象颜色"""
+    # 创建一个包含多个颜色方块的组，每个方块对应一种预定义颜色
+    palette = VGroup(*(
+        # 为每种颜色创建一个填充方块，无描边
+        Square(fill_color=color, fill_opacity=1, side_length=1)
+        for color in self.palette_colors  # 使用预定义的调色板颜色
+    ))
+    # 去除所有方块的描边
+    palette.set_stroke(width=0)
+    # 将颜色方块水平排列，间距为0.5
+    palette.arrange(RIGHT, buff=0.5)
+    # 设置整个调色板的宽度为场景宽度减0.5，适应场景
+    palette.set_width(FRAME_WIDTH - 0.5)
+    # 将调色板放置在场景底部边缘，保留小间距
+    palette.to_edge(DOWN, buff=SMALL_BUFF)
+    # 将调色板固定在场景帧中，不受相机移动影响
+    palette.fix_in_frame()
+    return palette
 
-    def get_information_label(self):
-        loc_label = VGroup(*(
-            DecimalNumber(**self.cursor_location_config)
-            for n in range(3)
-        ))
+def get_information_label(self):
+    """创建并返回信息标签组件，显示鼠标坐标和时间信息"""
+    # 创建3个十进制数字显示组件，用于显示X、Y、Z坐标
+    loc_label = VGroup(*(
+        DecimalNumber(**self.cursor_location_config)  # 使用预定义的光标位置样式
+        for n in range(3)
+    ))
 
-        def update_coords(loc_label):
-            for mob, coord in zip(loc_label, self.mouse_point.get_location()):
-                mob.set_value(coord)
-            loc_label.arrange(RIGHT, buff=loc_label.get_height())
-            loc_label.to_corner(DR, buff=SMALL_BUFF)
-            loc_label.fix_in_frame()
-            return loc_label
+    def update_coords(loc_label):
+        """更新坐标标签的回调函数，实时显示鼠标当前位置"""
+        # 遍历坐标标签和鼠标位置的三维坐标值
+        for mob, coord in zip(loc_label, self.mouse_point.get_location()):
+            # 更新数字显示为当前坐标值
+            mob.set_value(coord)
+        # 将三个坐标标签水平排列，间距为标签高度
+        loc_label.arrange(RIGHT, buff=loc_label.get_height())
+        # 将坐标标签放置在场景右下角，保留小间距
+        loc_label.to_corner(DR, buff=SMALL_BUFF)
+        # 固定坐标标签在场景帧中
+        loc_label.fix_in_frame()
+        return loc_label
 
-        loc_label.add_updater(update_coords)
+    # 为坐标标签添加更新器，使其实时更新
+    loc_label.add_updater(update_coords)
 
-        time_label = DecimalNumber(0, **self.time_label_config)
-        time_label.to_corner(DL, buff=SMALL_BUFF)
-        time_label.fix_in_frame()
-        time_label.add_updater(lambda m, dt: m.increment_value(dt))
+    # 创建时间标签，初始值为0，使用预定义的时间标签样式
+    time_label = DecimalNumber(0,** self.time_label_config)
+    # 将时间标签放置在场景左下角，保留小间距
+    time_label.to_corner(DL, buff=SMALL_BUFF)
+    # 固定时间标签在场景帧中
+    time_label.fix_in_frame()
+    # 为时间标签添加更新器，每帧增加流逝的时间（dt）
+    time_label.add_updater(lambda m, dt: m.increment_value(dt))
 
-        return VGroup(loc_label, time_label)
+    # 将坐标标签和时间标签组合成一个信息标签组并返回
+    return VGroup(loc_label, time_label)
 
     # Overrides
     def get_state(self):
