@@ -1169,15 +1169,18 @@ class DieFace(VGroup):
         self.index = value       # 存储索引（与点数一致，便于索引调用）
 
 
+# 定义一个 Dartboard 类，继承自 VGroup，用于创建一个飞镖盘。
 class Dartboard(VGroup):
-    radius = 3
-    n_sectors = 20
+    radius = 3      # 飞镖盘的总半径
+    n_sectors = 20  # 飞镖盘的扇形分区数量
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         n_sectors = self.n_sectors
-        angle = TAU / n_sectors
+        angle = tau / n_sectors  # 每个扇形的角度
 
+        # 1. 创建所有环形扇形区域 (segments)
+        # 通过列表推导式创建飞镖盘的三个主要环形区域：双倍区、三倍区和外圈。
         segments = VGroup(*[
             VGroup(*[
                 AnnularSector(
@@ -1189,16 +1192,21 @@ class Dartboard(VGroup):
                 )
                 for n, color in zip(
                     range(n_sectors),
-                    it.cycle(colors)
+                    it.cycle(colors) # 使用 cycle 循环使用颜色列表
                 )
             ])
+            # 定义三个环形区域的颜色和内外半径
             for colors, in_r, out_r in [
-                ([GREY_B, GREY_E], 0, 1),
-                ([GREEN_E, RED_E], 0.5, 0.55),
-                ([GREEN_E, RED_E], 0.95, 1),
+                ([GREY_B, GREY_E], 0, 1),      # 外圈（单倍区）
+                ([GREEN_E, RED_E], 0.5, 0.55), # 三倍区
+                ([GREEN_E, RED_E], 0.95, 1),   # 双倍区
             ]
         ])
+        # 将所有扇形整体旋转，调整起始位置，使分区与中心点对齐。
         segments.rotate(-angle / 2)
+
+        # 2. 创建靶心 (bullseyes)
+        # 创建两个同心圆作为靶心（外圈绿心和内圈红心）。
         bullseyes = VGroup(*[
             Circle(radius=r)
             for r in [0.07, 0.035]
@@ -1208,6 +1216,10 @@ class Dartboard(VGroup):
         bullseyes[0].set_color(GREEN_E)
         bullseyes[1].set_color(RED_E)
 
+        # 3. 组合并缩放
+        # 将最中心的红心单独保存为属性，方便后续定位。
         self.bullseye = bullseyes[1]
+        # 将所有扇形区域和靶心添加到飞镖盘组合中。
         self.add(*segments, *bullseyes)
+        # 将整个飞镖盘缩放到预设的总半径。
         self.scale(self.radius)
