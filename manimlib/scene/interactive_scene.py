@@ -172,75 +172,111 @@ class InteractiveScene(Scene):
     )
 
     def setup(self):
-        self.selection = Group()
-        self.selection_highlight = self.get_selection_highlight()
-        self.selection_rectangle = self.get_selection_rectangle()
-        self.crosshair = self.get_crosshair()
-        self.information_label = self.get_information_label()
-        self.color_palette = self.get_color_palette()
-        self.unselectables = [
-            self.selection,
-            self.selection_highlight,
-            self.selection_rectangle,
-            self.crosshair,
-            self.information_label,
-            self.camera.frame
-        ]
-        self.select_top_level_mobs = True
-        self.regenerate_selection_search_set()
+    """初始化交互场景的各种组件和状态"""
+    # 创建一个组来管理当前选中的所有图形对象
+    self.selection = Group()
+    # 获取用于高亮显示选中对象的组件
+    self.selection_highlight = self.get_selection_highlight()
+    # 获取用于框选区域的矩形组件
+    self.selection_rectangle = self.get_selection_rectangle()
+    # 获取十字准星组件
+    self.crosshair = self.get_crosshair()
+    # 获取信息标签组件（可能显示光标位置、时间等信息）
+    self.information_label = self.get_information_label()
+    # 获取颜色选择面板
+    self.color_palette = self.get_color_palette()
+    
+    # 定义不可被选中的对象列表，包括各种交互组件和相机帧
+    self.unselectables = [
+        self.selection,               # 选中组本身
+        self.selection_highlight,     # 高亮显示组件
+        self.selection_rectangle,     # 选择矩形框
+        self.crosshair,               # 十字准星
+        self.information_label,       # 信息标签
+        self.camera.frame             # 相机帧
+    ]
+    
+    # 设置选择模式：True表示只选择顶级图形对象，False可能包括子对象
+    self.select_top_level_mobs = True
+    # 重新生成用于选择的搜索集合（可能是场景中可被选中的对象列表）
+    self.regenerate_selection_search_set()
 
-        self.is_selecting = False
-        self.is_grabbing = False
+    # 初始化状态变量：是否正在框选
+    self.is_selecting = False
+    # 初始化状态变量：是否正在拖动选中的对象
+    self.is_grabbing = False
 
-        self.add(self.selection_highlight)
+    # 将高亮显示组件添加到场景中
+    self.add(self.selection_highlight)
 
-    def get_selection_rectangle(self):
-        rect = Rectangle(
-            stroke_color=self.selection_rectangle_stroke_color,
-            stroke_width=self.selection_rectangle_stroke_width,
-        )
-        rect.fix_in_frame()
-        rect.fixed_corner = ORIGIN
-        rect.add_updater(self.update_selection_rectangle)
-        return rect
+def get_selection_rectangle(self):
+    """创建并返回用于框选的矩形组件"""
+    rect = Rectangle(
+        # 使用预定义的描边颜色
+        stroke_color=self.selection_rectangle_stroke_color,
+        # 使用预定义的描边宽度
+        stroke_width=self.selection_rectangle_stroke_width,
+    )
+    # 将矩形固定在场景帧中，不受相机移动影响
+    rect.fix_in_frame()
+    # 设置矩形的固定角点（初始为原点）
+    rect.fixed_corner = ORIGIN
+    # 为矩形添加更新器，使其跟随鼠标移动更新位置和大小
+    rect.add_updater(self.update_selection_rectangle)
+    return rect
 
-    def update_selection_rectangle(self, rect: Rectangle):
-        p1 = rect.fixed_corner
-        p2 = self.frame.to_fixed_frame_point(self.mouse_point.get_center())
-        rect.set_points_as_corners([
-            p1, np.array([p2[0], p1[1], 0]),
-            p2, np.array([p1[0], p2[1], 0]),
-            p1,
-        ])
-        return rect
+def update_selection_rectangle(self, rect: Rectangle):
+    """更新选择矩形的位置和大小，使其从固定角点延伸到当前鼠标位置"""
+    # 获取矩形的固定角点（框选的起点）
+    p1 = rect.fixed_corner
+    # 将当前鼠标位置转换为固定帧坐标
+    p2 = self.frame.to_fixed_frame_point(self.mouse_point.get_center())
+    # 根据两个角点设置矩形的四个顶点，形成矩形
+    rect.set_points_as_corners([
+        p1,                          # 起点（固定角）
+        np.array([p2[0], p1[1], 0]), # 起点右侧水平点
+        p2,                          # 终点（鼠标位置）
+        np.array([p1[0], p2[1], 0]), # 起点上方垂直点
+        p1,                          # 回到起点，闭合矩形
+    ])
+    return rect
 
-    def get_selection_highlight(self):
-        result = Group()
-        result.tracked_mobjects = []
-        result.add_updater(self.update_selection_highlight)
-        return result
+def get_selection_highlight(self):
+    """创建并返回用于高亮显示选中对象的组"""
+    result = Group()
+    # 存储被跟踪的图形对象（即选中的对象）
+    result.tracked_mobjects = []
+    # 添加更新器，当选中对象变化时更新高亮显示
+    result.add_updater(self.update_selection_highlight)
+    return result
 
-    def update_selection_highlight(self, highlight: Mobject):
-        if set(highlight.tracked_mobjects) == set(self.selection):
-            return
+def update_selection_highlight(self, highlight: Mobject):
+    """更新高亮显示组件，使其与当前选中的对象保持一致"""
+    # 如果跟踪的对象与当前选中的对象相同，则无需更新
+    if set(highlight.tracked_mobjects) == set(self.selection):
+        return
 
-        # Otherwise, refresh contents of highlight
-        highlight.tracked_mobjects = list(self.selection)
-        highlight.set_submobjects([
-            self.get_highlight(mob)
-            for mob in self.selection
-        ])
-        try:
-            index = min((
-                i for i, mob in enumerate(self.mobjects)
-                for sm in self.selection
-                if sm in mob.get_family()
-            ))
-            self.mobjects.remove(highlight)
-            self.mobjects.insert(index - 1, highlight)
-        except ValueError:
-            pass
-
+    # 否则，刷新高亮显示的内容
+    # 更新跟踪的对象列表为当前选中的对象
+    highlight.tracked_mobjects = list(self.selection)
+    # 为每个选中的对象创建高亮显示，并设置为高亮组的子对象
+    highlight.set_submobjects([
+        self.get_highlight(mob) for mob in self.selection
+    ])
+    
+    try:
+        # 找到选中对象在场景对象列表中的位置，用于正确排序显示层级
+        index = min((
+            i for i, mob in enumerate(self.mobjects)
+            for sm in self.selection
+            if sm in mob.get_family()
+        ))
+        # 将高亮显示组件移动到选中对象的下方，避免遮挡
+        self.mobjects.remove(highlight)
+        self.mobjects.insert(index - 1, highlight)
+    except ValueError:
+        # 如果找不到对应位置，则不做处理
+        pass
     def get_crosshair(self):
         lines = VMobject().replicate(2)
         lines[0].set_points([LEFT, ORIGIN, RIGHT])
