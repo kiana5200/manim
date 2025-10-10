@@ -355,134 +355,265 @@ def get_information_label(self):
     # 将坐标标签和时间标签组合成一个信息标签组并返回
     return VGroup(loc_label, time_label)
 
-    # Overrides
-    def get_state(self):
-        return SceneState(self, ignore=[
-            self.selection_highlight,
-            self.selection_rectangle,
-            self.crosshair,
+    # 重写父类Scene的方法（Overrides）
+def get_state(self):
+    """
+    重写父类方法，获取当前场景状态
+    作用：保存场景状态时，排除交互相关的临时组件（避免这些组件被序列化或恢复）
+    """
+    # 创建场景状态对象，忽略高亮框、选择矩形、十字准星这三个交互组件
+    return SceneState(self, ignore=[
+        self.selection_highlight,  # 选中对象的高亮显示组件
+        self.selection_rectangle,  # 鼠标框选的矩形组件
+        self.crosshair,            # 十字准星组件
+    ])
+
+def restore_state(self, scene_state: SceneState):
+    """
+    重写父类方法，恢复场景状态
+    作用：从保存的状态恢复后，重新将高亮组件添加到场景最底层（避免被其他对象遮挡）
+    """
+    # 先调用父类的状态恢复方法，完成基础场景对象的恢复
+    super().restore_state(scene_state)
+    # 将高亮组件插入到场景对象列表的第一个位置（最底层），确保能正常显示
+    self.mobjects.insert(0, self.selection_highlight)
+
+def add(self, *mobjects: Mobject):
+    """
+    重写父类方法，向场景添加图形对象
+    扩展：添加对象后重新生成可选择对象集合（确保新添加的对象能被选中）
+    """
+    # 调用父类的add方法，完成对象的基础添加逻辑
+    super().add(*mobjects)
+    # 重新生成可选择对象集合（更新场景中可被选中的对象列表）
+    self.regenerate_selection_search_set()
+
+def remove(self, *mobjects: Mobject):
+    """
+    重写父类方法，从场景移除图形对象
+    扩展：移除对象后重新生成可选择对象集合（确保已移除的对象不再被选中）
+    """
+    # 调用父类的remove方法，完成对象的基础移除逻辑
+    super().remove(*mobjects)
+    # 重新生成可选择对象集合（更新场景中可被选中的对象列表）
+    self.regenerate_selection_search_set()
+
+def remove_all_except(self, *mobjects_to_keep : Mobject):
+    """
+    重写父类方法，移除场景中除指定对象外的所有对象
+    扩展：移除后重新生成可选择对象集合（确保剩余对象能正常被选中）
+    """
+    # 调用父类的remove_all_except方法，保留指定对象并移除其他对象
+    super().remove_all_except(*mobjects_to_keep)
+    # 重新生成可选择对象集合（更新场景中可被选中的对象列表）
+    self.regenerate_selection_search_set()
+
+
+# 与选择功能相关的方法（Related to selection）
+def toggle_selection_mode(self):
+    """
+    切换选择模式（顶级对象/低级组件）
+    作用：在“选择场景顶级对象”和“选择对象的子组件”之间切换
+    """
+    # 反转选择模式标志（True ↔ False）
+    self.select_top_level_mobs = not self.select_top_level_mobs
+    # 刷新当前选中对象的范围（适配新的选择模式）
+    self.refresh_selection_scope()
+    # 重新生成可选择对象集合（适配新的选择模式）
+    self.regenerate_selection_search_set()
+
+def get_selection_search_set(self) -> list[Mobject]:
+    """
+    获取当前可选择的对象集合
+    返回：根据选择模式筛选后的可选择对象列表
+    """
+    return self.selection_search_set
+
+def regenerate_selection_search_set(self):
+    """
+    重新生成可选择对象集合
+    逻辑：1. 先过滤掉不可选中的对象；2. 根据选择模式决定是否包含子组件
+    """
+    # 第一步：筛选场景中所有“可选中”的对象（排除unselectables列表中的组件）
+    selectable = list(filter(
+        lambda m: m not in self.unselectables,  # 排除不可选中的组件
+        self.mobjects  # 场景中所有对象
+    ))
+    
+    # 第二步：根据选择模式决定可选择对象的范围
+    if self.select_top_level_mobs:
+        # 顶级模式：可选择对象 = 筛选后的顶级对象（不包含子组件）
+        self.selection_search_set = selectable
+    else:
+        # 低级模式：可选择对象 = 所有顶级对象的子组件（包含嵌套的子对象）
+        self.selection_search_set = [
+            submob  # 子组件
+            for mob in selectable  # 遍历每个可选中的顶级对象
+            for submob in mob.family_members_with_points()  # 获取该对象的所有带坐标的子组件
+        ]
+
+def refresh_selection_scope(self):
+    """
+    刷新当前选中对象的范围
+    作用：切换选择模式后，调整已选中的对象（确保符合新模式的层级规则）
+    """
+    # 保存当前选中的对象列表（临时变量）
+    curr = list(self.selection)
+    
+    if self.select_top_level_mobs:
+        # 切换到顶级模式：将选中的子组件替换为其所属的顶级对象
+        self.selection.set_submobjects([
+            mob  # 顶级对象
+            for mob in self.mobjects  # 遍历场景中所有对象
+            # 筛选条件：该顶级对象的家族中包含当前选中的子组件
+            if any(sm in mob.get_family() for sm in curr)
         ])
-
-    def restore_state(self, scene_state: SceneState):
-        super().restore_state(scene_state)
-        self.mobjects.insert(0, self.selection_highlight)
-
-    def add(self, *mobjects: Mobject):
-        super().add(*mobjects)
-        self.regenerate_selection_search_set()
-
-    def remove(self, *mobjects: Mobject):
-        super().remove(*mobjects)
-        self.regenerate_selection_search_set()
-
-    def remove_all_except(self, *mobjects_to_keep : Mobject):
-        super().remove_all_except(*mobjects_to_keep)
-        self.regenerate_selection_search_set()
-
-    # Related to selection
-
-    def toggle_selection_mode(self):
-        self.select_top_level_mobs = not self.select_top_level_mobs
-        self.refresh_selection_scope()
-        self.regenerate_selection_search_set()
-
-    def get_selection_search_set(self) -> list[Mobject]:
-        return self.selection_search_set
-
-    def regenerate_selection_search_set(self):
-        selectable = list(filter(
-            lambda m: m not in self.unselectables,
-            self.mobjects
-        ))
-        if self.select_top_level_mobs:
-            self.selection_search_set = selectable
-        else:
-            self.selection_search_set = [
-                submob
-                for mob in selectable
-                for submob in mob.family_members_with_points()
-            ]
-
-    def refresh_selection_scope(self):
-        curr = list(self.selection)
-        if self.select_top_level_mobs:
-            self.selection.set_submobjects([
-                mob
-                for mob in self.mobjects
-                if any(sm in mob.get_family() for sm in curr)
-            ])
-            self.selection.refresh_bounding_box(recurse_down=True)
-        else:
-            self.selection.set_submobjects(
-                extract_mobject_family_members(
-                    curr, exclude_pointless=True,
-                )
+        # 刷新选中对象组的边界框（递归处理子对象，确保边界框准确）
+        self.selection.refresh_bounding_box(recurse_down=True)
+    else:
+        # 切换到低级模式：提取当前选中对象的所有子组件（排除无意义的空对象）
+        self.selection.set_submobjects(
+            extract_mobject_family_members(
+                curr,  # 当前选中的对象
+                exclude_pointless=True,  # 排除无坐标、无意义的子对象
             )
+        )
 
-    def get_corner_dots(self, mobject: Mobject) -> Mobject:
-        dots = DotCloud(**self.corner_dot_config)
-        radius = float(self.corner_dot_config["radius"])
-        if mobject.get_depth() < 1e-2:
-            vects = [DL, UL, UR, DR]
-        else:
-            vects = np.array(list(it.product(*3 * [[-1, 1]])))
-        dots.add_updater(lambda d: d.set_points([
-            mobject.get_corner(v) + v * radius
-            for v in vects
-        ]))
-        return dots
+def get_corner_dots(self, mobject: Mobject) -> Mobject:
+    """
+    为指定对象创建“角点标记点”
+    作用：选中对象时，在对象的四个角（或三维顶点）显示小 dots，用于标识选中状态
+    参数：mobject - 需要添加角点标记的图形对象
+    返回：包含所有角点标记的DotCloud对象
+    """
+    # 创建角点标记的集合（使用预定义的角点样式配置）
+    dots = DotCloud(**self.corner_dot_config)
+    # 获取角点标记的半径（从配置中提取）
+    radius = float(self.corner_dot_config["radius"])
+    
+    # 判断对象是2D还是3D（通过深度值判断：深度<0.01视为2D）
+    if mobject.get_depth() < 1e-2:
+        # 2D对象：使用四个对角方向（左下、左上、右上、右下）
+        vects = [DL, UL, UR, DR]
+    else:
+        # 3D对象：生成8个三维顶点方向（x/y/z轴各±1的组合）
+        vects = np.array(list(it.product(*3 * [[-1, 1]])))
+    
+    # 为角点标记添加更新器：实时跟随对象的位置变化
+    dots.add_updater(lambda d: d.set_points([
+        # 计算每个角点的位置：对象的角点坐标 + 方向*半径（避免标记与对象重叠）
+        mobject.get_corner(v) + v * radius
+        for v in vects
+    ]))
+    return dots
 
-    def get_highlight(self, mobject: Mobject) -> Mobject:
-        if isinstance(mobject, VMobject) and mobject.has_points() and not self.select_top_level_mobs:
-            length = max([mobject.get_height(), mobject.get_width()])
-            result = VHighlight(
-                mobject,
-                max_stroke_addition=min([50 * length, 10]),
-            )
-            result.add_updater(lambda m: m.replace(mobject, stretch=True))
-            return result
-        elif isinstance(mobject, DotCloud):
-            return Mobject()
-        else:
-            return self.get_corner_dots(mobject)
+def get_highlight(self, mobject: Mobject) -> Mobject:
+    """
+    为指定对象创建“选中高亮效果”
+    作用：根据对象类型生成不同的高亮样式（2D子组件用边框高亮，其他用角点标记）
+    参数：mobject - 需要添加高亮的图形对象
+    返回：高亮效果对应的图形对象
+    """
+    # 情况1：2D向量对象（有坐标）且处于“低级选择模式”→ 用边框高亮
+    if isinstance(mobject, VMobject) and mobject.has_points() and not self.select_top_level_mobs:
+        # 计算对象的最大尺寸（高度和宽度中的较大值）
+        length = max([mobject.get_height(), mobject.get_width()])
+        # 创建边框高亮对象（VHighlight）
+        result = VHighlight(
+            mobject,  # 目标对象
+            # 计算最大边框宽度：50*对象尺寸（但不超过10，避免过大）
+            max_stroke_addition=min([50 * length, 10]),
+        )
+        # 添加更新器：实时跟随目标对象的位置/形状变化
+        result.add_updater(lambda m: m.replace(mobject, stretch=True))
+        return result
+    
+    # 情况2：DotCloud对象（本身是点集合）→ 不添加高亮（避免重复标记）
+    elif isinstance(mobject, DotCloud):
+        return Mobject()  # 返回空对象（无高亮）
+    
+    # 情况3：其他对象（顶级对象、3D对象等）→ 用角点标记高亮
+    else:
+        return self.get_corner_dots(mobject)
 
-    def add_to_selection(self, *mobjects: Mobject):
-        mobs = list(filter(
-            lambda m: m not in self.unselectables and m not in self.selection,
-            mobjects
-        ))
-        if len(mobs) == 0:
-            return
-        self.selection.add(*mobs)
-        for mob in mobs:
-            mob.set_animating_status(True)
+def add_to_selection(self, *mobjects: Mobject):
+    """
+    将对象添加到选中集合
+    作用：筛选出“可选中且未被选中”的对象，加入选中组并标记为“可动画”
+    参数：*mobjects - 需要添加到选中集合的一个或多个图形对象
+    """
+    # 筛选条件：1. 不在不可选中列表；2. 不在已选中列表
+    mobs = list(filter(
+        lambda m: m not in self.unselectables and m not in self.selection,
+        mobjects
+    ))
+    
+    # 若没有符合条件的对象，直接返回（避免无效操作）
+    if len(mobs) == 0:
+        return
+    
+    # 将筛选后的对象添加到选中组
+    self.selection.add(*mobs)
+    # 标记这些对象为“可动画”（确保后续操作能触发动画效果）
+    for mob in mobs:
+        mob.set_animating_status(True)
 
-    def toggle_from_selection(self, *mobjects: Mobject):
-        for mob in mobjects:
-            if mob in self.selection:
-                self.selection.remove(mob)
-                mob.set_animating_status(False)
-                mob.refresh_bounding_box()
-            else:
-                self.add_to_selection(mob)
-
-    def clear_selection(self):
-        for mob in self.selection:
+def toggle_from_selection(self, *mobjects: Mobject):
+    """
+    切换对象的选中状态（选中↔未选中）
+    作用：对每个对象，如果已选中则移除，未选中则添加
+    参数：*mobjects - 需要切换选中状态的一个或多个图形对象
+    """
+    for mob in mobjects:
+        if mob in self.selection:
+            # 已选中：从选中组移除，标记为“不可动画”，刷新边界框
+            self.selection.remove(mob)
             mob.set_animating_status(False)
             mob.refresh_bounding_box()
-        self.selection.set_submobjects([])
+        else:
+            # 未选中：添加到选中组（复用add_to_selection的筛选逻辑）
+            self.add_to_selection(mob)
 
-    def disable_interaction(self, *mobjects: Mobject):
-        for mob in mobjects:
-            for sm in mob.get_family():
-                self.unselectables.append(sm)
-        self.regenerate_selection_search_set()
+def clear_selection(self):
+    """
+    清空当前选中集合
+    作用：移除所有选中对象，恢复其初始状态（不可动画+刷新边界框）
+    """
+    for mob in self.selection:
+        # 标记对象为“不可动画”
+        mob.set_animating_status(False)
+        # 刷新对象的边界框（确保后续渲染准确）
+        mob.refresh_bounding_box()
+    # 清空选中组的子对象（彻底清空选中状态）
+    self.selection.set_submobjects([])
 
-    def enable_interaction(self, *mobjects: Mobject):
-        for mob in mobjects:
-            for sm in mob.get_family():
-                if sm in self.unselectables:
-                    self.unselectables.remove(sm)
+def disable_interaction(self, *mobjects: Mobject):
+    """
+    禁用指定对象的交互（使其不可选中）
+    作用：将对象及其所有子组件加入“不可选中列表”，并更新可选择集合
+    参数：*mobjects - 需要禁用交互的一个或多个图形对象
+    """
+    for mob in mobjects:
+        # 遍历对象的所有子组件（包含嵌套子对象）
+        for sm in mob.get_family():
+            # 将子组件加入不可选中列表
+            self.unselectables.append(sm)
+    # 重新生成可选择对象集合（确保禁用的对象不再出现在可选择列表中）
+    self.regenerate_selection_search_set()
+
+def enable_interaction(self, *mobjects: Mobject):
+    """
+    启用指定对象的交互（使其可选中）
+    作用：将对象及其所有子组件从“不可选中列表”移除（恢复可选中状态）
+    参数：*mobjects - 需要启用交互的一个或多个图形对象
+    """
+    for mob in mobjects:
+        # 遍历对象的所有子组件（包含嵌套子对象）
+        for sm in mob.get_family():
+            # 如果子组件在不可选中列表中，将其移除
+            if sm in self.unselectables:
+                self.unselectables.remove(sm)
+    # 注：此处未调用regenerate_selection_search_set()，需确保外部调用时手动更新，或后续操作触发更新
 
     # Functions for keyboard actions
 
