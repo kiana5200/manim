@@ -979,111 +979,261 @@ def on_key_press(self, symbol: int, modifiers: int) -> None:
     if char in [GRAB_KEY, X_GRAB_KEY, Y_GRAB_KEY, RESIZE_KEY]:
         self.save_state()  # 保存当前场景的对象状态（位置、大小等）
     def on_key_release(self, symbol: int, modifiers: int) -> None:
-        super().on_key_release(symbol, modifiers)
-        if chr(symbol) == SELECT_KEY:
-            self.gather_new_selection()
-        if chr(symbol) in GRAB_KEYS:
-            self.is_grabbing = False
-        elif chr(symbol) == INFORMATION_KEY:
-            self.display_information(False)
-        elif symbol == PygletWindowKeys.LSHIFT and self.window.is_key_pressed(ord(RESIZE_KEY)):
-            self.prepare_resizing(about_corner=False)
+    """
+    重写键盘释放事件处理方法，响应按键松开时的后续逻辑
+    例如结束框选、停止拖拽、关闭信息标签等，与on_key_press形成完整的键盘交互闭环
+    
+    参数说明：
+        symbol: 释放的键盘按键对应的整数编码
+        modifiers: 释放按键时仍按住的修饰键组合（按位或结果）
+    """
+    # 先调用父类的on_key_release方法，确保基础场景的键盘释放逻辑正常执行
+    super().on_key_release(symbol, modifiers)
+    # 将按键编码转换为对应的字符，便于判断具体按键
+    key_char = chr(symbol)
 
-    # Mouse actions
-    def handle_grabbing(self, point: Vect3):
-        diff = point - self.mouse_to_selection
-        if self.window.is_key_pressed(ord(GRAB_KEY)):
-            self.selection.move_to(diff)
-        elif self.window.is_key_pressed(ord(X_GRAB_KEY)):
-            self.selection.set_x(diff[0])
-        elif self.window.is_key_pressed(ord(Y_GRAB_KEY)):
-            self.selection.set_y(diff[1])
+    # 1. 结束框选并确定选中对象：释放“选择键”（SELECT_KEY）时
+    if key_char == SELECT_KEY:
+        self.gather_new_selection()  # 隐藏框选矩形，根据框选区域筛选并切换对象选中状态
 
-    def handle_resizing(self, point: Vect3):
-        if not hasattr(self, "scale_about_point"):
-            return
-        vect = point - self.scale_about_point
-        if self.window.is_key_pressed(PygletWindowKeys.LCTRL):
-            for i in (0, 1):
-                scalar = vect[i] / self.scale_ref_vect[i]
-                self.selection.rescale_to_fit(
-                    scalar * [self.scale_ref_width, self.scale_ref_height][i],
-                    dim=i,
-                    about_point=self.scale_about_point,
-                    stretch=True,
-                )
-        else:
-            scalar = get_norm(vect) / get_norm(self.scale_ref_vect)
-            self.selection.set_width(
-                scalar * self.scale_ref_width,
-                about_point=self.scale_about_point
+    # 2. 停止拖拽状态：释放“拖拽键”（GRAB_KEYS列表中的任意键）时
+    if key_char in GRAB_KEYS:
+        self.is_grabbing = False  # 重置“正在拖拽”状态，停止对象跟随鼠标移动
+
+    # 3. 关闭信息标签：释放“信息键”（INFORMATION_KEY）时
+    elif key_char == INFORMATION_KEY:
+        self.display_information(False)  # 隐藏光标坐标和时间标签（传入False表示不显示）
+
+    # 4. 调整大小模式切换：释放左Shift键，且当前仍按住“调整大小键”（RESIZE_KEY）时
+    elif symbol == PygletWindowKeys.LSHIFT and self.window.is_key_pressed(ord(RESIZE_KEY)):
+        # 切换为“相对于中心缩放”模式（之前可能是“相对于角点缩放”）
+        self.prepare_resizing(about_corner=False)
+
+
+# 鼠标事件处理相关方法（Mouse actions）
+def handle_grabbing(self, point: Vect3):
+    """
+    处理选中对象的拖拽逻辑，根据按下的拖拽键类型（普通/水平/垂直）限制移动方向
+    
+    参数说明：
+        point: 当前鼠标在场景中的三维坐标（拖拽目标位置参考）
+    """
+    # 计算拖拽目标位置：鼠标当前位置 - 鼠标与选中对象中心的偏移量（确保拖拽时相对位置不变）
+    target_pos = point - self.mouse_to_selection
+
+    # 普通拖拽（按GRAB_KEY）：允许对象在平面内自由移动（x、y轴同时调整）
+    if self.window.is_key_pressed(ord(GRAB_KEY)):
+        self.selection.move_to(target_pos)  # 将选中对象整体移动到目标位置
+
+    # 水平拖拽（按X_GRAB_KEY）：仅允许对象沿x轴移动（y轴位置保持不变）
+    elif self.window.is_key_pressed(ord(X_GRAB_KEY)):
+        self.selection.set_x(target_pos[0])  # 只更新对象的x坐标
+
+    # 垂直拖拽（按Y_GRAB_KEY）：仅允许对象沿y轴移动（x轴位置保持不变）
+    elif self.window.is_key_pressed(ord(Y_GRAB_KEY)):
+        self.selection.set_y(target_pos[1])  # 只更新对象的y坐标
+
+
+def handle_resizing(self, point: Vect3):
+    """
+    处理选中对象的缩放逻辑，支持“等比例缩放”和“单轴缩放”（按Ctrl切换）
+    
+    参数说明：
+        point: 当前鼠标在场景中的三维坐标（缩放比例参考）
+    """
+    # 若未初始化缩放基准点（未执行prepare_resizing），直接返回（避免报错）
+    if not hasattr(self, "scale_about_point"):
+        return
+
+    # 计算当前鼠标相对于缩放基准点的向量（用于计算缩放比例）
+    current_vect = point - self.scale_about_point
+
+    # 单轴缩放（按住Ctrl键）：分别调整x轴（宽度）和y轴（高度）的缩放比例
+    if self.window.is_key_pressed(PygletWindowKeys.LCTRL):
+        # 遍历x轴（0）和y轴（1），分别计算单轴缩放比例
+        for axis in (0, 1):
+            # 缩放比例 = 当前向量在该轴的分量 / 初始参考向量在该轴的分量
+            scale_ratio = current_vect[axis] / self.scale_ref_vect[axis]
+            # 计算目标尺寸：初始尺寸 × 缩放比例
+            target_size = scale_ratio * [self.scale_ref_width, self.scale_ref_height][axis]
+            
+            # 按目标尺寸调整对象在该轴的大小，以基准点为中心拉伸
+            self.selection.rescale_to_fit(
+                target_size,
+                dim=axis,  # 指定缩放轴（0=x轴，1=y轴）
+                about_point=self.scale_about_point,  # 缩放中心（基准点）
+                stretch=True  # 允许拉伸（不保持宽高比）
             )
 
-    def handle_sweeping_selection(self, point: Vect3):
-        mob = self.point_to_mobject(
-            point,
-            search_set=self.get_selection_search_set(),
-            buff=SMALL_BUFF
+    # 等比例缩放（未按Ctrl键）：保持宽高比，按整体比例缩放
+    else:
+        # 缩放比例 = 当前向量的模长 / 初始参考向量的模长（保证等比例）
+        scale_ratio = get_norm(current_vect) / get_norm(self.scale_ref_vect)
+        # 按比例调整对象宽度（高度会自动等比例变化），以基准点为中心
+        self.selection.set_width(
+            scale_ratio * self.scale_ref_width,
+            about_point=self.scale_about_point
         )
-        if mob is not None:
-            self.add_to_selection(mob)
 
-    def choose_color(self, point: Vect3):
-        # Search through all mobject on the screen, not just the palette
-        to_search = [
-            sm
-            for mobject in self.mobjects
-            for sm in mobject.family_members_with_points()
-            if mobject not in self.unselectables
-        ]
-        mob = self.point_to_mobject(point, to_search)
-        if mob is not None:
-            self.selection.set_color(mob.get_color())
-        self.remove(self.color_palette)
 
-    def on_mouse_motion(self, point: Vect3, d_point: Vect3) -> None:
-        super().on_mouse_motion(point, d_point)
-        self.crosshair.move_to(self.frame.to_fixed_frame_point(point))
-        if self.is_grabbing:
-            self.handle_grabbing(point)
-        elif self.window.is_key_pressed(ord(RESIZE_KEY)):
-            self.handle_resizing(point)
-        elif self.window.is_key_pressed(ord(SELECT_KEY)) and self.window.is_key_pressed(PygletWindowKeys.LSHIFT):
-            self.handle_sweeping_selection(point)
+def handle_sweeping_selection(self, point: Vect3):
+    """
+    处理“扫选”逻辑：鼠标移动过程中，自动选中鼠标光标下的可选择对象
+    
+    参数说明：
+        point: 当前鼠标在场景中的三维坐标（判断光标下的对象）
+    """
+    # 找到鼠标光标下的第一个可选择对象（从搜索集合中匹配）
+    target_mob = self.point_to_mobject(
+        point,
+        search_set=self.get_selection_search_set(),  # 可选择对象集合
+        buff=SMALL_BUFF  # 检测缓冲（避免鼠标必须精确点在对象上）
+    )
+    # 若找到有效对象，将其添加到选中集合
+    if target_mob is not None:
+        self.add_to_selection(target_mob)
 
-    def on_mouse_drag(
-        self,
-        point: Vect3,
-        d_point: Vect3,
-        buttons: int,
-        modifiers: int
-    ) -> None:
-        super().on_mouse_drag(point, d_point, buttons, modifiers)
-        self.crosshair.move_to(self.frame.to_fixed_frame_point(point))
 
-    def on_mouse_release(self, point: Vect3, button: int, mods: int) -> None:
-        super().on_mouse_release(point, button, mods)
-        if self.color_palette in self.mobjects:
-            self.choose_color(point)
-        else:
-            self.clear_selection()
+def choose_color(self, point: Vect3):
+    """
+    处理颜色选择逻辑：点击颜色调色板（或其他有颜色的对象）时，将选中对象的颜色改为点击对象的颜色
+    
+    参数说明：
+        point: 当前鼠标点击的三维坐标（判断点击的颜色源对象）
+    """
+    # 构建颜色搜索集合：场景中所有可交互对象的子组件（不仅限于调色板，支持从任意对象取色）
+    color_search_set = [
+        submob
+        for mob in self.mobjects
+        # 遍历对象的所有带坐标子组件（确保能被鼠标检测到）
+        for submob in mob.family_members_with_points()
+        if mob not in self.unselectables  # 排除不可交互的组件（如高亮框、十字准星）
+    ]
 
-    # Copying code to recreate state
-    def copy_frame_positioning(self):
-        frame = self.frame
-        center = frame.get_center()
-        height = frame.get_height()
-        angles = frame.get_euler_angles()
+    # 找到鼠标点击位置的颜色源对象
+    color_source_mob = self.point_to_mobject(point, color_search_set)
+    # 若找到有效对象，将选中对象的颜色改为该对象的颜色
+    if color_source_mob is not None:
+        self.selection.set_color(color_source_mob.get_color())
+    
+    # 无论是否选择颜色，都隐藏颜色调色板（结束颜色选择流程）
+    self.remove(self.color_palette)
 
-        call = f"reorient("
-        theta, phi, gamma = (angles / DEG).astype(int)
-        call += f"{theta}, {phi}, {gamma}"
-        if any(center != 0):
-            call += f", {tuple(np.round(center, 2))}"
-        if height != FRAME_HEIGHT:
-            call += ", {:.2f}".format(height)
-        call += ")"
-        pyperclip.copy(call)
 
-    def copy_cursor_position(self):
-        pyperclip.copy(str(tuple(self.mouse_point.get_center().round(2))))
+def on_mouse_motion(self, point: Vect3, d_point: Vect3) -> None:
+    """
+    重写鼠标移动事件处理方法，响应鼠标移动时的交互逻辑
+    如十字准星跟随、拖拽对象、调整大小、扫选对象等
+    
+    参数说明：
+        point: 鼠标当前的三维坐标
+        d_point: 鼠标相对于上一帧的位移向量（delta）
+    """
+    # 先调用父类的on_mouse_motion方法，确保基础场景的鼠标移动逻辑正常执行
+    super().on_mouse_motion(point, d_point)
+    # 让十字准星跟随鼠标移动（转换为固定帧坐标，避免受相机影响）
+    self.crosshair.move_to(self.frame.to_fixed_frame_point(point))
+
+    # 1. 若处于“正在拖拽”状态，执行拖拽逻辑（移动选中对象）
+    if self.is_grabbing:
+        self.handle_grabbing(point)
+
+    # 2. 若按住“调整大小键”（RESIZE_KEY），执行缩放逻辑（调整选中对象大小）
+    elif self.window.is_key_pressed(ord(RESIZE_KEY)):
+        self.handle_resizing(point)
+
+    # 3. 若同时按住“选择键”（SELECT_KEY）和Shift键，执行扫选逻辑（移动中选中对象）
+    elif self.window.is_key_pressed(ord(SELECT_KEY)) and self.window.is_key_pressed(PygletWindowKeys.LSHIFT):
+        self.handle_sweeping_selection(point)
+
+
+def on_mouse_drag(
+    self,
+    point: Vect3,
+    d_point: Vect3,
+    buttons: int,
+    modifiers: int
+) -> None:
+    """
+    重写鼠标拖拽事件处理方法（鼠标按下并移动时触发）
+    核心逻辑：确保十字准星在拖拽过程中跟随鼠标（与on_mouse_motion保持一致）
+    
+    参数说明：
+        point: 鼠标当前的三维坐标
+        d_point: 鼠标相对于上一帧的位移向量
+        buttons: 按下的鼠标按键（如左键、右键，按位或结果）
+        modifiers: 拖拽时按住的修饰键组合
+    """
+    # 先调用父类的on_mouse_drag方法，确保基础场景的拖拽逻辑正常执行
+    super().on_mouse_drag(point, d_point, buttons, modifiers)
+    # 十字准星跟随鼠标拖拽位置（固定帧坐标）
+    self.crosshair.move_to(self.frame.to_fixed_frame_point(point))
+
+
+def on_mouse_release(self, point: Vect3, button: int, mods: int) -> None:
+    """
+    重写鼠标释放事件处理方法（鼠标按键松开时触发）
+    核心逻辑：处理颜色选择（若调色板显示）或清空选中（若未显示调色板）
+    
+    参数说明：
+        point: 鼠标释放时的三维坐标
+        button: 释放的鼠标按键（如左键）
+        mods: 释放时仍按住的修饰键组合
+    """
+    # 先调用父类的on_mouse_release方法，确保基础场景的鼠标释放逻辑正常执行
+    super().on_mouse_release(point, button, mods)
+
+    # 1. 若颜色调色板正在显示，执行颜色选择逻辑（点击位置的颜色应用到选中对象）
+    if self.color_palette in self.mobjects:
+        self.choose_color(point)
+
+    # 2. 若调色板未显示，清空当前选中状态（默认鼠标释放后取消选择）
+    else:
+        self.clear_selection()
+
+
+# 状态复制相关方法（Copying code to recreate state）
+def copy_frame_positioning(self):
+    """
+    复制相机帧（frame）的定位信息到剪贴板，生成可直接复用的代码字符串
+    包含帧的旋转角度、中心位置、高度，便于后续通过代码还原相同的相机视角
+    """
+    # 获取当前相机帧对象
+    frame = self.frame
+    # 获取帧的中心坐标（三维）
+    frame_center = frame.get_center()
+    # 获取帧的高度（控制视野大小）
+    frame_height = frame.get_height()
+    # 获取帧的欧拉角（旋转角度，对应theta/phi/gamma三个维度）
+    frame_angles = frame.get_euler_angles()
+
+    # 初始化代码字符串（调用reorient函数，推测为自定义的帧定位函数）
+    code_str = f"reorient("
+    # 将弧度制角度转换为角度制并取整（便于阅读和使用）
+    theta, phi, gamma = (frame_angles / DEG).astype(int)
+    # 添加旋转角度参数
+    code_str += f"{theta}, {phi}, {gamma}"
+
+    # 若帧中心不在原点（0,0,0），添加中心坐标参数（保留2位小数）
+    if any(frame_center != 0):
+        code_str += f", {tuple(np.round(frame_center, 2))}"
+
+    # 若帧高度不等于默认高度（FRAME_HEIGHT），添加高度参数（保留2位小数）
+    if frame_height != FRAME_HEIGHT:
+        code_str += ", {:.2f}".format(frame_height)
+
+    # 闭合函数调用
+    code_str += ")"
+    # 将生成的代码字符串复制到剪贴板
+    pyperclip.copy(code_str)
+
+
+def copy_cursor_position(self):
+    """
+    复制当前鼠标光标的三维坐标到剪贴板，格式为元组字符串（保留2位小数）
+    便于后续定位对象或设置坐标时直接复用
+    """
+    # 获取鼠标点的中心坐标，保留2位小数后转换为元组，再转为字符串
+    cursor_pos_str = str(tuple(self.mouse_point.get_center().round(2)))
+    # 复制到剪贴板
+    pyperclip.copy(cursor_pos_str)
