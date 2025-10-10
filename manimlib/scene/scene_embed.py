@@ -1,24 +1,28 @@
+# 导入Python未来版本的注解特性（用于支持更灵活的类型提示，如字符串形式的类名）
 from __future__ import annotations
 
-import inspect
-import pyperclip
-import traceback
+# 导入所需的标准库模块
+import inspect  # 用于检查对象的源代码、类结构、函数参数等（常用于反射和调试）
+import pyperclip  # 用于访问系统剪贴板，实现复制和粘贴功能（如之前代码中的复制选中对象、坐标等）
+import traceback  # 用于捕获和格式化异常信息，便于调试时查看错误堆栈
 
-from IPython.terminal import pt_inputhooks
-from IPython.terminal.embed import InteractiveShellEmbed
+# 导入IPython相关模块（用于交互式环境集成）
+from IPython.terminal import pt_inputhooks  # IPython终端的输入钩子，用于处理外部事件（如GUI事件循环）
+from IPython.terminal.embed import InteractiveShellEmbed  # 用于在代码中嵌入IPython交互式shell，支持实时调试和交互
 
-from manimlib.animation.fading import VFadeInThenOut
-from manimlib.config import manim_config
-from manimlib.constants import RED
-from manimlib.mobject.mobject import Mobject
-from manimlib.mobject.frame import FullScreenRectangle
-from manimlib.module_loader import ModuleLoader
+# 导入Manim库相关模块（Manim是用于数学动画制作的库）
+from manimlib.animation.fading import VFadeInThenOut  # 导入淡入淡出动画类（用于对象的淡入后淡出效果）
+from manimlib.config import manim_config  # 导入Manim的全局配置对象（存储渲染参数、路径设置等）
+from manimlib.constants import RED  # 导入Manim预定义的颜色常量（此处导入红色，用于设置对象颜色）
+from manimlib.mobject.mobject import Mobject  # 导入Manim的基础图形对象类（所有可见图形对象的父类）
+from manimlib.mobject.frame import FullScreenRectangle  # 导入全屏矩形类（用于创建覆盖整个屏幕的矩形，如背景、遮罩等）
+from manimlib.module_loader import ModuleLoader  # 导入模块加载器类（用于动态加载Manim场景、自定义模块等）
 
-
+# 导入类型提示相关模块（仅在类型检查时生效，不影响运行时）
 from typing import TYPE_CHECKING
+# 条件导入：仅当执行类型检查时（如使用mypy工具），才导入Scene类（避免循环导入问题）
 if TYPE_CHECKING:
-    from manimlib.scene.scene import Scene
-
+    from manimlib.scene.scene import Scene  # 导入场景基类，用于类型注解（如函数参数、返回值的类型提示）
 
 class InteractiveSceneEmbed:
     def __init__(self, scene: Scene):
