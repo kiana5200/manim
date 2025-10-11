@@ -349,81 +349,136 @@ def end_animation(self) -> None:
         self.close_movie_pipe()
 
     def finish(self) -> None:
-        if not self.subdivide_output and self.write_to_movie:
-            self.close_movie_pipe()
-            if self.includes_sound:
-                self.add_sound_to_video()
-            self.print_file_ready_message(self.get_movie_file_path())
-        if self.save_last_frame:
-            self.scene.update_frame(force_draw=True)
-            self.save_final_image(self.scene.get_image())
-        if self.should_open_file():
-            self.open_file()
+    """
+    完成场景文件写入的最终流程，处理视频收尾、音频合并、帧保存与文件打开
+    核心逻辑：根据输出模式（不分段视频/单帧保存）执行对应收尾操作，确保输出文件可用
+    """
+    # 1. 处理不分段视频的收尾（若开启视频生成且不分段）
+    if not self.subdivide_output and self.write_to_movie:
+        self.close_movie_pipe()  # 关闭FFmpeg编码管道，完成临时视频文件
+        if self.includes_sound:  # 若场景包含音频，将音频合并到视频中
+            self.add_sound_to_video()
+        # 打印视频文件就绪的提示信息（含文件路径）
+        self.print_file_ready_message(self.get_movie_file_path())
+    
+    # 2. 保存最后一帧图像（若开启该功能）
+    if self.save_last_frame:
+        self.scene.update_frame(force_draw=True)  # 强制更新场景帧，确保获取最新画面
+        final_image = self.scene.get_image()  # 获取场景的当前图像（最后一帧）
+        self.save_final_image(final_image)  # 保存图像到指定路径
+    
+    # 3. 自动打开输出文件（若满足配置条件）
+    if self.should_open_file():
+        self.open_file()
 
-    def open_movie_pipe(self, file_path: str) -> None:
-        stem, ext = os.path.splitext(file_path)
-        self.final_file_path = file_path
-        self.temp_file_path = stem + "_temp" + ext
+def open_movie_pipe(self, file_path: str) -> None:
+    """
+    打开FFmpeg编码管道，准备将渲染帧写入视频文件
+    核心：构造FFmpeg命令，创建子进程处理帧数据，生成临时视频文件（后续会合并音频或重命名）
+    
+    参数：file_path - 最终视频文件的目标路径
+    """
+    # 拆分文件路径为“文件名（无后缀）”和“后缀”，用于生成临时文件路径
+    stem, ext = os.path.splitext(file_path)
+    self.final_file_path = file_path  # 记录最终视频文件路径
+    self.temp_file_path = f"{stem}_temp{ext}"  # 临时视频文件路径（先存无音频版本）
 
-        fps = self.scene.camera.fps
-        width, height = self.scene.camera.get_pixel_shape()
+    # 获取相机配置参数（用于FFmpeg命令）
+    fps = self.scene.camera.fps  # 视频帧率（帧/秒）
+    width, height = self.scene.camera.get_pixel_shape()  # 视频分辨率（宽×高）
 
-        vf_arg = 'vflip'
-        vf_arg += f',eq=saturation={self.saturation}:gamma={self.gamma}'
+    # 构造FFmpeg视频滤镜参数（vf）：1. 垂直翻转（解决渲染帧上下颠倒问题）；2. 调整饱和度和gamma
+    vf_arg = "vflip"  # 垂直翻转（因Manim渲染帧默认上下颠倒，需修正）
+    vf_arg += f",eq=saturation={self.saturation}:gamma={self.gamma}"  # 色彩饱和度+亮度调整
 
-        command = [
-            self.ffmpeg_bin,
-            '-y',  # overwrite output file if it exists
-            '-f', 'rawvideo',
-            '-s', f'{width}x{height}',  # size of one frame
-            '-pix_fmt', 'rgba',
-            '-r', str(fps),  # frames per second
-            '-i', '-',  # The input comes from a pipe
-            '-vf', vf_arg,
-            '-an',  # Tells ffmpeg not to expect any audio
-            '-loglevel', 'error',
-        ]
-        if self.video_codec:
-            command += ['-vcodec', self.video_codec]
-        if self.pixel_format:
-            command += ['-pix_fmt', self.pixel_format]
-        command += [self.temp_file_path]
-        self.writing_process = sp.Popen(command, stdin=sp.PIPE)
+    # 构造FFmpeg命令列表（通过子进程执行）
+    command = [
+        self.ffmpeg_bin,  # FFmpeg可执行文件路径
+        "-y",  # 强制覆盖已存在的输出文件（避免询问）
+        "-f", "rawvideo",  # 输入格式：原始视频帧（无压缩的像素数据）
+        "-s", f"{width}x{height}",  # 输入帧分辨率（宽×高）
+        "-pix_fmt", "rgba",  # 输入像素格式（RGBA，含透明通道）
+        "-r", str(fps),  # 输入帧率（与相机帧率一致）
+        "-i", "-",  # 输入源：标准输入（通过管道传递帧数据）
+        "-vf", vf_arg,  # 应用视频滤镜（翻转+色彩调整）
+        "-an",  # 禁用音频输入（当前仅写入视频帧，音频后续合并）
+        "-loglevel", "error",  # FFmpeg日志级别：仅显示错误（减少冗余输出）
+    ]
+    # 若指定了视频编码器，添加到命令（如libx264）
+    if self.video_codec:
+        command += ["-vcodec", self.video_codec]
+    # 若指定了输出像素格式，添加到命令（如yuv420p）
+    if self.pixel_format:
+        command += ["-pix_fmt", self.pixel_format]
+    # 命令最后指定输出路径（临时视频文件）
+    command += [self.temp_file_path]
 
-        if not self.quiet:
-            self.progress_display = ProgressDisplay(
-                range(self.total_frames),
-                leave=False,
-                ascii=True if platform.system() == 'Windows' else None,
-                dynamic_ncols=True,
-            )
-            self.set_progress_display_description()
+    # 创建FFmpeg子进程，开启标准输入管道（用于传递帧数据）
+    self.writing_process = sp.Popen(command, stdin=sp.PIPE)
 
-    def use_fast_encoding(self):
-        self.video_codec = "libx264rgb"
-        self.pixel_format = "rgb32"
+    # 若不启用静默模式，初始化进度条（显示渲染进度）
+    if not self.quiet:
+        self.progress_display = ProgressDisplay(
+            range(self.total_frames),  # 进度条总范围（总帧数）
+            leave=False,  # 进度条完成后不保留（避免占用终端空间）
+            ascii=True if platform.system() == "Windows" else None,  # Windows用ASCII字符渲染进度条
+            dynamic_ncols=True,  # 自动适配终端宽度
+        )
+        self.set_progress_display_description()  # 设置进度条描述文本（如“Rendering”）
 
-    def get_insert_file_path(self, index: int) -> Path:
-        movie_path = Path(self.get_movie_file_path())
-        scene_name = movie_path.stem
-        insert_dir = Path(movie_path.parent, "inserts")
-        guarantee_existence(insert_dir)
-        return Path(insert_dir, f"{scene_name}_{index}").with_suffix(self.movie_file_extension)
+def use_fast_encoding(self):
+    """
+    启用快速视频编码模式
+    原理：使用RGB格式编码器（libx264rgb）和像素格式（rgb32），跳过YUV格式转换，提升编码速度
+    注意：生成的视频文件体积可能更大，兼容性略低于默认的YUV420p格式
+    """
+    self.video_codec = "libx264rgb"  # 快速RGB编码器（无需转换色彩空间）
+    self.pixel_format = "rgb32"  # 对应的RGB像素格式（32位，含透明通道）
 
-    def begin_insert(self):
-        # Begin writing process
-        self.write_to_movie = True
-        self.init_output_directories()
-        index = 0
-        while (insert_path := self.get_insert_file_path(index)).exists():
-            index += 1
-        self.inserted_file_path = insert_path
-        self.open_movie_pipe(self.inserted_file_path)
+def get_insert_file_path(self, index: int) -> Path:
+    """
+    生成“插入片段”的视频文件路径（用于场景中插入额外动画片段的场景）
+    
+    参数：index - 插入片段的序号（避免文件名冲突）
+    返回：插入片段的完整路径（Path对象）
+    """
+    # 获取最终视频文件的路径对象
+    movie_path = Path(self.get_movie_file_path())
+    scene_name = movie_path.stem  # 提取场景名称（无后缀的文件名）
+    # 构造插入片段的存储目录（在最终视频目录下创建“inserts”子目录）
+    insert_dir = Path(movie_path.parent, "inserts")
+    guarantee_existence(insert_dir)  # 确保目录存在（不存在则创建）
+    # 生成插入片段的文件名（场景名_序号.后缀），返回完整路径
+    return Path(insert_dir, f"{scene_name}_{index}").with_suffix(self.movie_file_extension)
 
-    def end_insert(self):
-        self.close_movie_pipe()
-        self.write_to_movie = False
-        self.print_file_ready_message(self.inserted_file_path)
+def begin_insert(self):
+    """
+    开始处理“插入片段”的视频写入
+    逻辑：临时开启视频生成模式，创建不冲突的插入片段路径，打开FFmpeg编码管道
+    用途：在主场景渲染过程中，插入额外的小动画片段（如临时标注、补充说明）
+    """
+    # 临时开启视频写入模式（即使主场景未开启，插入片段也需生成视频）
+    self.write_to_movie = True
+    self.init_output_directories()  # 重新初始化输出目录（确保插入目录存在）
+    
+    # 查找未被占用的插入片段序号（从0开始，避免覆盖已有文件）
+    index = 0
+    while (insert_path := self.get_insert_file_path(index)).exists():
+        index += 1
+    self.inserted_file_path = insert_path  # 记录当前插入片段的路径
+    
+    # 打开FFmpeg编码管道，开始写入插入片段的帧数据
+    self.open_movie_pipe(self.inserted_file_path)
+
+def end_insert(self):
+    """
+    结束“插入片段”的视频写入
+    逻辑：关闭FFmpeg编码管道，恢复原视频写入模式，打印插入片段就绪信息
+    """
+    self.close_movie_pipe()  # 关闭插入片段的FFmpeg编码管道
+    self.write_to_movie = False  # 恢复原视频写入模式（避免影响主场景）
+    # 打印插入片段文件就绪的提示信息
+    self.print_file_ready_message(self.inserted_file_path)
 
     def has_progress_display(self):
         return self.progress_display is not None
