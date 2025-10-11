@@ -232,60 +232,121 @@ def create_audio_segment(self) -> None:
     # 创建静音音频片段（AudioSegment.silent()默认生成1秒静音，后续可通过拼接扩展）
     self.audio_segment = AudioSegment.silent()
 
-    def add_audio_segment(
+def add_audio_segment(
         self,
         new_segment: AudioSegment,
         time: float | None = None,
         gain_to_background: float | None = None
     ) -> None:
-        if not self.includes_sound:
-            self.includes_sound = True
-            self.create_audio_segment()
-        segment = self.audio_segment
-        curr_end = segment.duration_seconds
-        if time is None:
-            time = curr_end
-        if time < 0:
-            raise Exception("Adding sound at timestamp < 0")
-
-        new_end = time + new_segment.duration_seconds
-        diff = new_end - curr_end
-        if diff > 0:
-            segment = segment.append(
-                AudioSegment.silent(int(np.ceil(diff * 1000))),
-                crossfade=0,
-            )
-        self.audio_segment = segment.overlay(
-            new_segment,
-            position=int(1000 * time),
-            gain_during_overlay=gain_to_background,
+    """
+    向场景音频中添加一段音频片段，并处理时间对齐和音频叠加
+    
+    参数说明：
+        new_segment: 待添加的音频片段（pydub.AudioSegment对象）
+        time: 音频片段开始播放的时间点（秒），None则默认追加到现有音频末尾
+        gain_to_background: 叠加时背景音频的增益调整（dB），用于控制背景音量
+    逻辑：
+        1. 首次添加音频时初始化音频容器（静音片段）
+        2. 根据指定时间点调整音频容器长度（确保有足够空间容纳新片段）
+        3. 将新片段叠加到指定时间位置（支持覆盖式叠加）
+    """
+    # 若首次添加音频，标记包含音频并创建基础静音片段
+    if not self.includes_sound:
+        self.includes_sound = True
+        self.create_audio_segment()
+    
+    # 获取当前音频容器和其总时长（秒）
+    current_segment = self.audio_segment
+    current_end_time = current_segment.duration_seconds
+    
+    # 确定新片段的起始时间：未指定则默认接在现有音频末尾
+    if time is None:
+        time = current_end_time
+    # 校验时间合法性：不允许在负时间点添加音频
+    if time < 0:
+        raise Exception("Adding sound at timestamp < 0")
+    
+    # 计算新片段结束时间和所需扩展的长度
+    new_segment_end = time + new_segment.duration_seconds
+    duration_diff = new_segment_end - current_end_time
+    
+    # 若新片段超出当前音频长度，扩展音频容器（添加静音）
+    if duration_diff > 0:
+        # 计算需要添加的静音时长（毫秒，向上取整确保足够）
+        silence_duration_ms = int(np.ceil(duration_diff * 1000))
+        # 追加静音片段（无交叉淡入淡出）
+        current_segment = current_segment.append(
+            AudioSegment.silent(silence_duration_ms),
+            crossfade=0,
         )
+    
+    # 将新音频片段叠加到指定时间位置（以毫秒为单位计算偏移）
+    self.audio_segment = current_segment.overlay(
+        new_segment,
+        position=int(1000 * time),  # 转换秒为毫秒
+        gain_during_overlay=gain_to_background  # 叠加时调整背景音量
+    )
 
-    def add_sound(
+def add_sound(
         self,
         sound_file: str,
         time: float | None = None,
         gain: float | None = None,
         gain_to_background: float | None = None
     ) -> None:
-        file_path = get_full_sound_file_path(sound_file)
-        new_segment = AudioSegment.from_file(file_path)
-        if gain:
-            new_segment = new_segment.apply_gain(gain)
-        self.add_audio_segment(new_segment, time, gain_to_background)
+    """
+    从音频文件加载音频并添加到场景中（调用add_audio_segment完成添加）
+    
+    参数说明：
+        sound_file: 音频文件路径（支持相对路径或内置音频名称）
+        time: 音频开始播放的时间点（秒），None则默认追加到末尾
+        gain: 音频本身的增益调整（dB），用于增强或减弱该音频
+        gain_to_background: 叠加时背景音频的增益调整（dB）
+    流程：
+        1. 解析音频文件的完整路径（支持内置音频库）
+        2. 加载音频文件为AudioSegment对象
+        3. （可选）调整音频增益
+        4. 调用add_audio_segment将音频添加到场景
+    """
+    # 获取音频文件的完整路径（处理内置音频和用户自定义音频）
+    file_path = get_full_sound_file_path(sound_file)
+    # 从文件加载音频片段（pydub自动识别格式）
+    new_segment = AudioSegment.from_file(file_path)
+    
+    # 若指定了增益调整，应用到新音频片段
+    if gain:
+        new_segment = new_segment.apply_gain(gain)
+    
+    # 调用音频片段添加方法，完成最终添加
+    self.add_audio_segment(new_segment, time, gain_to_background)
 
-    # Writers
-    def begin(self) -> None:
-        if not self.subdivide_output and self.write_to_movie:
-            self.open_movie_pipe(self.get_movie_file_path())
+# 视频写入控制方法（Writers）
+def begin(self) -> None:
+    """
+    开始视频写入流程（针对不分段输出模式）
+    逻辑：若需要生成视频且不使用分段输出，打开FFmpeg管道准备写入帧数据
+    """
+    # 当不细分输出且需要生成视频时，初始化视频编码管道
+    if not self.subdivide_output and self.write_to_movie:
+        self.open_movie_pipe(self.get_movie_file_path())
 
-    def begin_animation(self) -> None:
-        if self.subdivide_output and self.write_to_movie:
-            self.open_movie_pipe(self.get_next_partial_movie_path())
+def begin_animation(self) -> None:
+    """
+    开始单个动画片段的写入（针对分段输出模式）
+    逻辑：若使用分段输出且需要生成视频，为当前动画片段打开新的FFmpeg管道
+    """
+    # 当细分输出且需要生成视频时，为下一个分段视频打开编码管道
+    if self.subdivide_output and self.write_to_movie:
+        self.open_movie_pipe(self.get_next_partial_movie_path())
 
-    def end_animation(self) -> None:
-        if self.subdivide_output and self.write_to_movie:
-            self.close_movie_pipe()
+def end_animation(self) -> None:
+    """
+    结束单个动画片段的写入（针对分段输出模式）
+    逻辑：若使用分段输出且需要生成视频，关闭当前动画片段的FFmpeg管道
+    """
+    # 当细分输出且需要生成视频时，关闭当前分段视频的编码管道
+    if self.subdivide_output and self.write_to_movie:
+        self.close_movie_pipe()
 
     def finish(self) -> None:
         if not self.subdivide_output and self.write_to_movie:
