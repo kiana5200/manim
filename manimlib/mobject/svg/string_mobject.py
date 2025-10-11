@@ -574,38 +574,61 @@ class StringMobject(SVGMobject, ABC):
         self.reconstruct_string = reconstruct_string
 
     def get_content(self, is_labelled: bool) -> str:
+        """
+        生成最终用于渲染SVG的内容字符串(核心是调用之前定义的reconstruct_string重构文本,再补充前后缀)。
+    
+        参数:
+            is_labelled (bool): 是否生成“带标签的内容”（即包含颜色标签等特殊指令，用于后续分配子对象标签）。
+        返回:
+            str: 完整的、可用于生成SVG的内容字符串(含前后缀)。
+        """
+        # 1. 调用reconstruct_string重构核心文本，注入特殊指令        
         content = self.reconstruct_string(
-            (0, 1), (0, -1),
-            self.replace_for_content,
+            (0, 1),                  # 重构的起始指令（对应整个字符串的开始标记）
+            (0, -1),                 # 重构的结束指令（对应整个字符串的结束标记）
+            self.replace_for_content, # 替换原始命令的函数（如处理自定义命令）
+            # 插入标签命令的匿名函数：根据is_labelled决定是否生成颜色标签
             lambda label, flag, attr_dict: self.get_command_string(
-                attr_dict,
-                is_end=flag < 0,
-                label_hex=int_to_hex(label) if is_labelled else None
+                attr_dict,                # 片段的属性字典（如颜色、样式）
+                is_end=flag < 0,          # 判断是标签开始（flag=1）还是结束（flag=-1）
+                label_hex=int_to_hex(label) if is_labelled else None  # 若需带标签，将label转为16进制颜色值
             )
         )
+        # 2. 获取内容的前后缀（如SVG渲染所需的格式头、环境声明等）
         prefix, suffix = self.get_content_prefix_and_suffix(
-            is_labelled=is_labelled
+            is_labelled=is_labelled  # 前后缀可能因是否带标签而不同（如带标签需额外环境配置）
         )
+        # 3. 拼接前后缀和核心内容，返回完整字符串
         return "".join((prefix, content, suffix))
 
     @staticmethod
     @abstractmethod
     def get_command_matches(string: str) -> list[re.Match]:
+        # 抽象静态方法：在输入字符串中匹配所有自定义命令（如Tex的颜色命令、MarkupText的标签），
+        # 返回正则匹配结果列表。子类需实现具体的命令匹配规则。
         return []
 
     @staticmethod
     @abstractmethod
     def get_command_flag(match_obj: re.Match) -> int:
+        # 抽象静态方法：判断单个命令匹配结果的类型（开始命令/结束命令/无效命令），
+        # 用整数标记返回。子类需定义具体命令的类型规则。
+
+        # 返回: 命令类型标记（通常1=开始命令，-1=结束命令，0=无效命令）
         return 0
 
     @staticmethod
     @abstractmethod
     def replace_for_content(match_obj: re.Match) -> str:
+        # 抽象静态方法：将命令匹配结果替换为适合生成SVG内容的字符串（如将自定义命令转为SVG支持的指令）。
+        # 子类需实现具体的命令替换逻辑。
         return ""
 
     @staticmethod
     @abstractmethod
     def replace_for_matching(match_obj: re.Match) -> str:
+        # 抽象静态方法：将命令匹配结果替换为适合“匹配逻辑”的字符串（如用于对齐带标签/不带标签SVG的临时替换）。
+        # 子类需根据匹配需求实现替换规则。
         return ""
 
     @staticmethod
@@ -613,10 +636,26 @@ class StringMobject(SVGMobject, ABC):
     def get_attr_dict_from_command_pair(
         open_command: re.Match, close_command: re.Match,
     ) -> dict[str, str] | None:
+        """
+        抽象静态方法：从“开始命令-结束命令”对中提取属性（如颜色值、样式参数），
+        以字典形式返回。子类需实现具体命令对的属性提取逻辑。
+    
+        参数:
+            open_command: 开始命令的正则匹配结果
+            close_command: 结束命令的正则匹配结果
+        返回:
+            提取的属性字典(无有效属性则返回None)
+        """
         return None
 
     @abstractmethod
     def get_configured_items(self) -> list[tuple[Span, dict[str, str]]]:
+        """
+        抽象方法: 获取通过“配置规则”定义的文本片段及对应属性(如MarkupText中通过标签定义的彩色片段),
+        返回“片段索引范围+属性字典”的列表。子类需实现配置项的解析逻辑。
+    
+        返回: 列表，每个元素为 tuple(片段索引范围Span, 片段属性字典)
+        """
         return []
 
     @staticmethod
@@ -624,12 +663,37 @@ class StringMobject(SVGMobject, ABC):
     def get_command_string(
         attr_dict: dict[str, str], is_end: bool, label_hex: str | None
     ) -> str:
+        """
+        抽象静态方法：根据属性字典、标签方向和颜色标签，生成一个特殊的命令字符串。
+        这个命令字符串将被插入到重构后的内容中,用于在SVG中标记特定的文本片段。
+        子类(如Tex、MarkupText)需要实现具体的命令生成逻辑。
+
+        参数:
+            attr_dict (dict[str, str]): 片段的属性字典（如颜色、样式）。
+            is_end (bool): 是否为标签的结束部分(True为结束,False为开始)。
+            label_hex (str | None): 用于标记的16进制颜色字符串,如果不需要标记则为None。
+
+        返回:
+            str: 生成的命令字符串。
+        """
         return ""
 
     @abstractmethod
     def get_content_prefix_and_suffix(
         self, is_labelled: bool
     ) -> tuple[str, str]:
+        """
+        抽象方法: 获取用于生成SVG内容的前缀和后缀字符串。
+        这些前后缀可能包含渲染所需的环境声明、头文件等。
+        如果是生成带标签的内容，前后缀可能会有所不同。
+        子类需要实现具体的前后缀生成逻辑。
+
+        参数:
+            is_labelled (bool): 是否为带标签的内容生成前后缀。
+
+        返回:
+            tuple[str, str]: 包含前缀和后缀的元组。
+        """
         return "", ""
 
     # Selector
@@ -637,6 +701,15 @@ class StringMobject(SVGMobject, ABC):
     def get_submob_indices_list_by_span(
         self, arbitrary_span: Span
     ) -> list[int]:
+        """
+        根据一个任意的索引范围(span),查找并返回所有完全包含在该范围内的子对象的索引列表。
+
+        参数:
+            arbitrary_span (Span): 一个任意的索引范围 (start, end)。
+
+        返回:
+            list[int]: 所有符合条件的子对象的索引列表。
+        """
         return [
             submob_index
             for submob_index, label in enumerate(self.labels)
@@ -644,6 +717,15 @@ class StringMobject(SVGMobject, ABC):
         ]
 
     def get_specified_part_items(self) -> list[tuple[str, list[int]]]:
+        """
+        获取所有通过 `isolate` 或其他配置方式指定的文本片段，以及每个片段对应的子对象索引列表。
+        这是实现 `get_parts_by_tex` 等选择方法的基础。
+
+        返回:
+            list[tuple[str, list[int]]]: 一个列表，其中每个元素是一个元组，包含:
+                - 文本片段的字符串。
+                - 该片段对应的所有子对象的索引列表。
+        """
         return [
             (
                 self.string[slice(*span)],
@@ -653,73 +735,118 @@ class StringMobject(SVGMobject, ABC):
         ]
 
     def get_specified_substrings(self) -> list[str]:
+        """
+        获取所有通过 `isolate` 或配置规则指定的文本片段（去重且保留原始顺序）。
+        这些片段对应 `labelled_spans[1:]`(排除代表整个字符串的第0个片段)。
+
+        返回:
+            list[str]: 去重后的指定文本片段列表
+        """
+        # 1. 从labelled_spans[1:]中提取每个片段对应的原始字符串
         substrs = [
-            self.string[slice(*span)]
+            self.string[slice(*span)]  # 用slice将span（start,end）转为切片，提取子串
             for span in self.labelled_spans[1:]
         ]
         # Use dict.fromkeys to remove duplicates while retaining order
+        # 2. 用dict.fromkeys去重（字典键唯一，且Python 3.7+保留插入顺序），再转列表
         return list(dict.fromkeys(substrs).keys())
 
     def get_group_part_items(self) -> list[tuple[str, list[int]]]:
+        """
+        按子对象的 `label` 分组，生成“分组文本片段 + 对应子对象索引列表”的组合。
+        核心逻辑: 将连续相同label的子对象归为一组,提取每组对应的文本并关联索引。
+
+        返回:
+            list[tuple[str, list[int]]]: 每组的 (分组文本, 子对象索引列表)
+        """
+        # 若没有子对象标签，直接返回空列表
         if not self.labels:
             return []
 
+        # 辅助函数：生成相邻元素对（如[1,2,3]→[(1,2),(2,3)]）
         def get_neighbouring_pairs(vals):
             return list(zip(vals[:-1], vals[1:]))
 
+        # 步骤1：按label分组，计算每组的子对象数量和对应的label
+        # it.groupby(self.labels)：将连续相同的label归为一组
+        # 结果：(每组label, 该组包含的label迭代器) → 转为 (每组长度, 每组label) 的元组
         range_lens, group_labels = zip(*(
             (len(list(grouper)), val)
             for val, grouper in it.groupby(self.labels)
         ))
+        # 步骤2：生成每组子对象的索引列表
+        # it.accumulate(range_lens)：计算累计长度（如[2,3,1]→[2,5,6]）
+        # 拼接[0]和累计长度 → 得到分组的索引边界（如[0,2,5,6]）
+        # get_neighbouring_pairs：将边界转为区间对（如(0,2),(2,5),(5,6)）
+        # 最终生成每组的子对象索引列表（如[0,1], [2,3,4], [5]）
         submob_indices_lists = [
             list(range(*submob_range))
             for submob_range in get_neighbouring_pairs(
                 [0, *it.accumulate(range_lens)]
             )
         ]
-        labelled_spans = self.labelled_spans
+        # 步骤3：确定每组文本的起始/结束指令（用于重构分组文本）
+        labelled_spans = self.labelled_spans  # 所有标记片段的索引范围
+        # 生成“起始指令”列表：每个分组对应的文本起始位置标记
         start_items = [
-            (group_labels[0], 1),
+            (group_labels[0], 1),  # 第一组的起始指令（label=首组label，1=开始）
             *(
+                # 对后续每组，判断是否嵌套在前一组内（通过span包含关系）
                 (curr_label, 1)
                 if self.span_contains(
                     labelled_spans[prev_label], labelled_spans[curr_label]
                 )
-                else (prev_label, -1)
+                else (prev_label, -1)  # 非嵌套则用前一组的结束指令作为当前组起始
                 for prev_label, curr_label in get_neighbouring_pairs(
                     group_labels
                 )
             )
         ]
+        # 生成“结束指令”列表：每个分组对应的文本结束位置标记
         end_items = [
             *(
+                # 对每组，判断是否包含下一组（通过span包含关系）
                 (curr_label, -1)
                 if self.span_contains(
                     labelled_spans[next_label], labelled_spans[curr_label]
                 )
-                else (next_label, 1)
+                else (next_label, 1)  # 非包含则用下一组的开始指令作为当前组结束
                 for curr_label, next_label in get_neighbouring_pairs(
                     group_labels
                 )
             ),
-            (group_labels[-1], -1)
+            (group_labels[-1], -1)  # 最后一组的结束指令（label=尾组label，-1=结束）
         ]
+        # 步骤4：重构每组对应的文本（去除多余空格）
         group_substrs = [
+            # 用re.sub去除重构文本中的所有空格（统一格式）
             re.sub(r"\s+", "", self.reconstruct_string(
                 start_item, end_item,
-                self.replace_for_matching,
-                lambda label, flag, attr_dict: ""
+                self.replace_for_matching,  # 替换命令为匹配用格式
+                lambda label, flag, attr_dict: ""  # 不插入额外标签命令
             ))
             for start_item, end_item in zip(start_items, end_items)
         ]
+        # 步骤5：返回“分组文本+子对象索引列表”的元组列表
         return list(zip(group_substrs, submob_indices_lists))
 
     def get_submob_indices_lists_by_selector(
         self, selector: Selector
     ) -> list[list[int]]:
+        """
+        根据选择器(selector)查找所有匹配的文本片段，并返回每个片段对应的子对象索引列表。
+
+        参数:
+            selector (Selector): 用于查找文本片段的选择器（字符串、正则表达式、索引元组或它们的集合）。
+
+        返回:
+            list[list[int]]: 一个列表，其中每个元素是一个子对象索引列表，对应一个匹配的文本片段。
+                         过滤掉了空列表（即没有找到对应子对象的片段）。
+        """
         return list(filter(
-            lambda indices_list: indices_list,
+            lambda indices_list: indices_list,  # 过滤掉空的索引列表
             [
+                # 对每个找到的文本片段，获取其对应的子对象索引列表
                 self.get_submob_indices_list_by_span(span)
                 for span in self.find_spans_by_selector(selector)
             ]
@@ -728,8 +855,19 @@ class StringMobject(SVGMobject, ABC):
     def build_parts_from_indices_lists(
         self, indices_lists: list[list[int]]
     ) -> VGroup:
+        """
+        根据子对象索引列表,构建一个包含多个VGroup的VGroup,每个内部VGroup代表一个文本片段。
+
+        参数:
+            indices_lists (list[list[int]]): 一个列表，其中每个元素是一个子对象索引列表。
+
+        返回:
+            VGroup: 一个VGroup,其内部包含多个VGroup,每个内部VGroup由indices_lists中的一组索引对应的子对象组成。
+        """
         return VGroup(*(
+            # 为每个索引列表创建一个VGroup
             VGroup(*(
+                # 根据索引获取子对象
                 self.submobjects[submob_index]
                 for submob_index in indices_list
             ))
@@ -737,52 +875,104 @@ class StringMobject(SVGMobject, ABC):
         ))
 
     def build_groups(self) -> VGroup:
+        """
+        将整个文本按 label 分组，并返回一个包含所有分组的 VGroup。
+        这是对 get_group_part_items 和 build_parts_from_indices_lists 的封装。
+
+        返回:
+            VGroup: 一个 VGroup,其内部包含多个 VGroup,每个内部 VGroup 代表一个 label 分组。
+        """
         return self.build_parts_from_indices_lists([
             indices_list
             for _, indices_list in self.get_group_part_items()
         ])
 
     def select_parts(self, selector: Selector) -> VGroup:
+        """
+        根据选择器(selector)选择并返回一个包含匹配文本片段的 VGroup。
+
+        参数:
+            selector (Selector): 用于查找文本片段的选择器（字符串、正则表达式、索引元组或它们的集合）。
+
+        返回:
+            VGroup: 一个 VGroup,其内部包含多个 VGroup,每个内部 VGroup 代表一个匹配的文本片段。
+        """
         specified_substrings = self.get_specified_substrings()
+        # 如果选择器是字符串或正则表达式，且未在指定片段中找到，则尝试选择未隔离的子串
         if isinstance(selector, (str, re.Pattern)) and selector not in specified_substrings:
             return self.select_unisolated_substring(selector)
+        # 正常流程：根据选择器获取索引列表并构建 VGroup
         indices_list = self.get_submob_indices_lists_by_selector(selector)
         return self.build_parts_from_indices_lists(indices_list)
 
     def __getitem__(self, value: int | slice | Selector) -> VMobject:
+        """
+        重载索引运算符，支持多种方式获取子对象：
+        - 整数索引: 获取单个子对象
+        - 切片: 获取多个子对象组成的 VGroup
+        - 选择器: 按选择器获取匹配的文本片段组成的 VGroup
+
+        参数:
+            value (int | slice | Selector): 索引、切片或选择器。
+
+        返回:
+            VMobject: 单个子对象或由多个子对象组成的 VGroup。
+        """
         if isinstance(value, (int, slice)):
             return super().__getitem__(value)
         return self.select_parts(value)
 
     def select_part(self, selector: Selector, index: int = 0) -> VMobject:
+        """
+        根据选择器选择匹配的文本片段，并返回其中指定索引的那个片段。
+
+        参数:
+            selector (Selector): 用于查找文本片段的选择器。
+            index (int): 要返回的片段在匹配结果中的索引,默认为0(第一个匹配项)。
+
+        返回:
+            VMobject: 一个代表单个文本片段的 VGroup。
+        """
         return self.select_parts(selector)[index]
 
+    # 将子字符串映射为SVG路径的数量。这里简单地将其定义为字符串中去除所有空白字符后的长度。
     def substr_to_path_count(self, substr: str) -> int:
         return len(re.sub(r"\s", "", substr))
 
+    # 将整个字符串拆分为单个符号的列表（去除所有空白字符）。
     def get_symbol_substrings(self):
         return list(re.sub(r"\s", "", self.string))
 
+    # 选择并返回一个包含未被隔离（未通过isolate参数指定）的子字符串的VGroup。
+    # 这种选择方式基于原始字符串的字符索引，而非通过颜色标签。
     def select_unisolated_substring(self, pattern: str | re.Pattern) -> VGroup:
+        # 如果是字符串，将其转换为转义后的正则表达式模式
         if isinstance(pattern, str):
             pattern = re.compile(re.escape(pattern))
         result = []
+        # 在原始字符串中查找所有匹配项
         for match in re.finditer(pattern, self.string):
             index = match.start()
+            # 计算匹配开始位置在路径序列中的索引
             start = self.substr_to_path_count(self.string[:index])
             substr = match.group()
+            # 计算匹配结束位置在路径序列中的索引
             end = start + self.substr_to_path_count(substr)
+            # 根据计算出的索引范围，从所有子对象中切片并添加到结果中
             result.append(self[start:end])
         return VGroup(*result)
 
+    # 根据选择器（selector）为匹配的文本片段设置颜色。
     def set_parts_color(self, selector: Selector, color: ManimColor):
         self.select_parts(selector).set_color(color)
         return self
 
+    # 根据一个字典批量设置多个文本片段的颜色。
     def set_parts_color_by_dict(self, color_map: dict[Selector, ManimColor]):
         for selector, color in color_map.items():
             self.set_parts_color(selector, color)
         return self
 
+    # 获取原始的字符串内容。
     def get_string(self) -> str:
         return self.string
