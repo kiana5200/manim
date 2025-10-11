@@ -1242,28 +1242,42 @@ class NumberPlane(Axes):
             mob.make_smooth_after_applying_functions = True
         return self
 
+# 复平面类，继承自NumberPlane，用于复数可视化
 class ComplexPlane(NumberPlane):
     def number_to_point(self, number: complex | float) -> Vect3:
+        """将复数（或实数）转换为复平面上的点（实部→X，虚部→Y）"""
+        # 将输入转换为复数（实数自动转为实部为该数、虚部为0的复数）
         number = complex(number)
+        # 实部对应X坐标，虚部对应Y坐标，转换为平面上的点
         return self.coords_to_point(number.real, number.imag)
 
     def n2p(self, number: complex | float) -> Vect3:
+        """number_to_point的缩写方法"""
         return self.number_to_point(number)
 
     def point_to_number(self, point: Vect3) -> complex:
+        """将复平面上的点转换为复数（X→实部，Y→虚部）"""
+        # 将点转换为坐标（x为实部，y为虚部）
         x, y = self.point_to_coords(point)
+        # 构建复数
         return complex(x, y)
 
     def p2n(self, point: Vect3) -> complex:
+        """point_to_number的缩写方法"""
         return self.point_to_number(point)
 
     def get_default_coordinate_values(
         self,
         skip_first: bool = True
     ) -> list[complex]:
+        """获取默认的复数坐标值（实轴和虚轴的刻度）"""
+        # 获取X轴（实轴）的刻度范围，跳过第一个值（通常为0）
         x_numbers = self.get_x_axis().get_tick_range()[1:]
+        # 获取Y轴（虚轴）的刻度范围，跳过第一个值
         y_numbers = self.get_y_axis().get_tick_range()[1:]
+        # 将Y轴刻度转换为纯虚数（实部为0，虚部为Y轴刻度值）
         y_numbers = [complex(0, y) for y in y_numbers if y != 0]
+        # 合并实轴和虚轴的复数刻度
         return [*x_numbers, *y_numbers]
 
     def add_coordinate_labels(
@@ -1273,20 +1287,32 @@ class ComplexPlane(NumberPlane):
         font_size: int = 36,
         **kwargs
     ) -> Self:
+        """为复平面添加复数坐标标签"""
+        # 如果未指定numbers，使用默认的坐标值
         if numbers is None:
             numbers = self.get_default_coordinate_values(skip_first)
 
+        # 创建存储坐标标签的组
         self.coordinate_labels = VGroup()
+        # 为每个复数添加标签
         for number in numbers:
+            # 确保number是复数类型
             z = complex(number)
+            # 判断该复数更靠近虚轴还是实轴（比较虚部和实部的绝对值）
             if abs(z.imag) > abs(z.real):
+                # 更靠近虚轴，使用Y轴的标签样式
                 axis = self.get_y_axis()
-                value = z.imag
-                kwargs["unit_tex"] = "i"
+                value = z.imag  # 标签值为虚部
+                kwargs["unit_tex"] = "i"  # 单位为i（虚数单位）
             else:
+                # 更靠近实轴，使用X轴的标签样式
                 axis = self.get_x_axis()
-                value = z.real
-            number_mob = axis.get_number_mobject(value, font_size=font_size, **kwargs)
+                value = z.real  # 标签值为实部
+            # 创建数字标签对象
+            number_mob = axis.get_number_mobject(value, font_size=font_size,** kwargs)
+            # 将标签添加到组中
             self.coordinate_labels.add(number_mob)
+        # 将标签组添加到复平面
         self.add(self.coordinate_labels)
         return self
+
