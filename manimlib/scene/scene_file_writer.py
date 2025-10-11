@@ -619,55 +619,102 @@ def add_sound_to_video(self) -> None:
     # 删除临时音频文件（清理中间文件，避免占用空间）
     os.remove(temp_audio_path)
 
-    def save_final_image(self, image: Image) -> None:
-        file_path = self.get_image_file_path()
-        image.save(file_path)
-        self.print_file_ready_message(file_path)
+def save_final_image(self, image: Image) -> None:
+    """
+    保存场景的最后一帧图像到指定路径（PNG格式）
+    流程：获取图像保存路径 → 调用PIL.Image的save方法保存 → 打印文件就绪信息
+    
+    参数：image - 待保存的图像对象（PIL.Image类型，通常是场景的最后一帧）
+    """
+    # 获取最后一帧图像的保存路径（由init_image_file_path初始化，字符串格式）
+    image_save_path = self.get_image_file_path()
+    # 保存图像到指定路径（PNG格式，由self.png_mode指定像素模式如RGBA/RGB）
+    image.save(image_save_path)
+    # 打印图像文件就绪的提示信息（含完整路径）
+    self.print_file_ready_message(image_save_path)
 
-    def print_file_ready_message(self, file_path: str) -> None:
-        if not self.quiet:
-            log.info(f"File ready at {file_path}")
+def print_file_ready_message(self, file_path: str) -> None:
+    """
+    打印文件就绪的日志信息（仅在非静默模式下显示）
+    
+    参数：file_path - 已生成的文件路径（视频或图像）
+    作用：告知用户文件已成功生成及具体位置，便于后续查找使用
+    """
+    # 若未开启静默模式（quiet=False），通过Manim日志工具打印信息
+    if not self.quiet:
+        log.info(f"File ready at {file_path}")
 
-    def should_open_file(self) -> bool:
-        return any([
-            self.show_file_location_upon_completion,
-            self.open_file_upon_completion,
-        ])
+def should_open_file(self) -> bool:
+    """
+    判断是否需要执行“打开文件”或“显示文件位置”的操作
+    返回：布尔值（True表示需要执行，False表示不需要）
+    逻辑：满足以下任一条件即返回True：
+        1. 配置了显示文件位置（show_file_location_upon_completion=True）
+        2. 配置了自动打开文件（open_file_upon_completion=True）
+    """
+    return any([
+        self.show_file_location_upon_completion,  # 显示文件在文件管理器中的位置
+        self.open_file_upon_completion           # 自动用默认程序打开文件
+    ])
 
-    def open_file(self) -> None:
-        if self.quiet:
-            curr_stdout = sys.stdout
-            sys.stdout = open(os.devnull, "w")
+def open_file(self) -> None:
+    """
+    按操作系统适配逻辑，执行“打开文件”或“显示文件位置”的操作
+    核心：区分Windows/macOS/Linux/CYGWIN系统，调用对应系统命令，同时处理静默模式的输出屏蔽
+    """
+    # 若开启静默模式（quiet=True），临时重定向标准输出到空设备（避免系统命令打印冗余信息）
+    if self.quiet:
+        original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")  # 标准输出重定向到/dev/null（Linux/macOS）或NUL（Windows）
 
-        current_os = platform.system()
-        file_paths = []
+    # 获取当前操作系统类型（platform.system()返回如"Windows"、"Darwin"（macOS）、"Linux"）
+    current_os = platform.system()
+    # 收集需要处理的文件路径（可能包含视频和图像，若同时生成）
+    target_file_paths = []
 
-        if self.save_last_frame:
-            file_paths.append(self.get_image_file_path())
-        if self.write_to_movie:
-            file_paths.append(self.get_movie_file_path())
+    # 若开启了保存最后一帧，添加图像文件路径到列表
+    if self.save_last_frame:
+        target_file_paths.append(self.get_image_file_path())
+    # 若开启了生成视频，添加视频文件路径到列表
+    if self.write_to_movie:
+        target_file_paths.append(self.get_movie_file_path())
 
-        for file_path in file_paths:
-            if current_os == "Windows":
-                os.startfile(file_path)
-            else:
-                commands = []
-                if current_os == "Linux":
-                    commands.append("xdg-open")
-                elif current_os.startswith("CYGWIN"):
-                    commands.append("cygstart")
-                else:  # Assume macOS
-                    commands.append("open")
+    # 遍历所有目标文件，按系统执行对应操作
+    for file_path in target_file_paths:
+        if current_os == "Windows":
+            # Windows系统：调用os.startfile（打开文件或显示位置，默认行为由文件类型决定）
+            os.startfile(file_path)
+        else:
+            # 非Windows系统：初始化系统命令列表
+            system_commands = []
+            # 按系统类型选择核心命令
+            if current_os == "Linux":
+                system_commands.append("xdg-open")  # Linux通用命令（打开文件/文件夹）
+            elif current_os.startswith("CYGWIN"):
+                system_commands.append("cygstart")  # CYGWIN环境命令（类Windows接口）
+            else:  # 默认视为macOS（platform.system()返回"Darwin"）
+                system_commands.append("open")  # macOS系统命令（打开文件/显示位置）
 
-                if self.show_file_location_upon_completion:
-                    commands.append("-R")
+            # 若需要“显示文件位置”（而非打开文件），添加对应参数
+            if self.show_file_location_upon_completion:
+                # -R是macOS "open"命令的参数（显示文件在访达中的位置）；
+                # Linux "xdg-open"和CYGWIN "cygstart"传入文件夹路径即可显示位置，无需额外参数
+                if current_os == "Darwin":
+                    system_commands.append("-R")
 
-                commands.append(file_path)
+            # 添加目标文件路径到命令列表（最后一个参数）
+            system_commands.append(file_path)
 
-                FNULL = open(os.devnull, 'w')
-                sp.call(commands, stdout=FNULL, stderr=sp.STDOUT)
-                FNULL.close()
+            # 执行系统命令：重定向标准输出和标准错误到空设备（避免打印命令执行日志）
+            null_device = open(os.devnull, 'w')
+            sp.call(
+                system_commands,
+                stdout=null_device,  # 标准输出重定向到空设备
+                stderr=sp.STDOUT     # 标准错误也重定向到标准输出（统一屏蔽）
+            )
+            null_device.close()  # 关闭空设备文件句柄，释放资源
 
-        if self.quiet:
-            sys.stdout.close()
-            sys.stdout = curr_stdout
+    # 若之前开启了静默模式，恢复标准输出到原始状态
+    if self.quiet:
+        sys.stdout.close()
+        sys.stdout = original_stdout
