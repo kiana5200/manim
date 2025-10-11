@@ -1,31 +1,39 @@
+# 导入Python未来版本的注解特性（支持字符串形式的类名等灵活类型提示）
 from __future__ import annotations
 
-import os
-import platform
-import shutil
-import subprocess as sp
-import sys
+# 导入所需标准库模块
+import os  # 用于文件路径、目录操作（如创建文件夹、判断路径是否存在）
+import platform  # 用于获取操作系统信息（如Windows/macOS/Linux，适配不同平台的文件打开方式）
+import shutil  # 用于高级文件操作（如复制、删除目录）
+import subprocess as sp  # 用于调用外部命令（核心：调用ffmpeg进行视频编码、音频处理）
+import sys  # 用于访问系统参数（如命令行参数、标准输出）
 
-import numpy as np
-from pydub import AudioSegment
-from tqdm.auto import tqdm as ProgressDisplay
-from pathlib import Path
+# 导入第三方库模块
+import numpy as np  # 用于数值计算（如处理图像像素数据）
+from pydub import AudioSegment  # 用于音频文件处理（如音频格式转换、拼接）
+from tqdm.auto import tqdm as ProgressDisplay  # 用于显示进度条（可视化渲染/编码进度）
+from pathlib import Path  # 用于更便捷的路径对象操作（跨平台路径处理）
 
-from manimlib.logger import log
-from manimlib.mobject.mobject import Mobject
-from manimlib.utils.file_ops import guarantee_existence
-from manimlib.utils.sounds import get_full_sound_file_path
+# 导入Manim库内部模块
+from manimlib.logger import log  # Manim的日志工具（用于打印信息、警告、错误）
+from manimlib.mobject.mobject import Mobject  # Manim基础图形对象类（类型提示用）
+from manimlib.utils.file_ops import guarantee_existence  # 用于确保目录存在（不存在则创建）
+from manimlib.utils.sounds import get_full_sound_file_path  # 用于获取音频文件的完整路径
 
+# 导入类型提示相关模块（仅在类型检查时生效，不影响运行时）
 from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    from PIL.Image import Image
-
-    from manimlib.camera.camera import Camera
-    from manimlib.scene.scene import Scene
+    from PIL.Image import Image  # PIL图像类（类型提示用，处理帧图像）
+    from manimlib.camera.camera import Camera  # Manim相机类（类型提示用，负责渲染帧）
+    from manimlib.scene.scene import Scene  # Manim场景类（类型提示用，关联待渲染场景）
 
 
 class SceneFileWriter(object):
+    """
+    场景文件写入器类：负责将Manim场景的渲染帧（图像）和音频合并为最终视频文件，
+    同时支持单独保存帧图像、管理输出目录、显示进度等功能。
+    核心依赖：ffmpeg（用于视频编码）、pydub（用于音频处理）。
+    """
     def __init__(
         self,
         scene: Scene,
@@ -34,7 +42,7 @@ class SceneFileWriter(object):
         png_mode: str = "RGBA",
         save_last_frame: bool = False,
         movie_file_extension: str = ".mp4",
-        # Where should this be written
+        # 输出路径相关参数
         output_directory: str = ".",
         file_name: str | None = None,
         open_file_upon_completion: bool = False,
@@ -42,38 +50,70 @@ class SceneFileWriter(object):
         quiet: bool = False,
         total_frames: int = 0,
         progress_description_len: int = 40,
-        # Name of the binary used for ffmpeg
+        # 视频编码相关参数
         ffmpeg_bin: str = "ffmpeg",
         video_codec: str = "libx264",
         pixel_format: str = "yuv420p",
         saturation: float = 1.0,
         gamma: float = 1.0,
     ):
-        self.scene: Scene = scene
-        self.write_to_movie = write_to_movie
-        self.subdivide_output = subdivide_output
-        self.png_mode = png_mode
-        self.save_last_frame = save_last_frame
-        self.movie_file_extension = movie_file_extension
-        self.output_directory = output_directory
-        self.file_name = file_name
-        self.open_file_upon_completion = open_file_upon_completion
-        self.show_file_location_upon_completion = show_file_location_upon_completion
-        self.quiet = quiet
-        self.total_frames = total_frames
-        self.progress_description_len = progress_description_len
-        self.ffmpeg_bin = ffmpeg_bin
-        self.video_codec = video_codec
-        self.pixel_format = pixel_format
-        self.saturation = saturation
-        self.gamma = gamma
+        """
+        初始化场景文件写入器，配置渲染输出的核心参数。
+        
+        参数说明：
+            scene: 待渲染的Manim场景对象（关联相机、帧数据等）
+            write_to_movie: 是否生成视频文件（True则编码为视频，False仅保存帧图像）
+            subdivide_output: 是否按场景类名细分输出目录（True则在输出目录下创建场景类名子目录）
+            png_mode: 保存帧图像的模式（如"RGBA"含透明通道，"RGB"无透明）
+            save_last_frame: 是否单独保存场景的最后一帧（True则额外生成last_frame.png）
+            movie_file_extension: 输出视频的文件后缀（如".mp4"、".mov"）
+            
+            output_directory: 输出目录的根路径（默认当前目录）
+            file_name: 输出文件的基础名称（不含后缀，默认使用场景类名）
+            open_file_upon_completion: 视频生成后是否自动打开文件（适配不同操作系统）
+            show_file_location_upon_completion: 视频生成后是否打印文件路径
+            quiet: 是否静默模式（True则不显示进度条和部分日志）
+            total_frames: 总渲染帧数（用于进度条初始化，0则自动适配）
+            progress_description_len: 进度条描述文本的最大长度（避免文字溢出）
+            
+            ffmpeg_bin: ffmpeg可执行文件的路径（默认"ffmpeg"，需确保系统可调用）
+            video_codec: 视频编码器（如"libx264"对应H.264编码，兼容性好）
+            pixel_format: 视频像素格式（如"yuv420p"适配大多数播放器，支持YUV颜色空间）
+            saturation: 视频色彩饱和度（1.0为默认，>1.0更鲜艳，<1.0更灰暗）
+            gamma: 视频 gamma 值（调整亮度，1.0为默认，>1.0更亮，<1.0更暗）
+        """
+        # 绑定核心关联对象
+        self.scene: Scene = scene  # 待渲染的场景
+        # 输出模式配置
+        self.write_to_movie = write_to_movie  # 是否生成视频
+        self.subdivide_output = subdivide_output  # 是否细分输出目录
+        self.png_mode = png_mode  # 帧图像保存模式
+        self.save_last_frame = save_last_frame  # 是否保存最后一帧
+        self.movie_file_extension = movie_file_extension  # 视频后缀
+        # 输出路径与行为配置
+        self.output_directory = output_directory  # 输出根目录
+        self.file_name = file_name  # 输出文件名（默认用场景类名）
+        self.open_file_upon_completion = open_file_upon_completion  # 完成后自动打开
+        self.show_file_location_upon_completion = show_file_location_upon_completion  # 显示文件路径
+        self.quiet = quiet  # 静默模式
+        # 进度显示配置
+        self.total_frames = total_frames  # 总帧数（进度条用）
+        self.progress_description_len = progress_description_len  # 进度条描述长度
+        # 视频编码配置
+        self.ffmpeg_bin = ffmpeg_bin  # ffmpeg路径
+        self.video_codec = video_codec  # 视频编码器
+        self.pixel_format = pixel_format  # 像素格式
+        self.saturation = saturation  # 色彩饱和度
+        self.gamma = gamma  # 亮度gamma值
 
-        # State during file writing
-        self.writing_process: sp.Popen | None = None
-        self.progress_display: ProgressDisplay | None = None
-        self.ended_with_interrupt: bool = False
+        # 运行时状态变量（初始化默认值）
+        self.writing_process: sp.Popen | None = None  # ffmpeg编码子进程（None表示未启动）
+        self.progress_display: ProgressDisplay | None = None  # 进度条对象（None表示未创建）
+        self.ended_with_interrupt: bool = False  # 是否因中断（如Ctrl+C）结束
 
+        # 初始化输出目录（确保目录存在，按配置细分）
         self.init_output_directories()
+        # 初始化音频处理模块（准备音频数据，如拼接、格式转换）
         self.init_audio()
 
     # Output directories and files
