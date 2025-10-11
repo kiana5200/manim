@@ -176,94 +176,149 @@ class InteractiveSceneEmbed:
         self.shell.set_custom_exc((Exception,), custom_exc)
 
     def reload_scene(self, embed_line: int | None = None) -> None:
-        """
-        Reloads the scene just like the `manimgl` command would do with the
-        same arguments that were provided for the initial startup. This allows
-        for quick iteration during scene development since we don't have to exit
-        the IPython kernel and re-run the `manimgl` command again. The GUI stays
-        open during the reload.
+    """
+    重新加载场景，模拟`manimgl`命令的启动逻辑（使用初始启动参数）
+    核心价值：场景开发时无需退出IPython内核并重新运行`manimgl`，GUI窗口保持打开，实现快速迭代
+    
+    参数说明：
+        embed_line: 可选整数，指定场景重新加载后嵌入交互终端的行号
+                    对应`extract_scene.insert_embed_line_to_module()`方法的`linemarker`参数
+    工作原理：
+        重新加载前，场景会被清空且状态完全重置（回到初始干净状态），
+        该逻辑由`__main__.py`中的`run_scenes`函数处理，它会捕获本方法触发的`exit_raise`异常
+    注意：
+        无法为该功能定义自定义异常类，因为IPython内核会吞掉所有异常；
+        即使通过`set_custom_exc`注册的自定义异常处理器能捕获异常，也无法通过这种方式退出IPython shell
+    """
+    # 更新全局运行配置：标记当前为"重新加载"状态
+    run_config = manim_config.run
+    run_config.is_reload = True
+    # 若指定了嵌入行号，将其写入运行配置（用于重新加载后定位嵌入终端的位置）
+    if embed_line:
+        run_config.embed_line = embed_line
 
-        If `embed_line` is provided, the scene will be reloaded at that line
-        number. This corresponds to the `linemarker` param of the
-        `extract_scene.insert_embed_line_to_module()` method.
+    # 打印重新加载提示，告知用户当前操作
+    print("Reloading...")
+    # 执行IPython行魔法命令`exit_raise`：触发退出并抛出异常，供`run_scenes`捕获以启动重新加载流程
+    self.shell.run_line_magic("exit_raise", "")
 
-        Before reload, the scene is cleared and the entire state is reset, such
-        that we can start from a clean slate. This is taken care of by the
-        run_scenes function in __main__.py, which will catch the error raised by the
-        `exit_raise` magic command that we invoke here.
+def auto_reload(self):
+    """
+    启用"单元格执行前自动重载模块"功能
+    作用：每次执行IPython单元格前，自动重新加载终端关联的用户模块，确保代码修改实时生效
+    """
+    def pre_cell_func(*args, **kwargs):
+        """IPython单元格执行前的回调函数：重新加载用户模块并更新命名空间"""
+        # 重新加载用户模块（指定`is_during_reload=True`，标识当前为重载过程）
+        new_mod = ModuleLoader.get_module(self.shell.user_module.__file__, is_during_reload=True)
+        # 将重新加载后的模块变量更新到IPython用户命名空间（确保单元格执行时使用最新代码）
+        self.shell.user_ns.update(vars(new_mod))
 
-        Note that we cannot define a custom exception class for this error,
-        since the IPython kernel will swallow any exception. While we can catch
-        such an exception in our custom exception handler registered with the
-        `set_custom_exc` method, we cannot break out of the IPython shell by
-        this means.
-        """
-        # Update the global run configuration.
-        run_config = manim_config.run
-        run_config.is_reload = True
-        if embed_line:
-            run_config.embed_line = embed_line
+    # 为IPython注册"pre_run_cell"事件：单元格执行前触发上述回调函数
+    self.shell.events.register("pre_run_cell", pre_cell_func)
 
-        print("Reloading...")
-        self.shell.run_line_magic("exit_raise", "")
-
-    def auto_reload(self):
-        """Enables reload the shell's module before all calls"""
-        def pre_cell_func(*args, **kwargs):
-            new_mod = ModuleLoader.get_module(self.shell.user_module.__file__, is_during_reload=True)
-            self.shell.user_ns.update(vars(new_mod))
-
-        self.shell.events.register("pre_run_cell", pre_cell_func)
-
-    def checkpoint_paste(
-        self,
-        skip: bool = False,
-        record: bool = False,
-        progress_bar: bool = True
-    ):
-        with self.scene.temp_config_change(skip, record, progress_bar):
-            self.checkpoint_manager.checkpoint_paste(self.shell, self.scene)
+def checkpoint_paste(
+    self,
+    skip: bool = False,
+    record: bool = False,
+    progress_bar: bool = True
+):
+    """
+    从剪贴板粘贴代码并结合检查点运行（支持场景状态的保存与恢复）
+    作用：交互式开发中运行（或重新运行）一段场景代码，基于检查点实现状态回溯
+    
+    参数说明：
+        skip: 是否跳过动画（True则直接显示结果，不播放动画）
+        record: 是否记录动画（True则生成动画文件，False仅实时显示）
+        progress_bar: 是否显示进度条（True则在动画播放时显示进度）
+    实现逻辑：
+        在临时配置（skip/record/progress_bar）下执行粘贴的代码，
+        检查点管理由`CheckpointManager`处理（根据代码注释决定是否恢复到历史状态）
+    """
+    # 使用临时配置执行检查点粘贴（临时修改场景配置，执行后自动恢复原配置）
+    with self.scene.temp_config_change(skip, record, progress_bar):
+        # 调用检查点管理器的粘贴方法，传入IPython终端和场景对象
+        self.checkpoint_manager.checkpoint_paste(self.shell, self.scene)
 
 
 class CheckpointManager:
+    """
+    检查点管理器：用于管理场景状态的检查点，支持基于代码注释的状态保存与恢复
+    核心功能：根据剪贴板代码的开头注释，关联对应的场景状态，实现"同一代码块重复运行时回溯到初始状态"
+    """
     def __init__(self):
+        """初始化检查点管理器：创建存储检查点状态的字典"""
+        # 检查点状态字典：key=代码开头的注释字符串，value=场景状态列表（包含Mobject的状态快照）
         self.checkpoint_states: dict[str, list[tuple[Mobject, Mobject]]] = dict()
 
     def checkpoint_paste(self, shell, scene):
         """
-        Used during interactive development to run (or re-run)
-        a block of scene code.
-
-        If the copied selection starts with a comment, this will
-        revert to the state of the scene the first time this function
-        was called on a block of code starting with that comment.
+        核心方法：从剪贴板获取代码，基于开头注释匹配检查点，恢复场景状态后运行代码
+        
+        参数说明：
+            shell: IPython终端对象（用于执行剪贴板中的代码）
+            scene: 当前操作的场景对象（用于保存/恢复状态）
+        逻辑：
+            1. 从剪贴板读取代码字符串
+            2. 提取代码开头的注释作为检查点key
+            3. 根据key处理检查点（恢复历史状态或保存新状态）
+            4. 在IPython终端中运行剪贴板代码
         """
+        # 从剪贴板读取代码字符串（用户复制的场景代码）
         code_string = pyperclip.paste()
+        # 提取代码开头的注释作为检查点key（由get_leading_comment静态方法处理）
         checkpoint_key = self.get_leading_comment(code_string)
+        # 根据检查点key处理场景状态（恢复或保存）
         self.handle_checkpoint_key(scene, checkpoint_key)
+        # 在IPython终端中执行剪贴板中的代码
         shell.run_cell(code_string)
 
     @staticmethod
     def get_leading_comment(code_string: str) -> str:
+        """
+        静态方法：提取代码字符串开头的注释（第一行非空且以#开头的内容）
+        
+        参数：code_string - 从剪贴板读取的代码字符串
+        返回：提取到的注释字符串（若第一行不是注释则返回空字符串）
+        """
+        # 分割代码字符串的第一行（以\n为分隔符，取第一个部分），并去除左侧空白
         leading_line = code_string.partition("\n")[0].lstrip()
+        # 若第一行以#开头（是注释），返回该注释；否则返回空字符串
         if leading_line.startswith("#"):
             return leading_line
         return ""
 
     def handle_checkpoint_key(self, scene, key: str):
+        """
+        根据检查点key处理场景状态：
+        - 若key已存在：恢复场景到该key对应的状态，并删除该key之后的所有检查点（确保状态回溯）
+        - 若key不存在：保存当前场景状态到该key（首次运行该注释开头的代码时）
+        
+        参数说明：
+            scene: 当前场景对象（用于获取/恢复状态）
+            key: 检查点key（代码开头的注释字符串）
+        """
+        # 若key为空（代码开头无注释），不处理状态（直接运行代码）
         if not key:
             return
+        # 若key已存在于检查点字典中（该注释开头的代码之前运行过）
         elif key in self.checkpoint_states:
-            # Revert to checkpoint
+            # 恢复场景到该key对应的状态
             scene.restore_state(self.checkpoint_states[key])
 
-            # Clear out any saved states that show up later
+            # 删除该key之后添加的所有检查点（确保状态回溯后，后续检查点失效）
+            # 获取所有检查点key的列表
             all_keys = list(self.checkpoint_states.keys())
+            # 找到当前key在列表中的索引
             index = all_keys.index(key)
+            # 遍历并删除索引之后的所有key（清除后续检查点）
             for later_key in all_keys[index + 1:]:
                 self.checkpoint_states.pop(later_key)
+        # 若key不存在（首次运行该注释开头的代码）
         else:
+            # 获取当前场景的状态，并保存到检查点字典中（key为注释）
             self.checkpoint_states[key] = scene.get_state()
 
     def clear_checkpoints(self):
+        """清空所有检查点状态：重置检查点字典，删除所有保存的场景状态"""
         self.checkpoint_states = dict()
