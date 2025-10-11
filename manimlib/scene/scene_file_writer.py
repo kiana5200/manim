@@ -480,72 +480,144 @@ def end_insert(self):
     # 打印插入片段文件就绪的提示信息
     self.print_file_ready_message(self.inserted_file_path)
 
-    def has_progress_display(self):
-        return self.progress_display is not None
+def has_progress_display(self):
+    """
+    检查是否已初始化进度条对象
+    返回：布尔值（True表示进度条已创建，False表示未创建或已关闭）
+    """
+    return self.progress_display is not None
 
-    def set_progress_display_description(self, file: str = "", sub_desc: str = "") -> None:
-        if self.progress_display is None:
-            return
+def set_progress_display_description(self, file: str = "", sub_desc: str = "") -> None:
+    """
+    设置进度条的描述文本，确保文本长度不超过配置的最大长度（避免终端显示溢出）
+    
+    参数说明：
+        file: 文件名（默认自动获取视频输出文件名）
+        sub_desc: 补充描述（如“Rendering”“Encoding”，用于区分不同阶段）
+    逻辑：
+        1. 若未初始化进度条，直接返回（不执行操作）
+        2. 自动补全文件名（未指定时从视频路径提取）
+        3. 拼接完整描述并截断超长文本（末尾加“...”）
+        4. 不足最大长度时用空格填充（保持进度条对齐）
+    """
+    # 若进度条未初始化，跳过操作
+    if self.progress_display is None:
+        return
 
-        desc_len = self.progress_description_len
-        if not file:
-            file = os.path.split(self.get_movie_file_path())[1]
-        full_desc = f"{file} {sub_desc}"
-        if len(full_desc) > desc_len:
-            full_desc = full_desc[:desc_len - 3] + "..."
-        else:
-            full_desc += " " * (desc_len - len(full_desc))
-        self.progress_display.set_description(full_desc)
+    # 获取配置的进度条描述最大长度
+    max_desc_len = self.progress_description_len
+    # 若未指定文件名，从最终视频路径中提取文件名（含后缀）
+    if not file:
+        file = os.path.split(self.get_movie_file_path())[1]
+    
+    # 拼接完整描述文本（文件名 + 补充描述）
+    full_desc = f"{file} {sub_desc}".strip()  # 去除首尾多余空格
+    
+    # 处理超长文本：截断并添加省略号
+    if len(full_desc) > max_desc_len:
+        full_desc = full_desc[:max_desc_len - 3] + "..."  # 保留max_desc_len-3个字符，加“...”
+    # 处理短文本：用空格填充至最大长度（确保进度条位置对齐）
+    else:
+        full_desc += " " * (max_desc_len - len(full_desc))
+    
+    # 更新进度条描述
+    self.progress_display.set_description(full_desc)
 
-    def write_frame(self, camera: Camera) -> None:
-        if self.write_to_movie:
-            raw_bytes = camera.get_raw_fbo_data()
-            self.writing_process.stdin.write(raw_bytes)
-            if self.progress_display is not None:
-                self.progress_display.update()
-
-    def close_movie_pipe(self) -> None:
-        self.writing_process.stdin.close()
-        self.writing_process.wait()
-        self.writing_process.terminate()
+def write_frame(self, camera: Camera) -> None:
+    """
+    将相机渲染的当前帧写入FFmpeg编码管道（用于生成视频）
+    
+    参数：camera - 场景关联的相机对象（提供当前帧的原始像素数据）
+    逻辑：
+        1. 仅当开启视频生成时执行（write_to_movie=True）
+        2. 获取相机帧的原始字节数据（RGBA格式）
+        3. 将字节数据写入FFmpeg子进程的标准输入
+        4. 更新进度条（若已初始化）
+    """
+    # 仅在需要生成视频时执行帧写入
+    if self.write_to_movie:
+        # 从相机获取当前帧的原始FBO（帧缓冲对象）字节数据（RGBA格式）
+        raw_frame_bytes = camera.get_raw_fbo_data()
+        # 将原始字节数据写入FFmpeg子进程的标准输入（管道传递）
+        self.writing_process.stdin.write(raw_frame_bytes)
+        # 若进度条已初始化，更新进度（前进1帧）
         if self.progress_display is not None:
-            self.progress_display.close()
+            self.progress_display.update()
 
-        if not self.ended_with_interrupt:
-            shutil.move(self.temp_file_path, self.final_file_path)
-        else:
-            self.movie_file_path = self.temp_file_path
+def close_movie_pipe(self) -> None:
+    """
+    关闭FFmpeg编码管道，完成当前视频片段的写入，并处理临时文件
+    核心逻辑：
+        1. 关闭标准输入管道，等待FFmpeg子进程结束
+        2. 终止FFmpeg子进程，释放资源
+        3. 关闭进度条（若已初始化）
+        4. 根据是否中断，决定临时文件的处理方式（重命名为最终文件或保留临时文件）
+    """
+    # 关闭FFmpeg子进程的标准输入（告知FFmpeg无更多帧数据）
+    self.writing_process.stdin.close()
+    # 等待FFmpeg子进程完成编码（阻塞直到子进程退出）
+    self.writing_process.wait()
+    # 终止FFmpeg子进程（确保资源释放）
+    self.writing_process.terminate()
+    
+    # 若进度条已初始化，关闭进度条（清理终端输出）
+    if self.progress_display is not None:
+        self.progress_display.close()
 
-    def add_sound_to_video(self) -> None:
-        movie_file_path = self.get_movie_file_path()
-        stem, ext = os.path.splitext(movie_file_path)
-        sound_file_path = stem + ".wav"
-        # Makes sure sound file length will match video file
-        self.add_audio_segment(AudioSegment.silent(0))
-        self.audio_segment.export(
-            sound_file_path,
-            bitrate='312k',
-        )
-        temp_file_path = stem + "_temp" + ext
-        commands = [
-            self.ffmpeg_bin,
-            "-i", movie_file_path,
-            "-i", sound_file_path,
-            '-y',  # overwrite output file if it exists
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "320k",
-            # select video stream from first file
-            "-map", "0:v:0",
-            # select audio stream from second file
-            "-map", "1:a:0",
-            '-loglevel', 'error',
-            # "-shortest",
-            temp_file_path,
-        ]
-        sp.call(commands)
-        shutil.move(temp_file_path, movie_file_path)
-        os.remove(sound_file_path)
+    # 根据是否因中断结束，处理临时文件
+    if not self.ended_with_interrupt:
+        # 正常结束：将临时视频文件重命名为最终视频文件（覆盖原文件，因FFmpeg已加-y参数）
+        shutil.move(self.temp_file_path, self.final_file_path)
+    else:
+        # 中断结束：将临时文件路径作为最终文件路径（便于用户后续查看未完成文件）
+        self.movie_file_path = self.temp_file_path
+
+def add_sound_to_video(self) -> None:
+    """
+    将场景中的音频片段合并到视频文件中（视频生成后执行）
+    流程：
+        1. 生成临时WAV音频文件（从场景音频片段导出）
+        2. 调用FFmpeg将音频与视频合并（视频流复制，仅添加音频流）
+        3. 替换原视频文件为带音频的新文件，删除临时音频文件
+    目的：解决FFmpeg管道写入时无法同步添加音频的问题（先写视频，后合并音频）
+    """
+    # 获取最终视频文件的路径
+    final_video_path = self.get_movie_file_path()
+    # 拆分视频路径为“文件名（无后缀）”和“后缀”，用于生成临时音频文件路径
+    video_stem, video_ext = os.path.splitext(final_video_path)
+    temp_audio_path = f"{video_stem}.wav"  # 临时WAV音频文件路径
+
+    # 补充一个0长度静音片段（确保音频文件时长与视频完全匹配，避免FFmpeg警告）
+    self.add_audio_segment(AudioSegment.silent(0))
+    # 将场景中的音频片段导出为WAV文件（比特率312k，保证音频质量）
+    self.audio_segment.export(
+        temp_audio_path,
+        bitrate='312k'  # 音频比特率（越高质量越好，312k为较高质量配置）
+    )
+
+    # 生成合并音频后的临时视频文件路径
+    temp_merged_video_path = f"{video_stem}_temp{video_ext}"
+    # 构造FFmpeg合并音频与视频的命令
+    ffmpeg_command = [
+        self.ffmpeg_bin,  # FFmpeg可执行文件路径
+        "-i", final_video_path,  # 输入文件1：原视频文件（无音频）
+        "-i", temp_audio_path,   # 输入文件2：临时音频文件
+        "-y",  # 强制覆盖已存在的输出文件
+        "-c:v", "copy",  # 视频流编码方式：直接复制（不重新编码，节省时间）
+        "-c:a", "aac",   # 音频流编码方式：AAC（兼容性好，适合视频封装）
+        "-b:a", "320k",  # 音频比特率：320k（高质量音频配置）
+        "-map", "0:v:0", # 选择输入1的第1个视频流（原视频的视频流）
+        "-map", "1:a:0", # 选择输入2的第1个音频流（临时音频的音频流）
+        "-loglevel", "error",  # 日志级别：仅显示错误（减少冗余输出）
+        temp_merged_video_path  # 输出文件：合并后的临时视频文件
+    ]
+
+    # 执行FFmpeg命令（阻塞直到合并完成）
+    sp.call(ffmpeg_command)
+    # 将合并后的临时视频文件重命名为最终视频文件（替换原无音频视频）
+    shutil.move(temp_merged_video_path, final_video_path)
+    # 删除临时音频文件（清理中间文件，避免占用空间）
+    os.remove(temp_audio_path)
 
     def save_final_image(self, image: Image) -> None:
         file_path = self.get_image_file_path()
