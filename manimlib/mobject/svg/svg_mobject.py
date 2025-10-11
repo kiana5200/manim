@@ -1,10 +1,19 @@
+# 导入未来版本的注解特性，支持更灵活的类型提示写法（如在类定义前引用类名）
 from __future__ import annotations
 
+# 导入Python标准库的XML解析模块，用于处理SVG文件中的XML结构
 from xml.etree import ElementTree as ET
 
+# 导入科学计算库numpy，用于处理SVG图形中的数值计算（如坐标、矩阵变换等）
 import numpy as np
+
+# 导入第三方SVG处理库svgelements，用于解析和操作SVG的各种元素（如路径、形状、颜色等）
 import svgelements as se
+
+# 导入Python标准库的io模块，用于处理内存中的字节流（如将SVG字符串转为可读取的流对象）
 import io
+
+# 导入pathlib模块，用于便捷地处理文件路径（如SVG文件的读取、保存路径管理）
 from pathlib import Path
 
 from manimlib.constants import RIGHT
@@ -22,23 +31,42 @@ from manimlib.utils.images import get_full_vector_image_path
 from manimlib.utils.iterables import hash_obj
 from manimlib.utils.space_ops import rotation_about_z
 
+# 导入类型检查相关模块
 from typing import TYPE_CHECKING
+
+# 仅在类型检查模式下导入类型注解，避免运行时依赖
 if TYPE_CHECKING:
     from manimlib.typing import ManimColor, Vect3Array
 
-
+# 全局缓存：SVG哈希值到图形对象列表的映射，用于复用已解析的SVG图形
 SVG_HASH_TO_MOB_MAP: dict[int, list[VMobject]] = {}
+
+# 全局缓存：SVG路径字符串到其点坐标数组的映射，用于复用路径数据
 PATH_TO_POINTS: dict[str, Vect3Array] = {}
 
 
 def _convert_point_to_3d(x: float, y: float) -> np.ndarray:
+    """
+    将2D坐标点(x, y)转换为Manim使用的3D坐标数组(x, y, 0.0)。
+
+    参数:
+        x (float): x坐标
+        y (float): y坐标
+
+    返回:
+        np.ndarray: 包含3D坐标的NumPy数组
+    """
     return np.array([x, y, 0.0])
 
 
 class SVGMobject(VMobject):
-    file_name: str = ""
-    height: float | None = 2.0
-    width: float | None = None
+    """
+    用于处理SVG文件的图形对象基类。
+    它能够解析SVG文件并将其转换为Manim可以渲染的矢量图形对象。
+    """
+    file_name: str = ""  # SVG文件名（不包含路径），子类应覆盖此属性
+    height: float | None = 2.0  # 渲染后的图形高度，None表示不按高度缩放
+    width: float | None = None  # 渲染后的图形宽度，None表示不按宽度缩放
 
     def __init__(
         self,
@@ -68,6 +96,26 @@ class SVGMobject(VMobject):
         path_string_config: dict = dict(),
         **kwargs
     ):
+        """
+        初始化SVGMobject实例。
+
+        参数:
+            file_name (str): SVG文件路径。
+            svg_string (str): 直接提供的SVG字符串。
+            should_center (bool): 是否将图形居中。
+            height (float | None): 图形的高度。
+            width (float | None): 图形的宽度。
+            color (ManimColor): 同时设置填充和描边颜色。
+            fill_color (ManimColor): 填充颜色。
+            fill_opacity (float | None): 填充透明度。
+            stroke_width (float | None): 描边宽度。
+            stroke_color (ManimColor): 描边颜色。
+            stroke_opacity (float | None): 描边透明度。
+            svg_default (dict): SVG元素的默认样式。
+            path_string_config (dict): 路径字符串配置。
+            **kwargs: 传递给父类VMobject的其他参数。
+        """
+        # 1. 确定SVG源：优先使用直接提供的字符串，其次是文件路径
         if svg_string != "":
             self.svg_string = svg_string
         elif file_name != "":
@@ -77,15 +125,18 @@ class SVGMobject(VMobject):
         else:
             raise Exception("Must specify either a file_name or svg_string SVGMobject")
 
+        # 2. 保存配置参数
         self.svg_default = dict(svg_default)
         self.path_string_config = dict(path_string_config)
 
+        # 3. 初始化父类并处理SVG
         super().__init__(**kwargs)
-        self.init_svg_mobject()
-        self.ensure_positive_orientation()
+        self.init_svg_mobject()  # 解析SVG并创建子对象
+        self.ensure_positive_orientation()  # 确保路径方向正确
 
         # Rather than passing style into super().__init__
         # do it after svg has been taken in
+        # 4. 设置样式（覆盖SVG原有的样式）
         self.set_style(
             fill_color=color or fill_color,
             fill_opacity=fill_opacity,
@@ -95,6 +146,7 @@ class SVGMobject(VMobject):
         )
 
         # Initialize position
+        # 5. 设置位置和大小
         height = height or self.height
         width = width or self.width
 
@@ -106,20 +158,48 @@ class SVGMobject(VMobject):
             self.set_width(width)
 
     def init_svg_mobject(self) -> None:
+        """
+        初始化SVG图形对象的核心方法。
+        它负责解析SVG字符串并创建相应的子对象(submobjects)。
+        为了提高性能,它会检查缓存,如果SVG已经被解析过,则直接复用缓存的结果。
+        """
+        # 1. 计算一个唯一的哈希值，用于缓存
+        # hash_obj 是一个自定义函数，它会对传入的 `self.hash_seed` 进行哈希计算
         hash_val = hash_obj(self.hash_seed)
+        # 2. 检查缓存
+        # SVG_HASH_TO_MOB_MAP 是一个全局字典，用于存储已经解析过的SVG图形
         if hash_val in SVG_HASH_TO_MOB_MAP:
+            # 如果缓存中存在，直接从缓存中获取子对象的副本，避免重复解析
             submobs = [sm.copy() for sm in SVG_HASH_TO_MOB_MAP[hash_val]]
         else:
+            # 如果缓存中不存在，则调用 `mobjects_from_svg_string` 方法解析SVG字符串
+            # 这个方法会将SVG中的路径、形状等转换为Manim的矢量图形对象（VMobject）
             submobs = self.mobjects_from_svg_string(self.svg_string)
+            # 将解析结果存入缓存，以便将来复用
             SVG_HASH_TO_MOB_MAP[hash_val] = [sm.copy() for sm in submobs]
 
+        # 3. 添加子对象到当前图形中
         self.add(*submobs)
+        # 4. 翻转坐标系
+        # SVG的Y轴向下，而Manim的Y轴向上。
+        # 这里沿RIGHT方向（即X轴）翻转，实际上是在2D平面内翻转了Y轴，使SVG图形正确显示。
         self.flip(RIGHT)  # Flip y
 
     @property
     def hash_seed(self) -> tuple:
         # Returns data which can uniquely represent the result of `init_points`.
         # The hashed value of it is stored as a key in `SVG_HASH_TO_MOB_MAP`.
+        """
+        一个属性,返回一个可以唯一代表当前SVG图形状态的元组。
+        这个元组是计算缓存键（哈希值）的基础。
+
+        返回:
+            tuple: 一个包含以下元素的元组，任何一个元素的改变都会导致哈希值改变：
+                - 类名 (__class__.__name__)
+                - SVG默认样式配置 (self.svg_default)
+                - 路径字符串配置 (self.path_string_config)
+                - SVG原始字符串 (self.svg_string)
+        """
         return (
             self.__class__.__name__,
             self.svg_default,
