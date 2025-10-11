@@ -416,81 +416,122 @@ def get_ellipses(self) -> VGroup:
 
 
 class DecimalMatrix(Matrix):
+    """
+    用于显示十进制数字的矩阵子类
+    """
     def __init__(
         self,
-        matrix: FloatMatrixType,
-        num_decimal_places: int = 2,
-        decimal_config: dict = dict(),
-        **config
+        matrix: FloatMatrixType,  # 浮点型矩阵数据
+        num_decimal_places: int = 2,  # 保留的小数位数
+        decimal_config: dict = dict(),  # 十进制数字的配置参数
+        **config  # 传递给父类的其他参数
     ):
-        self.float_matrix = matrix
+        self.float_matrix = matrix  # 存储原始浮点矩阵
+        # 调用父类的初始化方法
         super().__init__(
             matrix,
             element_config=dict(
-                num_decimal_places=num_decimal_places,
-                **decimal_config
+                num_decimal_places=num_decimal_places,** decimal_config
             ),
             **config
         )
 
     def element_to_mobject(self, element, **decimal_config) -> DecimalNumber:
+        """
+        将元素转换为DecimalNumber对象（重写父类方法）
+        
+        Args:
+            element: 要转换的数字元素
+            **decimal_config: DecimalNumber的配置参数
+            
+        Returns:
+            转换后的DecimalNumber对象
+        """
         return DecimalNumber(element, **decimal_config)
 
 
 class IntegerMatrix(DecimalMatrix):
+    """
+    用于显示整数的矩阵子类（DecimalMatrix的子类）
+    """
     def __init__(
         self,
-        matrix: FloatMatrixType,
-        num_decimal_places: int = 0,
-        decimal_config: dict = dict(),
-        **config
+        matrix: FloatMatrixType,  # 整数矩阵数据（可以是浮点形式）
+        num_decimal_places: int = 0,  # 小数位数固定为0
+        decimal_config: dict = dict(),  # 数字的配置参数
+        **config  # 传递给父类的其他参数
     ):
+        # 调用父类的初始化方法，强制小数位数为0
         super().__init__(matrix, num_decimal_places, decimal_config, **config)
 
 
 class TexMatrix(Matrix):
+    """
+    用于显示LaTeX字符串的矩阵子类
+    """
     def __init__(
         self,
-        matrix: StringMatrixType,
-        tex_config: dict = dict(),
-        **config,
+        matrix: StringMatrixType,  # 字符串矩阵数据（包含LaTeX代码）
+        tex_config: dict = dict(),  # Tex对象的配置参数
+        **config,  # 传递给父类的其他参数
     ):
+        # 调用父类的初始化方法
         super().__init__(
             matrix,
-            element_config=tex_config,
-            **config
+            element_config=tex_config,** config
         )
 
 
 class MobjectMatrix(Matrix):
+    """
+    用于显示由Manim可移动对象(VMobject)组成的矩阵子类
+    """
     def __init__(
         self,
-        group: VGroup,
-        n_rows: int | None = None,
-        n_cols: int | None = None,
-        height: float = 4.0,
-        element_alignment_corner=ORIGIN,
-        **config,
+        group: VGroup,  # 包含要组成矩阵的VMobject的VGroup
+        n_rows: int | None = None,  # 矩阵的行数（可选）
+        n_cols: int | None = None,  # 矩阵的列数（可选）
+        height: float = 4.0,  # 矩阵的高度
+        element_alignment_corner=ORIGIN,  # 元素对齐的参考点
+        **config,  # 传递给父类的其他参数
     ):
-        # Have fallback defaults of n_rows and n_cols
+        # 计算行数和列数的默认值
         n_mobs = len(group)
         if n_rows is None:
+            # 如果未指定行数，根据列数或元素总数的平方根计算
             n_rows = int(np.sqrt(n_mobs)) if n_cols is None else n_mobs // n_cols
         if n_cols is None:
+            # 如果未指定列数，根据行数计算
             n_cols = n_mobs // n_rows
 
+        # 检查元素数量是否足够
         if len(group) < n_rows * n_cols:
-            raise Exception("Input to MobjectMatrix must have at least n_rows * n_cols entries")
+            raise Exception("输入到MobjectMatrix的元素数量必须至少为n_rows * n_cols")
 
+        # 构建由VMobject组成的矩阵
         mob_matrix = [
             [group[n * n_cols + k] for k in range(n_cols)]
             for n in range(n_rows)
         ]
+        
+        # 更新配置参数
         config.update(
             height=height,
             element_alignment_corner=element_alignment_corner,
         )
-        super().__init__(mob_matrix,  **config)
+        
+        # 调用父类的初始化方法
+        super().__init__(mob_matrix, **config)
 
     def element_to_mobject(self, element: VMobject, **config) -> VMobject:
+        """
+        直接返回VMobject（重写父类方法，因为元素已经是VMobject）
+        
+        Args:
+            element: 要转换的VMobject
+            **config: 配置参数（此处未使用）
+            
+        Returns:
+            原VMobject
+        """
         return element
