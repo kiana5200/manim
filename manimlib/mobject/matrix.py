@@ -218,87 +218,201 @@ def create_brackets(self, rows, v_buff: float, h_buff: float) -> VGroup:
     # 返回包含左右括号的VGroup
     return VGroup(l_bracket, r_bracket)
 
-    def get_column(self, index: int):
-        if not 0 <= index < len(self.columns):
-            raise IndexError(f"Index {index} out of bound for matrix with {len(self.columns)} columns")
-        return self.columns[index]
+def get_column(self, index: int):
+    """
+    获取矩阵中指定索引的列
+    
+    Args:
+        index: 列的索引（从0开始）
+        
+    Returns:
+        包含该列所有元素的VGroup
+        
+    Raises:
+        IndexError: 如果索引超出有效范围
+    """
+    # 检查索引是否有效
+    if not 0 <= index < len(self.columns):
+        raise IndexError(f"索引 {index} 超出范围，矩阵共有 {len(self.columns)} 列")
+    return self.columns[index]
 
-    def get_row(self, index: int):
-        if not 0 <= index < len(self.rows):
-            raise IndexError(f"Index {index} out of bound for matrix with {len(self.rows)} rows")
-        return self.rows[index]
+def get_row(self, index: int):
+    """
+    获取矩阵中指定索引的行
+    
+    Args:
+        index: 行的索引（从0开始）
+        
+    Returns:
+        包含该行所有元素的VGroup
+        
+    Raises:
+        IndexError: 如果索引超出有效范围
+    """
+    # 检查索引是否有效
+    if not 0 <= index < len(self.rows):
+        raise IndexError(f"索引 {index} 超出范围，矩阵共有 {len(self.rows)} 行")
+    return self.rows[index]
 
-    def get_columns(self) -> VGroup:
-        return self.columns
+def get_columns(self) -> VGroup:
+    """
+    获取矩阵所有列的集合
+    
+    Returns:
+        包含所有列的VGroup
+    """
+    return self.columns
 
-    def get_rows(self) -> VGroup:
-        return self.rows
+def get_rows(self) -> VGroup:
+    """
+    获取矩阵所有行的集合
+    
+    Returns:
+        包含所有行的VGroup
+    """
+    return self.rows
 
-    def set_column_colors(self, *colors: ManimColor) -> Self:
-        columns = self.get_columns()
-        for color, column in zip(colors, columns):
-            column.set_color(color)
-        return self
+def set_column_colors(self, *colors: ManimColor) -> Self:
+    """
+    为矩阵的列依次设置颜色
+    
+    Args:
+        *colors: 为各列设置的颜色，与列按顺序对应
+        
+    Returns:
+        矩阵对象本身（支持方法链调用）
+    """
+    columns = self.get_columns()
+    # 为每列设置对应的颜色
+    for color, column in zip(colors, columns):
+        column.set_color(color)
+    return self
 
-    def add_background_to_entries(self) -> Self:
-        for mob in self.get_entries():
-            mob.add_background_rectangle()
-        return self
+def add_background_to_entries(self) -> Self:
+    """
+    为矩阵中的每个元素添加背景矩形
+    
+    Returns:
+        矩阵对象本身（支持方法链调用）
+    """
+    # 为每个元素添加背景矩形
+    for mob in self.get_entries():
+        mob.add_background_rectangle()
+    return self
 
-    def swap_entry_for_dots(self, entry, dots):
-        dots.move_to(entry)
-        entry.become(dots)
-        if entry in self.elements:
-            self.elements.remove(entry)
-        if entry not in self.ellipses:
-            self.ellipses.append(entry)
+def swap_entry_for_dots(self, entry, dots):
+    """
+    将矩阵中的某个元素替换为省略号
+    
+    Args:
+        entry: 要被替换的矩阵元素（VMobject）
+        dots: 用于替换的省略号对象（通常是Tex对象）
+    """
+    # 将省略号移动到被替换元素的位置
+    dots.move_to(entry)
+    # 用省略号替换原元素
+    entry.become(dots)
+    # 如果原元素在elements列表中，将其移除
+    if entry in self.elements:
+        self.elements.remove(entry)
+    # 如果原元素不在ellipses列表中，将其添加
+    if entry not in self.ellipses:
+        self.ellipses.append(entry)
 
-    def swap_entries_for_ellipses(
-        self,
-        row_index: Optional[int] = None,
-        col_index: Optional[int] = None,
-        height_ratio: float = 0.65,
-        width_ratio: float = 0.4
-    ):
-        rows = self.get_rows()
-        cols = self.get_columns()
+def swap_entries_for_ellipses(
+    self,
+    row_index: Optional[int] = None,
+    col_index: Optional[int] = None,
+    height_ratio: float = 0.65,
+    width_ratio: float = 0.4
+):
+    """
+    在指定行或列位置用省略号替换元素，用于表示大型矩阵的省略部分
+    
+    Args:
+        row_index: 要替换为垂直省略号的行索引（可选）
+        col_index: 要替换为水平省略号的列索引（可选）
+        height_ratio: 垂直省略号与行高的比例
+        width_ratio: 水平省略号与列宽的比例
+        
+    Returns:
+        矩阵对象本身（支持方法链调用）
+    """
+    rows = self.get_rows()
+    cols = self.get_columns()
 
-        avg_row_height = rows.get_height() / len(rows)
-        vdots_height = height_ratio * avg_row_height
+    # 计算平均行高和垂直省略号的高度
+    avg_row_height = rows.get_height() / len(rows)
+    vdots_height = height_ratio * avg_row_height
 
-        avg_col_width = cols.get_width() / len(cols)
-        hdots_width = width_ratio * avg_col_width
+    # 计算平均列宽和水平省略号的宽度
+    avg_col_width = cols.get_width() / len(cols)
+    hdots_width = width_ratio * avg_col_width
 
-        use_vdots = row_index is not None and -len(rows) <= row_index < len(rows)
-        use_hdots = col_index is not None and -len(cols) <= col_index < len(cols)
+    # 检查行索引和列索引是否有效
+    use_vdots = row_index is not None and -len(rows) <= row_index < len(rows)
+    use_hdots = col_index is not None and -len(cols) <= col_index < len(cols)
 
-        if use_vdots:
-            for column in cols:
-                # Add vdots
-                dots = Tex(R"\vdots")
-                dots.set_height(vdots_height)
-                self.swap_entry_for_dots(column[row_index], dots)
-        if use_hdots:
-            for row in rows:
-                # Add hdots
-                dots = Tex(R"\hdots")
-                dots.set_width(hdots_width)
-                self.swap_entry_for_dots(row[col_index], dots)
-        if use_vdots and use_hdots:
-            rows[row_index][col_index].rotate(-45 * DEG)
-        return self
+    # 如果行索引有效，替换该行所有元素为垂直省略号
+    if use_vdots:
+        for column in cols:
+            # 创建垂直省略号
+            dots = Tex(R"\vdots")
+            dots.set_height(vdots_height)
+            # 替换元素
+            self.swap_entry_for_dots(column[row_index], dots)
+    
+    # 如果列索引有效，替换该列所有元素为水平省略号
+    if use_hdots:
+        for row in rows:
+            # 创建水平省略号
+            dots = Tex(R"\hdots")
+            dots.set_width(hdots_width)
+            # 替换元素
+            self.swap_entry_for_dots(row[col_index], dots)
+    
+    # 如果同时使用了水平和垂直省略号，将交叉处的省略号旋转45度
+    if use_vdots and use_hdots:
+        rows[row_index][col_index].rotate(-45 * DEG)
+    
+    return self
 
-    def get_mob_matrix(self) -> VMobjectMatrixType:
-        return self.mob_matrix
+def get_mob_matrix(self) -> VMobjectMatrixType:
+    """
+    获取由可移动对象组成的矩阵
+    
+    Returns:
+        由VMobject组成的二维列表
+    """
+    return self.mob_matrix
 
-    def get_entries(self) -> VGroup:
-        return VGroup(*self.elements)
+def get_entries(self) -> VGroup:
+    """
+    获取矩阵中所有元素的集合
+    
+    Returns:
+        包含所有矩阵元素的VGroup
+    """
+    return VGroup(*self.elements)
 
-    def get_brackets(self) -> VGroup:
-        return VGroup(*self.brackets)
+def get_brackets(self) -> VGroup:
+    """
+    获取矩阵的括号
+    
+    Returns:
+        包含左右括号的VGroup
+    """
+    return VGroup(*self.brackets)
 
-    def get_ellipses(self) -> VGroup:
-        return VGroup(*self.ellipses)
+def get_ellipses(self) -> VGroup:
+    """
+    获取矩阵中的所有省略号
+    
+    Returns:
+        包含所有省略号的VGroup
+    """
+    return VGroup(*self.ellipses)
+
 
 
 class DecimalMatrix(Matrix):
