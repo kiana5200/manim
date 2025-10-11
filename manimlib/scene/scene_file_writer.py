@@ -117,60 +117,120 @@ class SceneFileWriter(object):
         self.init_audio()
 
     # Output directories and files
-    def init_output_directories(self) -> None:
-        if self.save_last_frame:
-            self.image_file_path = self.init_image_file_path()
-        if self.write_to_movie:
-            self.movie_file_path = self.init_movie_file_path()
-        if self.subdivide_output:
-            self.partial_movie_directory = self.init_partial_movie_directory()
+def init_output_directories(self) -> None:
+    """
+    初始化所有输出目录与文件路径
+    逻辑：根据配置的输出模式（保存单帧、生成视频、细分输出），分别初始化对应的路径
+    依赖：调用`init_image_file_path`/`init_movie_file_path`/`init_partial_movie_directory`等方法
+    """
+    # 1. 若需要保存最后一帧，初始化单帧图像的保存路径
+    if self.save_last_frame:
+        self.image_file_path = self.init_image_file_path()
+    # 2. 若需要生成视频，初始化最终视频文件的保存路径
+    if self.write_to_movie:
+        self.movie_file_path = self.init_movie_file_path()
+    # 3. 若需要细分输出（按片段拆分视频），初始化分段视频的存储目录
+    if self.subdivide_output:
+        self.partial_movie_directory = self.init_partial_movie_directory()
 
-    def init_image_file_path(self) -> Path:
-        return self.get_output_file_rootname().with_suffix(".png")
+def init_image_file_path(self) -> Path:
+    """
+    初始化最后一帧图像的保存路径
+    规则：以“输出文件根名”为基础，添加.png后缀（如output/scene_001.png）
+    返回：Path对象（包含完整路径的图像文件）
+    """
+    # 调用get_output_file_rootname()获取基础路径，再通过with_suffix添加.png后缀
+    return self.get_output_file_rootname().with_suffix(".png")
 
-    def init_movie_file_path(self) -> Path:
-        return self.get_output_file_rootname().with_suffix(self.movie_file_extension)
+def init_movie_file_path(self) -> Path:
+    """
+    初始化最终视频文件的保存路径
+    规则：以“输出文件根名”为基础，添加配置的视频后缀（如.mp4/.mov，默认.mp4）
+    返回：Path对象（包含完整路径的视频文件）
+    """
+    # 调用get_output_file_rootname()获取基础路径，添加配置的视频后缀
+    return self.get_output_file_rootname().with_suffix(self.movie_file_extension)
 
-    def init_partial_movie_directory(self):
-        return guarantee_existence(self.get_output_file_rootname())
+def init_partial_movie_directory(self):
+    """
+    初始化分段视频的存储目录
+    逻辑：以“输出文件根名”为目录名，确保该目录存在（不存在则创建）
+    返回：Path对象（包含完整路径的分段视频目录）
+    """
+    # 调用get_output_file_rootname()获取目录名，通过guarantee_existence确保目录存在
+    return guarantee_existence(self.get_output_file_rootname())
 
-    def get_output_file_rootname(self) -> Path:
-        return Path(
-            guarantee_existence(self.output_directory),
-            self.get_output_file_name()
-        )
+def get_output_file_rootname(self) -> Path:
+    """
+    获取输出文件的“根路径”（不含后缀的完整路径）
+    构成：输出目录（确保存在） + 输出文件名（由get_output_file_name()生成）
+    返回：Path对象（包含目录和文件名，无后缀）
+    """
+    return Path(
+        guarantee_existence(self.output_directory),  # 确保输出目录存在，不存在则创建
+        self.get_output_file_name()  # 获取输出文件名（不含后缀）
+    )
 
-    def get_output_file_name(self) -> str:
-        if self.file_name:
-            return self.file_name
-        # Otherwise, use the name of the scene, potentially
-        # appending animation numbers
-        name = str(self.scene)
-        saan = self.scene.start_at_animation_number
-        eaan = self.scene.end_at_animation_number
-        if saan is not None:
-            name += f"_{saan}"
-        if eaan is not None:
-            name += f"_{eaan}"
-        return name
+def get_output_file_name(self) -> str:
+    """
+    生成输出文件的“基础名称”（不含目录和后缀）
+    规则：
+        1. 若用户指定了file_name，直接使用该名称；
+        2. 若未指定，默认使用场景类名，并根据“起始/结束动画编号”追加后缀
+    返回：字符串形式的基础文件名
+    """
+    # 1. 优先使用用户指定的文件名
+    if self.file_name:
+        return self.file_name
+    # 2. 未指定时，以场景类名作为基础
+    name = str(self.scene)  # 场景对象的字符串表示（通常是场景类名，如"MyScene"）
+    # 获取场景的“起始动画编号”和“结束动画编号”（用于分段渲染）
+    start_anim_num = self.scene.start_at_animation_number
+    end_anim_num = self.scene.end_at_animation_number
+    # 若指定了起始动画编号，追加到文件名后（如"MyScene_5"）
+    if start_anim_num is not None:
+        name += f"_{start_anim_num}"
+    # 若指定了结束动画编号，追加到文件名后（如"MyScene_5_10"）
+    if end_anim_num is not None:
+        name += f"_{end_anim_num}"
+    return name
 
-    # Directory getters
-    def get_image_file_path(self) -> str:
-        return self.image_file_path
+# 目录/文件路径获取器（Directory getters）
+def get_image_file_path(self) -> str:
+    """获取最后一帧图像的完整路径（字符串形式）"""
+    return str(self.image_file_path)  # 转换Path对象为字符串，便于外部调用
 
-    def get_next_partial_movie_path(self) -> str:
-        result = Path(self.partial_movie_directory, f"{self.scene.num_plays:05}")
-        return result.with_suffix(self.movie_file_extension)
+def get_next_partial_movie_path(self) -> str:
+    """
+    获取“下一个分段视频”的完整路径（字符串形式）
+    规则：分段目录 + 5位场景播放次数（补零） + 视频后缀（如output/scene/00001.mp4）
+    用途：细分输出时，每段动画生成一个独立视频文件，按播放次数编号
+    """
+    # 分段视频文件名：场景播放次数（5位补零，如第1次播放为"00001"）
+    partial_file_name = Path(self.partial_movie_directory, f"{self.scene.num_plays:05}")
+    # 添加视频后缀，转换为字符串返回
+    return str(partial_file_name.with_suffix(self.movie_file_extension))
 
-    def get_movie_file_path(self) -> str:
-        return self.movie_file_path
+def get_movie_file_path(self) -> str:
+    """获取最终视频文件的完整路径（字符串形式）"""
+    return str(self.movie_file_path)  # 转换Path对象为字符串，便于外部调用
 
-    # Sound
-    def init_audio(self) -> None:
-        self.includes_sound: bool = False
+# 音频相关方法（Sound）
+def init_audio(self) -> None:
+    """
+    初始化音频相关状态
+    逻辑：标记当前是否包含音频，默认初始化为“不包含”（后续添加音频时更新该状态）
+    """
+    self.includes_sound: bool = False  # 布尔值，标识场景是否包含音频（True=包含，False=不包含）
 
-    def create_audio_segment(self) -> None:
-        self.audio_segment = AudioSegment.silent()
+def create_audio_segment(self) -> None:
+    """
+    创建一个空的音频片段（静音片段）
+    用途：作为音频拼接的基础容器，后续将场景中的音频片段追加到该对象中
+    依赖：pydub.AudioSegment，生成的静音片段默认使用pydub的默认参数（如采样率）
+    """
+    # 创建静音音频片段（AudioSegment.silent()默认生成1秒静音，后续可通过拼接扩展）
+    self.audio_segment = AudioSegment.silent()
 
     def add_audio_segment(
         self,
