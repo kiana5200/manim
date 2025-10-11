@@ -1,43 +1,58 @@
+# 从__future__导入annotations，支持在类型提示中使用尚未定义的类
 from __future__ import annotations
 
+# 从isosurfaces导入plot_isoline函数用于绘制等值线
 from isosurfaces import plot_isoline
+# 导入numpy用于数值计算
 import numpy as np
 
+# 从manimlib.constants导入帧的X/Y半径常量
 from manimlib.constants import FRAME_X_RADIUS, FRAME_Y_RADIUS
+# 从manimlib.constants导入颜色常量YELLOW
 from manimlib.constants import YELLOW
+# 从manimlib.mobject.types.vectorized_mobject导入VMobject基类
 from manimlib.mobject.types.vectorized_mobject import VMobject
 
+# 导入类型检查相关模块
 from typing import TYPE_CHECKING
 
+# 如果是类型检查阶段
 if TYPE_CHECKING:
+    # 导入所需的类型提示
     from typing import Callable, Sequence, Tuple
     from manimlib.typing import ManimColor, Vect3
 
 
 class ParametricCurve(VMobject):
+    """参数曲线类，继承自VMobject"""
+    
     def __init__(
         self,
-        t_func: Callable[[float], Sequence[float] | Vect3],
-        t_range: Tuple[float, float, float] = (0, 1, 0.1),
-        epsilon: float = 1e-8,
-        # TODO, automatically figure out discontinuities
-        discontinuities: Sequence[float] = [],
-        use_smoothing: bool = True,
-        **kwargs
+        t_func: Callable[[float], Sequence[float] | Vect3],  # 参数函数，输入参数t返回三维坐标
+        t_range: Tuple[float, float, float] = (0, 1, 0.1),  # 参数t的范围（起始、结束、步长）
+        epsilon: float = 1e-8,  # 用于处理不连续点的小量
+        discontinuities: Sequence[float] = [],  # 不连续点的参数t值列表
+        use_smoothing: bool = True,  # 是否使用平滑处理
+        **kwargs  # 其他传递给父类的关键字参数
     ):
+        # 存储参数曲线的相关属性
         self.t_func = t_func
         self.t_range = t_range
         self.epsilon = epsilon
         self.discontinuities = discontinuities
         self.use_smoothing = use_smoothing
+        # 调用父类的初始化方法
         super().__init__(**kwargs)
 
     def get_point_from_function(self, t: float) -> Vect3:
+        """根据参数t获取曲线上的点"""
         return np.array(self.t_func(t))
 
     def init_points(self):
+        """初始化曲线的点"""
         t_min, t_max, step = self.t_range
 
+        # 处理不连续点
         jumps = np.array(self.discontinuities)
         jumps = jumps[(jumps > t_min) & (jumps < t_max)]
         boundary_times = [t_min, t_max, *(jumps - self.epsilon), *(jumps + self.epsilon)]
@@ -47,8 +62,10 @@ class ParametricCurve(VMobject):
             points = np.array([self.t_func(t) for t in t_range])
             self.start_new_path(points[0])
             self.add_points_as_corners(points[1:])
+        # 如果需要平滑处理
         if self.use_smoothing:
             self.make_smooth(approx=True)
+        # 如果没有点，设置默认点
         if not self.has_points():
             self.set_points(np.array([self.t_func(t_min)]))
         return self
