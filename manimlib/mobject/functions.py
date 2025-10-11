@@ -71,68 +71,83 @@ class ParametricCurve(VMobject):
         return self
 
     def get_t_func(self):
+        """获取参数函数"""
         return self.t_func
 
     def get_function(self):
+        """获取底层函数"""
         if hasattr(self, "underlying_function"):
             return self.underlying_function
         if hasattr(self, "function"):
             return self.function
 
     def get_x_range(self):
+        """获取x范围"""
         if hasattr(self, "x_range"):
             return self.x_range
 
 
 class FunctionGraph(ParametricCurve):
+    """函数图像类，继承自ParametricCurve"""
+    
     def __init__(
         self,
-        function: Callable[[float], float],
-        x_range: Tuple[float, float, float] = (-8, 8, 0.25),
-        color: ManimColor = YELLOW,
-        **kwargs
+        function: Callable[[float], float],  # 函数，输入x返回y
+        x_range: Tuple[float, float, float] = (-8, 8, 0.25),  # x的范围（起始、结束、步长）
+        color: ManimColor = YELLOW,  # 曲线颜色，默认为黄色
+        **kwargs  # 其他传递给父类的关键字参数
     ):
         self.function = function
         self.x_range = x_range
 
+        # 定义参数函数（将x作为参数t）
         def parametric_function(t):
             return [t, function(t), 0]
 
+        # 调用父类的初始化方法
         super().__init__(parametric_function, self.x_range, **kwargs)
 
 
 class ImplicitFunction(VMobject):
+    """隐函数类，继承自VMobject"""
+    
     def __init__(
         self,
-        func: Callable[[float, float], float],
-        x_range: Tuple[float, float] = (-FRAME_X_RADIUS, FRAME_X_RADIUS),
-        y_range: Tuple[float, float] = (-FRAME_Y_RADIUS, FRAME_Y_RADIUS),
-        min_depth: int = 5,
-        max_quads: int = 1500,
-        use_smoothing: bool = False,
-        joint_type: str = 'no_joint',
-        **kwargs
+        func: Callable[[float, float], float],  # 隐函数，输入x和y返回函数值
+        x_range: Tuple[float, float] = (-FRAME_X_RADIUS, FRAME_X_RADIUS),  # x的范围
+        y_range: Tuple[float, float] = (-FRAME_Y_RADIUS, FRAME_Y_RADIUS),  # y的范围
+        min_depth: int = 5,  # 最小递归深度
+        max_quads: int = 1500,  # 最大四边形数量
+        use_smoothing: bool = False,  # 是否使用平滑处理
+        joint_type: str = 'no_joint',  # 连接类型
+        **kwargs  # 其他传递给父类的关键字参数
     ):
+        # 调用父类的初始化方法
         super().__init__(joint_type=joint_type, **kwargs)
 
+        # 定义绘图范围的最小和最大点
         p_min, p_max = (
             np.array([x_range[0], y_range[0]]),
             np.array([x_range[1], y_range[1]]),
         )
+        # 绘制等值线（函数值为0的曲线）
         curves = plot_isoline(
             fn=lambda u: func(u[0], u[1]),
             pmin=p_min,
             pmax=p_max,
             min_depth=min_depth,
             max_quads=max_quads,
-        )  # returns a list of lists of 2D points
+        )  # 返回等值线的点列表
+        # 为每个点添加z坐标（设为0）
         curves = [
             np.pad(curve, [(0, 0), (0, 1)])
             for curve in curves
             if curve != []
-        ]  # add z coord as 0
+        ]
+        # 将每个等值线添加到对象中
         for curve in curves:
             self.start_new_path(curve[0])
             self.add_points_as_corners(curve[1:])
+        # 如果需要平滑处理
         if use_smoothing:
             self.make_smooth()
