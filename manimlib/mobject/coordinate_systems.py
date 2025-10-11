@@ -1132,79 +1132,115 @@ class NumberPlane(Axes):
 
 
     def init_background_lines(self) -> None:
+        """初始化背景网格线，包括主网格线和淡色网格线"""
+        # 如果未指定淡色网格线样式，则基于主网格线样式创建
         if not self.faded_line_style:
+            # 复制主网格线样式
             style = dict(self.background_line_style)
-            # For anything numerical, like stroke_width
-            # and stroke_opacity, chop it in half
+            # 数值型属性（如线宽、透明度）减半，使淡色线更淡
             for key in style:
                 if isinstance(style[key], numbers.Number):
                     style[key] *= 0.5
+            # 设置淡色线样式
             self.faded_line_style = style
 
+        # 获取主网格线和淡色网格线
         self.background_lines, self.faded_lines = self.get_lines()
+        # 应用主网格线样式
         self.background_lines.set_style(**self.background_line_style)
-        self.faded_lines.set_style(**self.faded_line_style)
+        # 应用淡色网格线样式
+        self.faded_lines.set_style(** self.faded_line_style)
+        # 将网格线添加到背景（最底层）
         self.add_to_back(
             self.faded_lines,
             self.background_lines,
         )
 
     def get_lines(self) -> tuple[VGroup, VGroup]:
+        """生成并返回所有网格线（主网格线和淡色网格线）"""
+        # 获取X轴和Y轴对象
         x_axis = self.get_x_axis()
         y_axis = self.get_y_axis()
 
+        # 获取平行于X轴的主网格线和淡色网格线（沿Y轴分布）
         x_lines1, x_lines2 = self.get_lines_parallel_to_axis(x_axis, y_axis)
+        # 获取平行于Y轴的主网格线和淡色网格线（沿X轴分布）
         y_lines1, y_lines2 = self.get_lines_parallel_to_axis(y_axis, x_axis)
+        # 组合主网格线（x_lines1 + y_lines1）
         lines1 = VGroup(*x_lines1, *y_lines1)
+        # 组合淡色网格线（x_lines2 + y_lines2）
         lines2 = VGroup(*x_lines2, *y_lines2)
         return lines1, lines2
 
     def get_lines_parallel_to_axis(
         self,
-        axis1: NumberLine,
-        axis2: NumberLine
+        axis1: NumberLine,  # 网格线平行于此轴
+        axis2: NumberLine  # 网格线沿此轴分布
     ) -> tuple[VGroup, VGroup]:
+        """生成平行于axis1且沿axis2分布的网格线（主网格线和淡色网格线）"""
+        # 获取axis2的步长（刻度间隔）
         freq = axis2.x_step
+        # 获取淡色线比例
         ratio = self.faded_line_ratio
+        # 创建一条与axis1等长的线作为模板
         line = Line(axis1.get_start(), axis1.get_end())
+        # 计算密集网格线的频率（主网格线+淡色网格线）
         dense_freq = (1 + ratio)
+        # 计算密集网格线的步长（每个主网格线之间有ratio条淡色线）
         step = (1 / dense_freq) * freq
 
+        # 存储主网格线和淡色网格线的组
         lines1 = VGroup()
         lines2 = VGroup()
+        # 生成沿axis2分布的所有网格线位置
         inputs = np.arange(axis2.x_min, axis2.x_max + step, step)
+        # 遍历每个位置创建网格线
         for i, x in enumerate(inputs):
+            # 跳过原点位置（避免与坐标轴重叠）
             if abs(x) < 1e-8:
                 continue
+            # 复制线模板
             new_line = line.copy()
+            # 将线移动到对应位置（沿axis2的x处）
             new_line.shift(axis2.n2p(x) - axis2.n2p(0))
+            # 根据索引判断是主网格线还是淡色网格线
             if i % (1 + ratio) == 0:
-                lines1.add(new_line)
+                lines1.add(new_line)  # 主网格线（每1+ratio条取1条）
             else:
-                lines2.add(new_line)
+                lines2.add(new_line)  # 淡色网格线
         return lines1, lines2
 
     def get_x_unit_size(self) -> float:
+        """获取X轴的单位长度（每个单位代表的像素长度）"""
         return self.get_x_axis().get_unit_size()
 
     def get_y_unit_size(self) -> list:
+        """获取Y轴的单位长度（注：此处代码可能有误，应为返回float类型）"""
         return self.get_x_axis().get_unit_size()
 
     def get_axes(self) -> VGroup:
+        """返回包含所有坐标轴的组"""
         return self.axes
 
     def get_vector(self, coords: Iterable[float], **kwargs) -> Arrow:
+        """创建从原点到指定坐标的向量箭头"""
+        # 设置箭头与起点/终点的缓冲距离为0
         kwargs["buff"] = 0
-        return Arrow(self.c2p(0, 0), self.c2p(*coords), **kwargs)
+        # 创建箭头：从原点到coords对应的点
+        return Arrow(self.c2p(0, 0), self.c2p(*coords),** kwargs)
 
     def prepare_for_nonlinear_transform(self, num_inserted_curves: int = 50) -> Self:
+        """为非线性变换准备坐标系，插入更多曲线段以保持变换后平滑"""
+        # 遍历所有包含点的子对象
         for mob in self.family_members_with_points():
+            # 获取当前曲线段数量
             num_curves = mob.get_num_curves()
+            # 如果需要插入更多曲线段
             if num_inserted_curves > num_curves:
                 mob.insert_n_curves(num_inserted_curves - num_curves)
+            # 标记应用函数后需要平滑处理
             mob.make_smooth_after_applying_functions = True
         return self
-
 
 class ComplexPlane(NumberPlane):
     def number_to_point(self, number: complex | float) -> Vect3:
