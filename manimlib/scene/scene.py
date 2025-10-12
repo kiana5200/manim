@@ -178,83 +178,130 @@ class Scene(object):
             random.seed(self.random_seed)  # 初始化Python原生随机数
             np.random.seed(self.random_seed)  # 初始化NumPy随机数（用于向量/坐标随机）
 
-    def __str__(self) -> str:
-        return self.__class__.__name__
+def __str__(self) -> str:
+    """
+    重写字符串表示方法，返回场景类的名称（便于日志打印、调试识别）
+    返回：场景类名（如"MyCustomScene"，而非默认的对象内存地址）
+    """
+    return self.__class__.__name__
 
-    def get_window(self) -> Window | None:
-        return self.window
+def get_window(self) -> Window | None:
+    """
+    获取当前场景关联的可视化窗口对象
+    返回：Window对象（若已初始化）或None（若仅后台渲染无窗口）
+    用途：外部模块（如事件处理器）获取窗口实例以操作界面
+    """
+    return self.window
 
-    def run(self) -> None:
-        self.virtual_animation_start_time: float = 0
-        self.real_animation_start_time: float = time.time()
-        self.file_writer.begin()
+def run(self) -> None:
+    """
+    场景的核心运行入口，启动完整的“初始化→构建→交互→收尾”流程
+    流程：
+        1. 初始化动画时间戳与文件写入器
+        2. 执行场景初始化（setup）、动画构建（construct）、交互循环（interact）
+        3. 捕获特殊异常（结束场景、键盘中断），确保流程优雅收尾
+        4. 执行场景清理（tear_down），完成输出文件生成与资源释放
+    """
+    # 初始化动画时间戳：虚拟时间（场景内时间）与真实时间（系统时间）对齐
+    self.virtual_animation_start_time: float = 0  # 场景内动画起始时间（用于时间轴计算）
+    self.real_animation_start_time: float = time.time()  # 系统真实起始时间（用于同步进度）
+    # 启动文件写入器（准备视频编码管道或图像保存路径）
+    self.file_writer.begin()
 
-        self.setup()
-        try:
-            self.construct()
-            self.interact()
-        except EndScene:
-            pass
-        except KeyboardInterrupt:
-            # Get rid keyboard interupt symbols
-            print("", end="\r")
-            self.file_writer.ended_with_interrupt = True
-        self.tear_down()
-
-    def setup(self) -> None:
-        """
-        This is meant to be implement by any scenes which
-        are comonly subclassed, and have some common setup
-        involved before the construct method is called.
-        """
+    # 执行场景初始化（子类可重写setup添加自定义初始化逻辑）
+    self.setup()
+    try:
+        # 执行动画构建（核心逻辑，子类必须重写construct定义动画内容）
+        self.construct()
+        # 进入交互循环（若有窗口，允许用户通过键盘/鼠标操作场景）
+        self.interact()
+    except EndScene:
+        # 捕获EndScene异常（由embed退出触发），直接跳过以优雅结束流程
         pass
+    except KeyboardInterrupt:
+        # 捕获键盘中断（如Ctrl+C），清除终端中的中断符号，标记写入器为“中断结束”
+        print("", end="\r")  # 覆盖终端中的^C符号，美化输出
+        self.file_writer.ended_with_interrupt = True  # 告知写入器保留临时文件
+    # 执行场景清理（无论是否异常，确保资源释放与输出完成）
+    self.tear_down()
 
-    def construct(self) -> None:
-        # Where all the animation happens
-        # To be implemented in subclasses
-        pass
+def setup(self) -> None:
+    """
+    场景初始化钩子方法，子类可重写以添加通用初始化逻辑
+    用途：适用于被频繁继承的基础场景类（如“数学公式场景”默认加载LaTeX配置）
+    说明：默认无实现，子类按需扩展（如预加载常用Mobject、配置相机初始视角）
+    """
+    pass
 
-    def tear_down(self) -> None:
-        self.stop_skipping()
-        self.file_writer.finish()
-        if self.window:
-            self.window.destroy()
-            self.window = None
+def construct(self) -> None:
+    # 场景动画构建的核心方法，子类必须重写以定义具体动画逻辑
+    # 示例：子类中可在此方法内创建Mobject、添加动画（如self.play(Create(circle))）
+    pass
 
-    def interact(self) -> None:
-        """
-        If there is a window, enter a loop
-        which updates the frame while under
-        the hood calling the pyglet event loop
-        """
-        if self.window is None:
-            return
-        log.info(
-            "\nTips: Using the keys `d`, `f`, or `z` " +
-            "you can interact with the scene. " +
-            "Press `command + q` or `esc` to quit"
-        )
-        self.skip_animations = False
-        while not self.is_window_closing():
-            self.update_frame(1 / self.camera.fps)
+def tear_down(self) -> None:
+    """
+    场景收尾清理方法，确保资源释放与输出文件完整
+    流程：
+        1. 停止动画跳过模式（恢复正常渲染状态）
+        2. 完成文件写入器收尾（合并音频、生成最终视频/图像）
+        3. 销毁窗口（释放Pyglet GUI资源，避免内存泄漏）
+    """
+    self.stop_skipping()  # 停止跳过动画（确保收尾时渲染最终状态）
+    self.file_writer.finish()  # 完成输出文件（合并音频、保存图像、打印提示）
+    # 若存在窗口，销毁窗口并置空（释放GPU/CPU资源）
+    if self.window:
+        self.window.destroy()
+        self.window = None
 
-    def embed(
-        self,
-        close_scene_on_exit: bool = True,
-        show_animation_progress: bool = False,
-    ) -> None:
-        if not self.window:
-            # Embed is only relevant for interactive development with a Window
-            return
-        self.show_animation_progress = show_animation_progress
-        self.stop_skipping()
-        self.update_frame(force_draw=True)
+def interact(self) -> None:
+    """
+    场景交互循环（仅在有窗口时生效），持续更新画面并响应用户输入
+    逻辑：
+        1. 打印交互提示（告知用户可用快捷键，如d/f/z控制相机）
+        2. 关闭动画跳过模式（确保交互时实时渲染画面）
+        3. 循环更新场景帧，直到窗口被关闭（通过is_window_closing判断）
+    """
+    # 无窗口时直接退出（仅后台渲染场景无需交互）
+    if self.window is None:
+        return
+    # 打印交互快捷键提示（引导用户操作）
+    log.info(
+        "\nTips: Using the keys `d`, `f`, or `z` " +
+        "you can interact with the scene. " +
+        "Press `command + q` or `esc` to quit"
+    )
+    self.skip_animations = False  # 交互时关闭跳过模式，确保画面实时更新
+    # 循环更新场景帧：每次更新间隔为1/帧率（如30fps则每~33ms更新一次）
+    while not self.is_window_closing():
+        self.update_frame(1 / self.camera.fps)
 
-        InteractiveSceneEmbed(self).launch()
+def embed(
+    self,
+    close_scene_on_exit: bool = True,
+    show_animation_progress: bool = False,
+) -> None:
+    """
+    嵌入IPython交互式终端，支持实时调试与代码交互（仅在有窗口时生效）
+    核心用途：开发时实时修改场景（如调整Mobject位置、添加动画），无需重启场景
+    
+    参数说明：
+        close_scene_on_exit: 退出交互时是否结束场景（True则触发EndScene异常，终止后续流程）
+        show_animation_progress: 交互时是否显示动画进度条（False则隐藏，简化交互界面）
+    """
+    # 无窗口时不执行嵌入（交互需可视化窗口反馈）
+    if not self.window:
+        return
+    # 配置交互时的进度条显示（默认隐藏，避免干扰）
+    self.show_animation_progress = show_animation_progress
+    self.stop_skipping()  # 停止跳过模式，确保交互时画面实时更新
+    self.update_frame(force_draw=True)  # 强制更新一帧，确保当前画面正确显示
 
-        # End scene when exiting an embed
-        if close_scene_on_exit:
-            raise EndScene()
+    # 创建交互式场景嵌入实例并启动IPython终端
+    InteractiveSceneEmbed(self).launch()
+
+    # 退出交互时的处理：若需要结束场景，抛出EndScene异常（被run方法捕获）
+    if close_scene_on_exit:
+        raise EndScene()
 
     # Only these methods should touch the camera
 
