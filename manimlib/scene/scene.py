@@ -1,51 +1,58 @@
+# 导入Python未来版本的注解特性（支持字符串形式类名、泛型等灵活类型提示）
 from __future__ import annotations
 
-from collections import OrderedDict
-import platform
-import random
-import time
-from functools import wraps
-from contextlib import contextmanager
-from contextlib import ExitStack
+# 导入标准库模块
+from collections import OrderedDict  # 有序字典，用于保持键值对插入顺序（如动画队列、状态管理）
+import platform  # 获取操作系统信息（适配不同平台的交互逻辑，如键盘、文件打开）
+import random  # 生成随机数（可能用于随机化动画参数、对象位置等）
+import time  # 时间相关操作（如动画延迟、性能计时）
+from functools import wraps  # 函数装饰器工具（用于包装方法，添加额外逻辑如状态检查、日志）
+from contextlib import contextmanager  # 上下文管理器工具（用于创建临时资源环境，如临时配置切换）
+from contextlib import ExitStack  # 多上下文管理器整合工具（同时管理多个临时资源，确保正确释放）
 
-import numpy as np
-from tqdm.auto import tqdm as ProgressDisplay
-from pyglet.window import key as PygletWindowKeys
+# 导入第三方库模块
+import numpy as np  # 数值计算库（核心用于向量运算、矩阵变换、像素数据处理等）
+from tqdm.auto import tqdm as ProgressDisplay  # 进度条工具（可视化动画渲染、帧生成进度）
+from pyglet.window import key as PygletWindowKeys  # Pyglet键盘常量（映射键盘按键编码，如MOD_SHIFT、LEFT）
 
-from manimlib.animation.animation import prepare_animation
-from manimlib.camera.camera import Camera
-from manimlib.camera.camera_frame import CameraFrame
-from manimlib.config import manim_config
-from manimlib.event_handler import EVENT_DISPATCHER
-from manimlib.event_handler.event_type import EventType
-from manimlib.logger import log
-from manimlib.mobject.mobject import _AnimationBuilder
-from manimlib.mobject.mobject import Group
-from manimlib.mobject.mobject import Mobject
-from manimlib.mobject.mobject import Point
-from manimlib.mobject.types.vectorized_mobject import VGroup
-from manimlib.mobject.types.vectorized_mobject import VMobject
-from manimlib.scene.scene_embed import InteractiveSceneEmbed
-from manimlib.scene.scene_embed import CheckpointManager
-from manimlib.scene.scene_file_writer import SceneFileWriter
-from manimlib.utils.dict_ops import merge_dicts_recursively
-from manimlib.utils.family_ops import extract_mobject_family_members
-from manimlib.utils.family_ops import recursive_mobject_remove
-from manimlib.utils.iterables import batch_by_property
-from manimlib.utils.sounds import play_sound
-from manimlib.utils.color import color_to_rgba
-from manimlib.window import Window
+# 导入Manim库核心模块
+from manimlib.animation.animation import prepare_animation  # 动画预处理函数（标准化动画参数、处理嵌套动画）
+from manimlib.camera.camera import Camera  # 相机类（负责场景渲染、帧捕获、视角控制）
+from manimlib.camera.camera_frame import CameraFrame  # 相机帧类（定义相机视野范围、旋转、缩放等属性）
+from manimlib.config import manim_config  # Manim全局配置对象（存储渲染参数、路径、交互设置等）
+from manimlib.event_handler import EVENT_DISPATCHER  # 事件分发器（管理键盘、鼠标等事件的注册与触发）
+from manimlib.event_handler.event_type import EventType  # 事件类型枚举（定义事件分类，如KEY_PRESS、MOUSE_DRAG）
+from manimlib.logger import log  # Manim日志工具（打印信息、警告、错误，支持分级输出）
+from manimlib.mobject.mobject import _AnimationBuilder  # 动画构建器（简化Mobject对象的动画创建，如obj.animate.move_to()）
+from manimlib.mobject.mobject import Group  # 基础组类（用于批量管理非向量图形对象，如3D模型、文本）
+from manimlib.mobject.mobject import Mobject  # 所有可见对象的基类（定义图形对象的基础属性与方法，如添加、移除、移动）
+from manimlib.mobject.mobject import Point  # 点对象（用于标记位置、计算距离、作为动画锚点等）
+from manimlib.mobject.types.vectorized_mobject import VGroup  # 向量组类（批量管理向量图形对象，如矩形、圆，支持向量运算）
+from manimlib.mobject.types.vectorized_mobject import VMobject  # 向量图形基类（支持路径绘制、填充、描边等，如Rectangle、Circle）
+from manimlib.scene.scene_embed import InteractiveSceneEmbed  # 交互式场景嵌入类（提供IPython终端交互功能）
+from manimlib.scene.scene_embed import CheckpointManager  # 检查点管理器（用于保存/恢复场景状态，支持交互式开发）
+from manimlib.scene.scene_file_writer import SceneFileWriter  # 场景文件写入器（负责渲染帧保存、视频编码、音频合并）
+from manimlib.utils.dict_ops import merge_dicts_recursively  # 字典递归合并工具（用于合并配置字典，处理嵌套结构）
+from manimlib.utils.family_ops import extract_mobject_family_members  # 对象家族提取工具（获取对象及其所有子对象，如Group的子Mobject）
+from manimlib.utils.family_ops import recursive_mobject_remove  # 对象递归移除工具（从场景中移除对象及其所有子对象，避免残留）
+from manimlib.utils.iterables import batch_by_property  # 按属性分批工具（根据对象属性将可迭代对象分组，如按层分组渲染）
+from manimlib.utils.sounds import play_sound  # 音频播放工具（播放内置或自定义音效，如动画触发音）
+from manimlib.utils.color import color_to_rgba  # 颜色转换工具（将颜色值转换为RGBA格式，用于渲染像素数据）
+from manimlib.window import Window  # 窗口类（Manim的可视化窗口，负责显示渲染结果、接收用户输入）
 
+# 导入类型提示相关模块（仅在类型检查时生效，不影响运行时）
 from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
+    # 导入泛型、可调用对象等基础类型
     from typing import Callable, Iterable, TypeVar, Optional
-    from manimlib.typing import Vect3
+    from manimlib.typing import Vect3  # Manim自定义的三维向量类型（如(x, y, z)坐标）
 
-    T = TypeVar('T')
+    T = TypeVar('T')  # 泛型类型变量（用于定义通用函数/类，如处理任意类型的列表）
 
+    # 导入PIL图像类（用于类型提示，如帧图像保存、像素处理）
     from PIL.Image import Image
 
+    # 导入动画基类（用于类型提示，如动画列表、动画参数）
     from manimlib.animation.animation import Animation
 
 
