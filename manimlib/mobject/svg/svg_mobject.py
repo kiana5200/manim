@@ -570,74 +570,133 @@ class VMobjectFromSVGPath(VMobject):
         # After a given svg_path has been converted into points, the result
         # will be saved so that future calls for the same pathdon't need to
         # retrace the same computation.
+        """
+        初始化SVG路径的顶点数据，核心逻辑是通过缓存复用已计算的路径顶点，避免重复计算。
+    
+        当SVG路径首次被处理时，会解析路径指令生成顶点并缓存；后续相同路径直接从缓存读取顶点，提升性能。
+        """
+        # 1. 获取当前SVG路径的字符串表示（如 "M10,20 L30,40 Z"），作为缓存键
         path_string = self.path_obj.d()
+        # 2. 检查缓存：若路径未被处理过，解析指令生成顶点并缓存；否则直接使用缓存的顶点
         if path_string not in PATH_TO_POINTS:
+            # 解析路径指令，生成顶点数据
             self.handle_commands()
             # Save for future use
+            # 将生成的顶点数据存入全局缓存，供后续复用
             PATH_TO_POINTS[path_string] = self.get_points().copy()
         else:
+            # 从缓存读取顶点数据，直接设置到当前对象
             points = PATH_TO_POINTS[path_string]
             self.set_points(points)
 
     def handle_commands(self) -> None:
+        """
+        解析SVG路径中的每一段指令（如移动、直线、贝塞尔曲线），并转换为Manim图形的顶点数据。
+    
+        通过映射表将SVG路径段类型（如se.Move、se.Line）关联到Manim的绘图方法，实现指令的逐一处理。
+        """
+        # 1. 定义SVG路径段类型到Manim绘图方法的映射表
+        # 键：svgelements的路径段类；值：(Manim绘图函数, 路径段的属性名列表)
         segment_class_to_func_map = {
-            se.Move: (self.start_new_path, ("end",)),
-            se.Close: (self.close_path, ()),
-            se.Line: (lambda p: self.add_line_to(p, allow_null_line=False), ("end",)),
+            se.Move: (self.start_new_path, ("end",)),  # 移动指令：开启新路径，使用"end"属性的坐标
+            se.Close: (self.close_path, ()),  # 闭合指令：闭合当前路径，无需属性
+            se.Line: (lambda p: self.add_line_to(p, allow_null_line=False), ("end",)),  # 直线指令：添加直线到目标点
+            # 二次贝塞尔曲线：需要控制点(control)和终点(end)
             se.QuadraticBezier: (lambda c, e: self.add_quadratic_bezier_curve_to(c, e, allow_null_curve=False), ("control", "end")),
+            # 三次贝塞尔曲线：需要两个控制点和终点
             se.CubicBezier: (self.add_cubic_bezier_curve_to, ("control1", "control2", "end"))
         }
+
+        # 2. 遍历SVG路径中的每一段指令，逐一处理
         for segment in self.path_obj:
             segment_class = segment.__class__
+            # 处理圆弧段（特殊处理，未在映射表中）
             if segment_class is se.Arc:
-                self.handle_arc(segment)
+                self.handle_arc(segment)  # 调用专门的圆弧处理方法
             else:
+                # 从映射表获取当前路径段对应的绘图函数和属性名
                 func, attr_names = segment_class_to_func_map[segment_class]
+                # 提取路径段的坐标属性，转换为Manim的3D坐标
                 points = [
                     _convert_point_to_3d(*segment.__getattribute__(attr_name))
                     for attr_name in attr_names
                 ]
+                # 调用绘图函数，将当前段的顶点添加到图形中
                 func(*points)
 
         # Get rid of the side effect of trailing "Z M" commands.
+        # 3. 修复路径指令的副作用：移除末尾多余的 "Z M" 指令导致的无效顶点
         if self.has_new_path_started():
+            # 若检测到新路径被意外开启，删除最后两个无效顶点（通常是"Z"闭合后"Z"的重复顶点）
             self.resize_points(self.get_num_points() - 2)
 
     def handle_arc(self, arc: se.Arc) -> None:
+        """
+        处理SVG中的圆弧（Arc）路径段，将其转换为一系列贝塞尔曲线点并添加到Manim图形中。
+        这是一个比较复杂的过程，因为SVG的圆弧不能直接被Manim原生理解，需要特殊转换。
+
+        参数:
+            arc (se.Arc): 来自 `svgelements` 的圆弧对象。
+        """
+        # 1. 检查并获取变换缓存
+        # 为了提高性能，将计算出的变换矩阵、旋转矩阵和平移向量缓存起来
         if self.transform_cache is not None:
             transform, rot, shift = self.transform_cache
         else:
+            # 从路径对象中获取累积的变换字符串（来自SVG中所有父级元素的transform属性）
             # The transform obtained in this way considers the combined effect
             # of all parent group transforms in the SVG.
             # Therefore, the arc can be transformed inversely using this transform
             # to correctly compute the arc path before transforming it back.
             transform = se.Matrix(self.path_obj.values.get('transform', ''))
+            # 提取变换矩阵中的旋转、缩放、倾斜部分
             rot = np.array([
                 [transform.a, transform.c],
                 [transform.b, transform.d]
             ])
+            # 提取变换矩阵中的平移部分
             shift = np.array([transform.e, transform.f, 0])
+            # 计算变换的逆矩阵，用于后续将圆弧“还原”到原始状态进行计算
             transform.inverse()
+            # 将计算结果存入缓存
             self.transform_cache = (transform, rot, shift)
 
         # Apply inverse transformation to the arc so that its path can be correctly computed
+        # 2. 将圆弧应用逆变换，使其回到“未被变换”的状态
+        # 这样做是为了在一个标准的坐标系中计算圆弧的路径，简化计算
         arc *= transform
 
         # The value of n_components is chosen based on the implementation of VMobject.arc_to
+        # 3. 计算圆弧的分段数量
+        # Manim通过一系列贝塞尔曲线来近似圆弧。这里根据圆弧的角度（sweep）来决定需要多少段贝塞尔曲线。
         n_components = int(np.ceil(8 * abs(arc.sweep) / TAU))
 
         # Obtain the required angular segments on the unit circle
+        # 4. 在单位圆上生成圆弧的贝塞尔曲线控制点
+        # `quadratic_bezier_points_for_arc` 是一个辅助函数，它会返回一系列点，
+        # 这些点定义了用于近似圆弧的贝塞尔曲线。
         arc_points = quadratic_bezier_points_for_arc(arc.sweep, n_components)
+        # 将这些点旋转到圆弧的起始角度
         arc_points @= np.array(rotation_about_z(arc.get_start_t())).T
 
         # Transform to an ellipse, considering rotation and translating the ellipse center
+        # 5. 将单位圆上的点转换为实际的椭圆
+        # - 按椭圆的x、y轴半径进行缩放
         arc_points[:, 0] *= arc.rx
         arc_points[:, 1] *= arc.ry
+        # - 应用椭圆自身的旋转
         arc_points @= np.array(rotation_about_z(arc.get_rotation().as_radians)).T
+        # - 将椭圆移动到其在SVG中的中心位置
         arc_points += [*arc.center, 0]
 
         # Transform back
+        # 6. 将计算好的点应用回原始的变换
+        # 现在我们有了椭圆上的点，需要将它们变换回最初的坐标系
         arc_points[:, :2] @= rot.T
         arc_points += shift
 
+        # 7. 将生成的点添加到图形中
+        # `append_points` 会将这些点作为连续的线段添加到当前路径的末尾。
+        # 从索引1开始是因为 `quadratic_bezier_points_for_arc` 返回的第一个点是圆弧的起点，
+        # 而这个起点应该已经是当前路径的终点了。
         self.append_points(arc_points[1:])
