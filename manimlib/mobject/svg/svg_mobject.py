@@ -208,23 +208,60 @@ class SVGMobject(VMobject):
         )
 
     def mobjects_from_svg_string(self, svg_string: str) -> list[VMobject]:
+        """
+        将SVG字符串解析为Manim的图形对象列表。
+        这是SVGMobject将SVG数据转换为可渲染图形的核心步骤。
+
+        参数:
+            svg_string (str): 包含SVG数据的字符串。
+
+        返回:
+            list[VMobject]: 从SVG中解析出的图形对象列表。
+        """
+        # 1. 解析SVG字符串为ElementTree对象
         element_tree = ET.ElementTree(ET.fromstring(svg_string))
+        # 2. 修改XML树结构（用于注入全局样式或修改结构）
         new_tree = self.modify_xml_tree(element_tree)
 
         # New svg based on tree contents
+        # 3. 将修改后的ElementTree对象重新写入字节流
         data_stream = io.BytesIO()
         new_tree.write(data_stream)
         data_stream.seek(0)
+        # 4. 使用svgelements库解析字节流中的SVG数据
         svg = se.SVG.parse(data_stream)
         data_stream.close()
 
+        # 5. 将解析后的svgelements对象转换为Manim的图形对象
         return self.mobjects_from_svg(svg)
 
     def file_name_to_svg_string(self, file_name: str) -> str:
+        """
+        读取SVG文件内容并返回其字符串形式。
+
+        参数:
+            file_name (str): SVG文件的名称或路径。
+
+        返回:
+            str: SVG文件的内容字符串。
+        """
+        # get_full_vector_image_path 是一个Manim内部函数，用于查找图片文件的完整路径
         return Path(get_full_vector_image_path(file_name)).read_text()
 
     def modify_xml_tree(self, element_tree: ET.ElementTree) -> ET.ElementTree:
+        """
+        修改SVG的XML树结构,主要用于注入配置的全局样式。
+        它会创建一个新的SVG结构,将原始内容包裹在带有配置样式的组(g)中。
+
+        参数:
+            element_tree (ET.ElementTree): 原始的SVG ElementTree对象。
+
+        返回:
+            ET.ElementTree: 修改后的SVG ElementTree对象。
+        """
+        # 1. 生成包含配置样式的字典（如fill, stroke等）
         config_style_attrs = self.generate_config_style_dict()
+        # 2. 定义需要关注的样式属性
         style_keys = (
             "fill",
             "fill-opacity",
@@ -233,6 +270,7 @@ class SVGMobject(VMobject):
             "stroke-width",
             "style"
         )
+        # 3. 获取原始SVG的根元素和其样式属性
         root = element_tree.getroot()
         style_attrs = {
             k: v
@@ -241,14 +279,28 @@ class SVGMobject(VMobject):
         }
 
         # Ignore other attributes in case that svgelements cannot parse them
+        # 4. 创建新的XML树结构
         SVG_XMLNS = "{http://www.w3.org/2000/svg}"
         new_root = ET.Element("svg")
+        # 5. 创建包裹层以应用样式
+        # 第一层组(g)应用从配置生成的样式
         config_style_node = ET.SubElement(new_root, f"{SVG_XMLNS}g", config_style_attrs)
+        # 第二层组(g)应用原始SVG根元素的样式
         root_style_node = ET.SubElement(config_style_node, f"{SVG_XMLNS}g", style_attrs)
+        # 6. 将原始SVG的所有子元素移动到新的结构中
         root_style_node.extend(root)
+        # 7. 返回包含新结构的ElementTree对象
         return ET.ElementTree(new_root)
 
     def generate_config_style_dict(self) -> dict[str, str]:
+        """
+        根据 `self.svg_default` 中的配置，生成一个用于注入到SVG XML中的样式属性字典。
+        这个方法将Manim的样式参数名（如fill_color）映射为SVG标准的属性名（如fill）。
+
+        返回:
+            dict[str, str]: 一个包含SVG样式属性的字典，键是SVG属性名，值是对应的样式值字符串。
+        """
+        # 1. 定义Manim样式键到SVG属性键的映射关系
         keys_converting_dict = {
             "fill": ("color", "fill_color"),
             "fill-opacity": ("opacity", "fill_opacity"),
@@ -258,17 +310,32 @@ class SVGMobject(VMobject):
         }
         svg_default_dict = self.svg_default
         result = {}
+        # 2. 遍历映射关系，构建SVG样式字典
         for svg_key, style_keys in keys_converting_dict.items():
             for style_key in style_keys:
+                # 如果 `self.svg_default` 中对应的值不为None，则添加到结果字典中
                 if svg_default_dict[style_key] is None:
                     continue
                 result[svg_key] = str(svg_default_dict[style_key])
         return result
 
     def mobjects_from_svg(self, svg: se.SVG) -> list[VMobject]:
+        """
+        将一个 `svgelements.SVG` 对象转换为Manim的图形对象列表。
+        它会遍历SVG中的所有元素，并根据元素类型（路径、矩形、圆形等）创建对应的Manim对象。
+
+        参数:
+            svg (se.SVG): 一个由 `svgelements` 库解析后的SVG对象。
+
+        返回:
+            list[VMobject]: 一个包含从SVG元素转换而来的Manim图形对象的列表。
+        """
         result = []
+        # 1. 遍历SVG中的所有元素
         for shape in svg.elements():
+            # 2. 根据元素类型，创建对应的Manim对象
             if isinstance(shape, (se.Group, se.Use)):
+                 # 跳过组和引用元素，它们的子元素会被单独处理
                 continue
             elif isinstance(shape, se.Path):
                 mob = self.path_to_mobject(shape)
@@ -283,29 +350,50 @@ class SVGMobject(VMobject):
             elif isinstance(shape, se.Polyline):
                 mob = self.polyline_to_mobject(shape)
             # elif isinstance(shape, se.Text):
-            #     mob = self.text_to_mobject(shape)
+            #     mob = self.text_to_mobject(shape) # 文本处理通常单独实现
             elif type(shape) == se.SVGElement:
+                # 跳过未知的基础SVG元素
                 continue
             else:
+                # 打印警告并跳过不支持的元素类型
                 log.warning("Unsupported element type: %s", type(shape))
                 continue
+            # 3. 处理创建的Manim对象
+            # 如果对象没有任何点数据（例如，一个零长度的线），则跳过
             if not mob.has_points():
                 continue
+            # 如果是图形对象，应用其自身的样式（颜色、透明度等）
             if isinstance(shape, se.GraphicObject):
                 self.apply_style_to_mobject(mob, shape)
+            # 如果元素有变换属性，应用这些变换到Manim对象上
             if isinstance(shape, se.Transformable) and shape.apply:
                 self.handle_transform(mob, shape.transform)
+            # 4. 将处理好的对象添加到结果列表中 
             result.append(mob)
         return result
 
     @staticmethod
     def handle_transform(mob: VMobject, matrix: se.Matrix) -> VMobject:
+        """
+        将SVG的2D变换矩阵应用到Manim的图形对象上。
+
+        参数:
+            mob (VMobject): 要应用变换的Manim图形对象。
+            matrix (se.Matrix): 来自 `svgelements` 的变换矩阵对象。
+
+        返回:
+            VMobject: 应用了变换后的图形对象。
+        """
+        # 1. 提取旋转、缩放、倾斜等线性变换部分
         mat = np.array([
             [matrix.a, matrix.c],
             [matrix.b, matrix.d]
         ])
+        # 2. 提取平移变换部分，并转换为Manim的3D坐标
         vec = np.array([matrix.e, matrix.f, 0.0])
+        # 3. 应用线性变换矩阵
         mob.apply_matrix(mat)
+        # 4. 应用平移变换
         mob.shift(vec)
         return mob
 
@@ -314,6 +402,16 @@ class SVGMobject(VMobject):
         mob: VMobject,
         shape: se.GraphicObject
     ) -> VMobject:
+        """
+        将SVG元素的样式（颜色、透明度、描边宽度等）应用到Manim的图形对象上。
+
+        参数:
+            mob (VMobject): 要应用样式的Manim图形对象。
+            shape (se.GraphicObject): 包含样式信息的 `svgelements` 图形对象。
+
+        返回:
+            VMobject: 应用了样式后的图形对象。
+        """
         mob.set_style(
             stroke_width=shape.stroke_width,
             stroke_color=shape.stroke.hexrgb,
@@ -324,27 +422,59 @@ class SVGMobject(VMobject):
         return mob
 
     def path_to_mobject(self, path: se.Path) -> VMobjectFromSVGPath:
+        """
+        将SVG的路径元素（Path）转换为一个专门处理SVG路径的Manim图形对象。
+
+        参数:
+            path (se.Path): 来自 `svgelements` 的路径对象。
+
+        返回:
+            VMobjectFromSVGPath: 一个能够渲染SVG路径的Manim图形对象。
+        """
         return VMobjectFromSVGPath(path, **self.path_string_config)
 
     def line_to_mobject(self, line: se.SimpleLine) -> Line:
+        """
+        将SVG的直线元素转换为Manim的Line对象。
+
+        参数:
+            line (se.SimpleLine): 来自svgelements的直线对象。
+
+        返回:
+            Line: 一个Manim的直线对象。
+        """
         return Line(
-            start=_convert_point_to_3d(line.x1, line.y1),
-            end=_convert_point_to_3d(line.x2, line.y2)
+            start=_convert_point_to_3d(line.x1, line.y1),  # 转换起点为3D坐标
+            end=_convert_point_to_3d(line.x2, line.y2)     # 转换终点为3D坐标
         )
 
     def rect_to_mobject(self, rect: se.Rect) -> Rectangle:
+        """
+        将SVG的矩形元素转换为Manim的Rectangle或RoundedRectangle对象。
+
+        参数:
+            rect (se.Rect): 来自svgelements的矩形对象。
+
+        返回:
+            Rectangle | RoundedRectangle: 一个Manim的矩形对象。
+        """
+        # 如果矩形没有圆角，则创建一个普通的Rectangle
         if rect.rx == 0 or rect.ry == 0:
             mob = Rectangle(
                 width=rect.width,
                 height=rect.height,
             )
         else:
+            # 如果有圆角，则创建一个RoundedRectangle
+            # 先创建一个基于x方向圆角半径的矩形
             mob = RoundedRectangle(
                 width=rect.width,
-                height=rect.height * rect.rx / rect.ry,
+                height=rect.height * rect.rx / rect.ry,  # 临时高度
                 corner_radius=rect.rx
             )
+            # 然后将其垂直拉伸到SVG矩形的实际高度
             mob.stretch_to_fit_height(rect.height)
+        # 将矩形移动到SVG中指定的位置（矩形的中心点）
         mob.shift(_convert_point_to_3d(
             rect.x + rect.width / 2,
             rect.y + rect.height / 2
@@ -352,41 +482,88 @@ class SVGMobject(VMobject):
         return mob
 
     def ellipse_to_mobject(self, ellipse: se.Circle | se.Ellipse) -> Circle:
+        """
+        将SVG的圆形或椭圆形元素转换为Manim的Circle对象（通过拉伸实现椭圆效果）。
+
+        参数:
+            ellipse (se.Circle | se.Ellipse): 来自svgelements的圆形或椭圆形对象。
+
+        返回:
+            Circle: 一个Manim的圆形/椭圆形对象。
+        """
+        # 以x轴半径为基础创建一个圆形
         mob = Circle(radius=ellipse.rx)
+        # 将圆形垂直拉伸，使其y轴半径等于SVG椭圆的ry
         mob.stretch_to_fit_height(2 * ellipse.ry)
+        # 将椭圆移动到SVG中指定的中心位置
         mob.shift(_convert_point_to_3d(
             ellipse.cx, ellipse.cy
         ))
         return mob
 
     def polygon_to_mobject(self, polygon: se.Polygon) -> Polygon:
+        """
+        将SVG的多边形元素转换为Manim的Polygon对象。
+
+        参数:
+            polygon (se.Polygon): 来自svgelements的多边形对象。
+
+        返回:
+            Polygon: 一个Manim的多边形对象。
+        """
+        # 1. 遍历多边形的所有顶点，并将其转换为Manim的3D坐标
         points = [
             _convert_point_to_3d(*point)
             for point in polygon
         ]
+        # 2. 使用转换后的顶点列表创建一个Manim的Polygon对象
         return Polygon(*points)
 
     def polyline_to_mobject(self, polyline: se.Polyline) -> Polyline:
+        """
+        将SVG的折线元素转换为Manim的Polyline对象。
+
+        参数:
+            polyline (se.Polyline): 来自svgelements的折线对象。
+
+        返回:
+            Polyline: 一个Manim的折线对象。
+        """
+        # 1. 遍历折线的所有顶点，并将其转换为Manim的3D坐标
         points = [
             _convert_point_to_3d(*point)
             for point in polyline
         ]
+        # 2. 使用转换后的顶点列表创建一个Manim的Polyline对象
         return Polyline(*points)
 
     def text_to_mobject(self, text: se.Text):
+        """
+        将SVG的文本元素转换为Manim对象。此方法目前未实现。
+    
+        SVG中的文本处理比较复杂，通常不会直接转换为简单的图形对象，
+        而是需要使用Manim的Text或Tex等专门处理文本的类。
+        """
         pass
 
 
 class VMobjectFromSVGPath(VMobject):
+    """
+    一个专门用于处理SVG路径（Path）元素的Manim图形对象。
+    它直接操作SVG路径数据，能够精确地复现SVG中的复杂路径。
+    """
     def __init__(
         self,
         path_obj: se.Path,
         **kwargs
     ):
         # caches (transform.inverse(), rot, shift)
+        # 初始化一个缓存，用于存储路径的逆变换、旋转和位移信息，以提高性能
         self.transform_cache: tuple[se.Matrix, np.ndarray, np.ndarray] | None = None
 
+        # 保存原始的svgelements Path对象，以备后续使用
         self.path_obj = path_obj
+        # 调用父类VMobject的初始化方法
         super().__init__(**kwargs)
 
     def init_points(self) -> None:
