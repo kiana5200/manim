@@ -57,16 +57,21 @@ if TYPE_CHECKING:
 
 
 class Scene(object):
-    random_seed: int = 0
-    pan_sensitivity: float = 0.5
-    scroll_sensitivity: float = 20
-    drag_to_pan: bool = True
-    max_num_saved_states: int = 50
-    default_camera_config: dict = dict()
-    default_file_writer_config: dict = dict()
-    samples = 0
-    # Euler angles, in degrees
-    default_frame_orientation = (0, 0)
+    """
+    Manim场景基类，所有自定义动画场景均需继承此类。
+    核心职责：管理场景状态（如Mobject对象、时间、相机）、动画播放、交互事件、渲染输出，
+    是连接图形对象、动画逻辑与输出文件的核心枢纽。
+    """
+    # 类级静态配置（所有Scene子类共享，可在子类中重写）
+    random_seed: int = 0  # 随机种子（确保场景中随机操作可复现，如随机位置生成）
+    pan_sensitivity: float = 0.5  # 相机平移灵敏度（鼠标拖拽/键盘控制时的移动速度）
+    scroll_sensitivity: float = 20  # 相机缩放灵敏度（鼠标滚轮控制时的缩放速度）
+    drag_to_pan: bool = True  # 是否启用“拖拽平移”（鼠标拖拽场景时移动相机）
+    max_num_saved_states: int = 50  # 最大状态保存数量（用于undo/redo，避免内存溢出）
+    default_camera_config: dict = dict()  # 相机默认配置（子类可扩展，如分辨率、视角）
+    default_file_writer_config: dict = dict()  # 文件写入器默认配置（子类可扩展，如输出格式、编码）
+    samples: int = 0  # 相机抗锯齿采样数（samples>0启用抗锯齿，值越高画质越好但渲染越慢）
+    default_frame_orientation = (0, 0)  # 相机帧默认欧拉角（角度制，控制初始视角方向）
 
     def __init__(
         self,
@@ -83,69 +88,95 @@ class Scene(object):
         presenter_mode: bool = False,
         default_wait_time: float = 1.0,
     ):
-        self.skip_animations = skip_animations
-        self.always_update_mobjects = always_update_mobjects
-        self.start_at_animation_number = start_at_animation_number
-        self.end_at_animation_number = end_at_animation_number
-        self.show_animation_progress = show_animation_progress
-        self.leave_progress_bars = leave_progress_bars
-        self.preview_while_skipping = preview_while_skipping
-        self.presenter_mode = presenter_mode
-        self.default_wait_time = default_wait_time
+        """
+        初始化Scene实例，整合配置、相机、窗口、文件写入器，建立场景基础环境。
+        
+        参数说明：
+            window: 关联的可视化窗口（None则不创建窗口，仅用于后台渲染）
+            camera_config: 相机个性化配置（覆盖默认配置，如fps、分辨率）
+            file_writer_config: 文件写入器个性化配置（覆盖默认配置，如输出目录、视频编码）
+            skip_animations: 是否跳过动画（True则直接显示动画最终状态，用于快速预览）
+            always_update_mobjects: 是否强制Mobject持续更新（True则每帧重新计算对象状态，如动态参数）
+            start_at_animation_number: 从指定动画编号开始播放（用于分段渲染，如从第5个动画开始）
+            end_at_animation_number: 播放到指定动画编号停止（用于分段渲染，如到第10个动画停止）
+            show_animation_progress: 是否显示单个动画的进度条（True则每个动画单独显示进度）
+            leave_progress_bars: 动画完成后是否保留进度条（True则进度条不自动清除，便于查看历史）
+            preview_while_skipping: 跳过动画时是否显示最终预览（True则快速显示每段动画的结果）
+            presenter_mode: 是否启用演示者模式（True则增强交互，如暂停时保持画面更新）
+            default_wait_time: 默认等待时间（wait()方法未指定时长时的默认值，单位：秒）
+        """
+        # 1. 初始化场景行为配置
+        self.skip_animations = skip_animations  # 动画跳过开关
+        self.always_update_mobjects = always_update_mobjects  # Mobject强制更新开关
+        self.start_at_animation_number = start_at_animation_number  # 起始动画编号
+        self.end_at_animation_number = end_at_animation_number  # 结束动画编号
+        self.show_animation_progress = show_animation_progress  # 单个动画进度条开关
+        self.leave_progress_bars = leave_progress_bars  # 进度条保留开关
+        self.preview_while_skipping = preview_while_skipping  # 跳过动画预览开关
+        self.presenter_mode = presenter_mode  # 演示者模式开关
+        self.default_wait_time = default_wait_time  # 默认等待时长
 
+        # 2. 合并相机配置（优先级：实例传入 > 子类默认 > 全局默认）
         self.camera_config = merge_dicts_recursively(
-            manim_config.camera,         # Global default
-            self.default_camera_config,  # Updated configuration that subclasses may specify
-            camera_config,               # Updated configuration from instantiation
+            manim_config.camera,         # 全局相机配置（manimlib.config中定义）
+            self.default_camera_config,  # 子类自定义的相机默认配置
+            camera_config,               # 实例化时传入的个性化相机配置
         )
+        # 3. 合并文件写入器配置（优先级同上）
         self.file_writer_config = merge_dicts_recursively(
-            manim_config.file_writer,
-            self.default_file_writer_config,
-            file_writer_config,
+            manim_config.file_writer,          # 全局文件写入器配置
+            self.default_file_writer_config,   # 子类自定义的写入器默认配置
+            file_writer_config,                # 实例化时传入的个性化写入器配置
         )
 
-        self.window = window
+        # 4. 初始化窗口与相机同步
+        self.window = window  # 关联可视化窗口
         if self.window:
-            self.window.init_for_scene(self)
-            # Make sure camera and Pyglet window sync
-            self.camera_config["fps"] = 30
+            self.window.init_for_scene(self)  # 窗口为场景初始化（如绑定事件处理器）
+            self.camera_config["fps"] = 30    # 强制窗口模式下相机帧率为30（匹配大多数显示器）
 
-        # Core state of the scene
+        # 5. 初始化核心组件（相机、帧、文件写入器）
+        # 创建相机（负责渲染场景，关联窗口与采样配置）
         self.camera: Camera = Camera(
             window=self.window,
             samples=self.samples,
-            **self.camera_config
+            **self.camera_config  # 应用合并后的相机配置
         )
-        self.frame: CameraFrame = self.camera.frame
-        self.frame.reorient(*self.default_frame_orientation)
-        self.frame.make_orientation_default()
-
+        self.frame: CameraFrame = self.camera.frame  # 相机帧（控制视野范围、旋转、缩放）
+        self.frame.reorient(*self.default_frame_orientation)  # 应用默认视角方向
+        self.frame.make_orientation_default()  # 将当前视角设为“默认方向”（便于后续重置）
+        
+        # 创建文件写入器（负责将渲染帧保存为图像/视频）
         self.file_writer = SceneFileWriter(self, **self.file_writer_config)
-        self.mobjects: list[Mobject] = [self.camera.frame]
-        self.render_groups: list[Mobject] = []
-        self.id_to_mobject_map: dict[int, Mobject] = dict()
-        self.num_plays: int = 0
-        self.time: float = 0
-        self.skip_time: float = 0
-        self.original_skipping_status: bool = self.skip_animations
-        self.undo_stack = []
-        self.redo_stack = []
 
+        # 6. 初始化场景状态管理
+        self.mobjects: list[Mobject] = [self.camera.frame]  # 场景中所有Mobject列表（默认包含相机帧）
+        self.render_groups: list[Mobject] = []  # 渲染分组列表（用于按组控制渲染顺序/层级）
+        self.id_to_mobject_map: dict[int, Mobject] = dict()  # MobjectID到对象的映射（快速查找对象）
+        self.num_plays: int = 0  # 动画播放次数计数器（用于分段渲染编号）
+        self.time: float = 0  # 场景时间轴（记录从场景开始到当前的总时长，单位：秒）
+        self.skip_time: float = 0  # 跳过的时间累计（用于计算实际播放时长）
+        self.original_skipping_status: bool = self.skip_animations  # 初始动画跳过状态（用于临时切换后恢复）
+        self.undo_stack = []  # 撤销栈（保存场景历史状态，用于undo操作）
+        self.redo_stack = []  # 重做栈（保存撤销的状态，用于redo操作）
+
+        # 7. 处理分段渲染的初始状态
         if self.start_at_animation_number is not None:
-            self.skip_animations = True
+            self.skip_animations = True  # 从指定动画开始时，默认跳过之前的动画
+        # 若文件写入器已显示全局进度条，关闭单个动画进度条（避免重复）
         if self.file_writer.has_progress_display():
             self.show_animation_progress = False
 
-        # Items associated with interaction
-        self.mouse_point = Point()
-        self.mouse_drag_point = Point()
-        self.hold_on_wait = self.presenter_mode
-        self.quit_interaction = False
+        # 8. 初始化交互相关对象
+        self.mouse_point = Point()  # 鼠标当前位置的点对象（用于交互计算，如鼠标拾取）
+        self.mouse_drag_point = Point()  # 鼠标拖拽起始位置的点对象（用于拖拽计算）
+        self.hold_on_wait = self.presenter_mode  # 等待时是否保持交互（演示者模式下启用）
+        self.quit_interaction = False  # 退出交互的标记（用于终止场景循环）
 
-        # Much nicer to work with deterministic scenes
+        # 9. 初始化随机种子（确保场景可复现）
         if self.random_seed is not None:
-            random.seed(self.random_seed)
-            np.random.seed(self.random_seed)
+            random.seed(self.random_seed)  # 初始化Python原生随机数
+            np.random.seed(self.random_seed)  # 初始化NumPy随机数（用于向量/坐标随机）
 
     def __str__(self) -> str:
         return self.__class__.__name__
