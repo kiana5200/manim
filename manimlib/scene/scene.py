@@ -305,101 +305,216 @@ def embed(
 
     # Only these methods should touch the camera
 
-    def get_image(self) -> Image:
-        if self.window is not None:
-            self.camera.use_window_fbo(False)
-            self.camera.capture(*self.render_groups)
-        image = self.camera.get_image()
-        if self.window is not None:
-            self.camera.use_window_fbo(True)
-        return image
+    # 以下方法均属于 **Scene 类**（或其核心子类），是 Manim 动画框架中“场景渲染与生命周期管理”的核心逻辑，
+# 负责图像捕获、窗口显示、帧更新、时间管理、渲染分组等关键功能，支撑动画从生成到输出的全流程。
 
-    def show(self) -> None:
-        self.update_frame(force_draw=True)
-        self.get_image().show()
+def get_image(self) -> Image:
+    """
+    捕获当前场景的图像（从相机缓冲区获取），返回可用于显示或保存的 Image 对象。
+    核心作用是“冻结”当前帧状态，常用于预览单帧、保存截图等场景。
+    
+    逻辑步骤：
+    1. 若存在窗口（交互式渲染），先禁用相机的“窗口帧缓冲区（FBO）”——避免窗口实时渲染干扰图像捕获；
+    2. 让相机捕获所有渲染组（render_groups）的内容，将场景画面写入相机内部缓冲区；
+    3. 从相机缓冲区读取图像数据，生成 Image 对象；
+    4. 若存在窗口，恢复启用窗口 FBO——确保后续窗口渲染正常；
+    5. 返回捕获的 Image 对象。
+    
+    返回值：Image 对象，包含当前场景的像素数据（可调用 .show() 预览，或 .save() 保存）。
+    """
+    if self.window is not None:
+        self.camera.use_window_fbo(False)  # 禁用窗口FBO，切换到“离线捕获”模式
+        self.camera.capture(*self.render_groups)  # 捕获所有渲染组内容到相机缓冲区
+    image = self.camera.get_image()  # 从缓冲区提取图像
+    if self.window is not None:
+        self.camera.use_window_fbo(True)  # 恢复窗口FBO，回归实时渲染
+    return image
 
-    def update_frame(self, dt: float = 0, force_draw: bool = False) -> None:
-        self.increment_time(dt)
-        self.update_mobjects(dt)
-        if self.skip_animations and not force_draw:
-            return
 
-        if self.is_window_closing():
-            raise EndScene()
+def show(self) -> None:
+    """
+    快速预览当前场景的单帧画面（调用 get_image() 并显示），适用于调试时快速查看场景状态。
+    
+    逻辑步骤：
+    1. 强制更新场景帧（update_frame(force_draw=True)）——确保所有动画、Mobject 状态已同步；
+    2. 调用 get_image() 捕获当前帧图像；
+    3. 调用 Image 对象的 .show() 方法（依赖系统图像预览工具）显示截图。
+    
+    注意：该方法仅显示“当前时间点”的静态帧，非动态动画播放。
+    """
+    self.update_frame(force_draw=True)  # 强制绘制最新状态（忽略“跳过动画”标记）
+    self.get_image().show()  # 显示捕获的单帧图像
 
-        if self.window and dt == 0 and not self.window.has_undrawn_event() and not force_draw:
-            # In this case, there's no need for new rendering, but we
-            # shoudl still listen for new events
-            self.window._window.dispatch_events()
-            return
 
-        self.camera.capture(*self.render_groups)
+def update_frame(self, dt: float = 0, force_draw: bool = False) -> None:
+    """
+    场景“帧更新”的核心驱动方法，负责**时间推进、Mobject 状态更新、画面渲染**，是动画播放的“心脏”。
+    每帧动画都会调用一次，控制场景从“上一帧”到“当前帧”的过渡。
+    
+    参数说明：
+        dt : 浮点数，当前帧与上一帧的时间间隔（单位：秒），默认 0（静态帧更新）；
+        force_draw : 布尔值，是否强制绘制画面（即使设置了 skip_animations，也会渲染），默认 False。
+    
+    核心逻辑步骤：
+    1. **时间推进**：调用 increment_time(dt)，更新场景总时间（驱动动画进度）；
+    2. **Mobject 状态更新**：调用 update_mobjects(dt)，让所有 Mobject 按时间差 dt 更新状态（如位置、颜色变化）；
+    3. **跳过渲染判断**：若开启 skip_animations（跳过动画）且未强制绘制，直接返回（不渲染画面，提升效率）；
+    4. **窗口关闭检测**：若窗口正在关闭，抛出 EndScene 异常，终止场景生命周期；
+    5. **冗余渲染判断**：若存在窗口、时间差为 0、无未处理事件且未强制绘制，仅处理窗口事件（不重复渲染，节省资源）；
+    6. **画面渲染**：让相机捕获所有渲染组内容，生成当前帧画面；
+    7. **动画时序控制**：若存在窗口且未跳过动画，计算“虚拟动画时间”与“真实时间”的差值，通过 sleep 同步时序（避免动画播放过快）。
+    
+    异常：当检测到窗口关闭时，抛出 EndScene 异常，用于外层逻辑终止场景。
+    """
+    self.increment_time(dt)  # 1. 推进场景时间
+    self.update_mobjects(dt)  # 2. 更新所有Mobject状态
 
-        if self.window and not self.skip_animations:
-            vt = self.time - self.virtual_animation_start_time
-            rt = time.time() - self.real_animation_start_time
-            time.sleep(max(vt - rt, 0))
+    # 3. 跳过渲染的快捷判断
+    if self.skip_animations and not force_draw:
+        return
 
-    def emit_frame(self) -> None:
-        if not self.skip_animations:
-            self.file_writer.write_frame(self.camera)
+    # 4. 窗口关闭检测
+    if self.is_window_closing():
+        raise EndScene()
 
-    # Related to updating
+    # 5. 避免冗余渲染：仅处理事件，不重绘
+    if self.window and dt == 0 and not self.window.has_undrawn_event() and not force_draw:
+        self.window._window.dispatch_events()  # 处理鼠标、键盘等窗口事件
+        return
 
-    def update_mobjects(self, dt: float) -> None:
-        for mobject in self.mobjects:
-            mobject.update(dt)
+    # 6. 渲染当前帧画面
+    self.camera.capture(*self.render_groups)
 
-    def should_update_mobjects(self) -> bool:
-        return self.always_update_mobjects or any(
-            mob.has_updaters() for mob in self.mobjects
-        )
+    # 7. 同步动画时序（确保动画按预期速度播放）
+    if self.window and not self.skip_animations:
+        vt = self.time - self.virtual_animation_start_time  # 虚拟动画已播放时间
+        rt = time.time() - self.real_animation_start_time    # 真实已流逝时间
+        time.sleep(max(vt - rt, 0))  # 若虚拟时间超前，sleep补全差值
 
-    # Related to time
 
-    def get_time(self) -> float:
-        return self.time
+def emit_frame(self) -> None:
+    """
+    将当前帧写入输出文件（由 file_writer 负责），是“动画导出为视频/图片序列”的关键步骤。
+    仅在“不跳过动画”时执行（避免导出空帧）。
+    
+    逻辑：若未开启 skip_animations，调用文件写入器（file_writer）的 write_frame 方法，
+    将相机缓冲区中的当前帧数据写入目标文件（如 .mp4、.png 序列）。
+    """
+    if not self.skip_animations:
+        self.file_writer.write_frame(self.camera)  # 把当前相机捕获的帧写入文件
 
-    def increment_time(self, dt: float) -> None:
-        self.time += dt
 
-    # Related to internal mobject organization
+# ------------------------------ 与 Mobject 更新相关的辅助方法 ------------------------------
+def update_mobjects(self, dt: float) -> None:
+    """
+    遍历场景中所有 Mobject，调用其 update 方法更新状态（如位置、旋转、颜色等）。
+    dt 为时间差，确保动画按“时间驱动”更新（而非帧驱动），避免不同帧率下动画速度不一致。
+    
+    参数：dt - 帧时间差（秒），用于计算 Mobject 状态随时间的变化量。
+    """
+    for mobject in self.mobjects:
+        mobject.update(dt)  # 调用每个Mobject的update方法，传递时间差
 
-    def get_top_level_mobjects(self) -> list[Mobject]:
-        # Return only those which are not in the family
-        # of another mobject from the scene
-        mobjects = self.get_mobjects()
-        families = [m.get_family() for m in mobjects]
 
-        def is_top_level(mobject):
-            num_families = sum([
-                (mobject in family)
-                for family in families
-            ])
-            return num_families == 1
-        return list(filter(is_top_level, mobjects))
+def should_update_mobjects(self) -> bool:
+    """
+    判断当前场景是否需要更新 Mobject 状态，用于优化性能（避免无必要的更新）。
+    
+    返回值：布尔值，满足以下任一条件则返回 True（需要更新）：
+        1. 场景开启 always_update_mobjects（强制始终更新）；
+        2. 至少有一个 Mobject 拥有“更新器（updater）”（即需要动态更新状态）。
+    """
+    return self.always_update_mobjects or any(
+        mob.has_updaters() for mob in self.mobjects
+    )
 
-    def get_mobject_family_members(self) -> list[Mobject]:
-        return extract_mobject_family_members(self.mobjects)
 
-    def assemble_render_groups(self):
-        """
-        Rendering can be more efficient when mobjects of the
-        same type are grouped together, so this function creates
-        Groups of all clusters of adjacent Mobjects in the scene
-        """
-        batches = batch_by_property(
-            self.mobjects,
-            lambda m: str(type(m)) + str(m.get_shader_wrapper(self.camera.ctx).get_id()) + str(m.z_index)
-        )
+# ------------------------------ 与时间管理相关的辅助方法 ------------------------------
+def get_time(self) -> float:
+    """获取当前场景的总时间（从场景启动开始累计），用于动画进度计算（如 alpha 值推导）。"""
+    return self.time
 
-        for group in self.render_groups:
-            group.clear()
-        self.render_groups = [
-            batch[0].get_group_class()(*batch)
-            for batch, key in batches
-        ]
 
+def increment_time(self, dt: float) -> None:
+    """
+    推进场景总时间，是“时间驱动动画”的核心——所有依赖时间的动画（如 LinearAnimation）
+    均通过该方法的时间累计来计算当前帧的状态。
+    
+    参数：dt - 待累加的时间差（秒）。
+    """
+    self.time += dt
+
+
+# ------------------------------ 与 Mobject 组织及渲染优化相关的方法 ------------------------------
+def get_top_level_mobjects(self) -> list[Mobject]:
+    """
+    获取场景中的“顶级 Mobject”——即不被其他 Mobject 包含的独立对象（排除子对象），
+    用于避免重复渲染（子对象会随父对象一起渲染，无需单独处理）。
+    
+    逻辑步骤：
+    1. 获取场景中所有 Mobject；
+    2. 对每个 Mobject，获取其“家族树”（get_family()，包含自身及所有子对象）；
+    3. 判断一个 Mobject 是否为“顶级”：仅在一个家族树中出现（即不是任何其他 Mobject 的子对象）；
+    4. 返回所有顶级 Mobject 的列表。
+    
+    返回值：list[Mobject]，场景中所有独立的顶级 Mobject。
+    """
+    mobjects = self.get_mobjects()  # 获取场景所有Mobject
+    families = [m.get_family() for m in mobjects]  # 每个Mobject的家族树
+
+    def is_top_level(mobject):
+        # 统计该Mobject在所有家族树中出现的次数：仅出现1次 → 顶级（仅自身家族）
+        num_families = sum([
+            (mobject in family)
+            for family in families
+        ])
+        return num_families == 1
+
+    return list(filter(is_top_level, mobjects))  # 过滤出顶级Mobject
+
+
+def get_mobject_family_members(self) -> list[Mobject]:
+    """
+    获取场景中所有 Mobject 的“完整家族成员”（包含所有顶级对象及其所有子对象），
+    用于需要遍历“所有可见元素”的场景（如碰撞检测、全局状态重置）。
+    
+    依赖：调用 extract_mobject_family_members 工具函数，扁平化所有 Mobject 的家族树。
+    返回值：list[Mobject]，所有 Mobject 及其子对象的扁平列表（无重复）。
+    """
+    return extract_mobject_family_members(self.mobjects)
+
+
+def assemble_render_groups(self):
+    """
+    优化渲染性能的核心方法：将场景中的 Mobject 按“渲染属性”分组，
+    相同属性的 Mobject 批量渲染（减少 GPU 绘制调用次数，提升效率）。
+    
+    核心逻辑：
+    1. **按渲染属性分组**：调用 batch_by_property 工具函数，将 Mobject 按以下属性聚合：
+        - 类型（str(type(m))）：确保相同类型的 Mobject 用同一 shader（着色器）；
+        - 着色器包装器 ID（m.get_shader_wrapper(self.camera.ctx).get_id()）：确保相同 shader 配置的对象同组；
+        - z_index（层级）：确保相同层级的对象同组（避免层级混乱）；
+    2. **清空旧渲染组**：将之前的 render_groups 清空，避免残留；
+    3. **创建新渲染组**：对每个分组，用该组第一个 Mobject 的“组类”（get_group_class()）创建 Group，
+       确保分组后的对象仍保持原有的渲染行为（如 VMobjectGroup 用于矢量对象）。
+    
+    作用：减少 GPU 的“绘制调用（draw call）”次数——GPU 批量处理同属性对象比逐个处理高效得多，
+    尤其在场景中存在大量小 Mobject 时（如粒子效果），性能提升显著。
+    """
+    # 1. 按“类型+shader ID+z_index”分组，确保同属性对象聚合
+    batches = batch_by_property(
+        self.mobjects,
+        lambda m: str(type(m)) + str(m.get_shader_wrapper(self.camera.ctx).get_id()) + str(m.z_index)
+    )
+
+    # 2. 清空旧渲染组
+    for group in self.render_groups:
+        group.clear()
+    # 3. 为每个分组创建对应类型的渲染组
+    self.render_groups = [
+        batch[0].get_group_class()(*batch)  # 用分组第一个对象的组类创建Group
+        for batch, key in batches
+    ]
     @staticmethod
     def affects_mobject_list(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
