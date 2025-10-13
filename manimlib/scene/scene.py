@@ -515,92 +515,240 @@ def assemble_render_groups(self):
         batch[0].get_group_class()(*batch)  # 用分组第一个对象的组类创建Group
         for batch, key in batches
     ]
-    @staticmethod
-    def affects_mobject_list(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            func(self, *args, **kwargs)
-            self.assemble_render_groups()
-            return self
-        return wrapper
+    # 以下方法均属于 **Scene 类**，核心围绕“场景中 Mobject 的组织与管理”展开，
+# 包括添加、删除、替换、层级调整等操作，同时通过装饰器确保操作后自动优化渲染分组，
+# 是构建动画场景（如添加图形、切换元素、调整显示层级）的基础接口。
 
-    @affects_mobject_list
-    def add(self, *new_mobjects: Mobject):
-        """
-        Mobjects will be displayed, from background to
-        foreground in the order with which they are added.
-        """
-        self.remove(*new_mobjects)
-        self.mobjects += new_mobjects
 
-        # Reorder based on z_index
-        id_to_scene_order = {id(m): idx for idx, m in enumerate(self.mobjects)}
-        self.mobjects.sort(key=lambda m: (m.z_index, id_to_scene_order[id(m)]))
+@staticmethod
+def affects_mobject_list(func: Callable[..., T]) -> Callable[..., T]:
+    """
+    静态装饰器：标记“修改 Mobject 列表”的方法，确保方法执行后自动重新构建渲染分组（assemble_render_groups），
+    维持渲染性能优化（避免因 Mobject 列表变化导致分组失效）。
+    
+    工作逻辑：
+    1. 用 @wraps(func) 保留原方法的元信息（如函数名、文档字符串）；
+    2. 定义包装函数 wrapper：先执行原方法，再调用场景的 assemble_render_groups() 重建渲染组；
+    3. 返回包装后的函数，确保修改 Mobject 列表后渲染分组同步更新。
+    
+    参数：func - 待装饰的方法（如 add、remove、replace 等修改 mobjects 列表的方法）
+    返回：包装后的方法
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        func(self, *args, **kwargs)  # 执行原方法（修改Mobject列表）
+        self.assemble_render_groups()  # 重建渲染分组，优化后续渲染
+        return self  # 返回场景对象，支持链式调用（如 scene.add(circle).add(square)）
+    return wrapper
 
-        self.id_to_mobject_map.update({
-            id(sm): sm
-            for m in new_mobjects
-            for sm in m.get_family()
-        })
-        return self
 
-    def add_mobjects_among(self, values: Iterable):
-        """
-        This is meant mostly for quick prototyping,
-        e.g. to add all mobjects defined up to a point,
-        call self.add_mobjects_among(locals().values())
-        """
-        self.add(*filter(
-            lambda m: isinstance(m, Mobject),
-            values
-        ))
-        return self
+@affects_mobject_list
+def add(self, *new_mobjects: Mobject):
+    """
+    向场景中添加一个或多个 Mobject（图形对象），添加顺序决定默认渲染层级（后添加的默认在上方，可通过 z_index 调整）。
+    
+    核心逻辑：
+    1. 先移除待添加的 Mobject（避免重复添加，防止同一对象在场景中多次出现）；
+    2. 将新 Mobject 追加到场景的 mobjects 列表；
+    3. 按“z_index（层级）+ 添加顺序”重新排序 mobjects：
+        - 优先按 z_index 升序排列（z_index 越大，渲染层级越高，显示在越上层）；
+        - z_index 相同时，按原始添加顺序排列（后添加的在同层级上方）；
+    4. 更新 id_to_mobject_map（Mobject ID 到对象的映射），包含新 Mobject 及其所有子对象，便于快速查找；
+    5. 装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    参数：*new_mobjects - 可变参数，一个或多个待添加的 Mobject（如 Circle()、Text()）
+    返回：当前 Scene 对象，支持链式调用（如 scene.add(circle).set_background_color(WHITE)）
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> scene.add(circle, square)  # 先添加圆形（下层），再添加正方形（上层）
+    """
+    self.remove(*new_mobjects)  # 避免重复添加
+    self.mobjects += new_mobjects  # 追加新Mobject到列表
 
-    @affects_mobject_list
-    def replace(self, mobject: Mobject, *replacements: Mobject):
-        if mobject in self.mobjects:
-            index = self.mobjects.index(mobject)
-            self.mobjects = [
-                *self.mobjects[:index],
-                *replacements,
-                *self.mobjects[index + 1:]
-            ]
-        return self
+    # 按 z_index 和添加顺序排序：确保层级正确
+    id_to_scene_order = {id(m): idx for idx, m in enumerate(self.mobjects)}  # 记录原始添加顺序
+    self.mobjects.sort(key=lambda m: (m.z_index, id_to_scene_order[id(m)]))  # 排序规则：z_index优先，再按添加顺序
 
-    @affects_mobject_list
-    def remove(self, *mobjects_to_remove: Mobject):
-        """
-        Removes anything in mobjects from scenes mobject list, but in the event that one
-        of the items to be removed is a member of the family of an item in mobject_list,
-        the other family members are added back into the list.
+    # 更新ID映射：包含新Mobject的所有家族成员（自身+子对象）
+    self.id_to_mobject_map.update({
+        id(sm): sm
+        for m in new_mobjects
+        for sm in m.get_family()  # get_family() 获取对象及其所有子对象
+    })
+    return self
 
-        For example, if the scene includes Group(m1, m2, m3), and we call scene.remove(m1),
-        the desired behavior is for the scene to then include m2 and m3 (ungrouped).
-        """
-        to_remove = set(extract_mobject_family_members(mobjects_to_remove))
-        new_mobjects, _ = recursive_mobject_remove(self.mobjects, to_remove)
-        self.mobjects = new_mobjects
 
-    @affects_mobject_list
-    def remove_all_except(self, *mobjects_to_keep : Mobject):
-        self.clear()
-        self.add(*mobjects_to_keep)
+def add_mobjects_among(self, values: Iterable):
+    """
+    从可迭代对象（如字典 values、列表）中筛选出所有 Mobject 并添加到场景，
+    适用于快速原型开发（如一次性添加当前作用域中定义的所有图形对象）。
+    
+    逻辑：
+    1. 用 filter 过滤 values 中的元素，仅保留 isinstance(m, Mobject) 为 True 的对象；
+    2. 调用 add() 方法将筛选出的 Mobject 批量添加到场景。
+    
+    参数：values - 可迭代对象（如 locals().values()，包含当前作用域所有变量）
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> text = Text("Hello")
+        >>> scene.add_mobjects_among(locals().values())  # 自动添加 circle、square、text
+    """
+    self.add(*filter(
+        lambda m: isinstance(m, Mobject),  # 筛选Mobject类型的元素
+        values
+    ))
+    return self
 
-    def bring_to_front(self, *mobjects: Mobject):
-        self.add(*mobjects)
-        return self
 
-    @affects_mobject_list
-    def bring_to_back(self, *mobjects: Mobject):
-        self.remove(*mobjects)
-        self.mobjects = list(mobjects) + self.mobjects
-        return self
+@affects_mobject_list
+def replace(self, mobject: Mobject, *replacements: Mobject):
+    """
+    用一个或多个新 Mobject 替换场景中的指定 Mobject，保持原 Mobject 的位置（在 mobjects 列表中的索引）。
+    
+    逻辑：
+    1. 检查待替换的 mobject 是否在场景的 mobjects 列表中；
+    2. 若存在，找到其在列表中的索引，用 replacements 替换该位置的 mobject；
+    3. 装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    参数：
+        mobject - 待替换的 Mobject（必须已在场景中）；
+        *replacements - 用于替换的一个或多个新 Mobject。
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> old_circle = Circle(color=RED)
+        >>> scene.add(old_circle)
+        >>> new_square = Square(color=BLUE)
+        >>> scene.replace(old_circle, new_square)  # 用蓝色正方形替换红色圆形
+    """
+    if mobject in self.mobjects:
+        index = self.mobjects.index(mobject)  # 找到待替换对象的索引
+        # 替换列表中的元素：保留索引前的元素，插入新对象，保留索引后的元素
+        self.mobjects = [
+            *self.mobjects[:index],
+            *replacements,
+            *self.mobjects[index + 1:]
+        ]
+    return self
 
-    @affects_mobject_list
-    def clear(self):
-        self.mobjects = []
-        return self
 
+@affects_mobject_list
+def remove(self, *mobjects_to_remove: Mobject):
+    """
+    从场景中移除一个或多个 Mobject，若移除的是“组（Group）中的子对象”，则保留组内其他子对象（避免误删整个组）。
+    
+    核心逻辑（解决“组内子对象移除”的特殊场景）：
+    1. 先提取所有待移除 Mobject 的“家族成员”（包含子对象），存入集合 to_remove；
+    2. 调用 recursive_mobject_remove 工具函数：从 mobjects 列表中移除 to_remove 中的对象，
+       同时保留“被移除对象所在组的其他子对象”（如移除 Group(m1,m2) 中的 m1，会保留 m2）；
+    3. 更新 mobjects 列表为移除后的结果；
+    4. 装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    参数：*mobjects_to_remove - 待移除的一个或多个 Mobject
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> group = Group(Circle(), Square(), Text("Hi"))
+        >>> scene.add(group)
+        >>> scene.remove(group[0])  # 仅移除组中的圆形，保留正方形和文本
+    """
+    # 提取待移除对象的所有家族成员（避免遗漏子对象）
+    to_remove = set(extract_mobject_family_members(mobjects_to_remove))
+    # 递归移除：保留组内其他子对象
+    new_mobjects, _ = recursive_mobject_remove(self.mobjects, to_remove)
+    self.mobjects = new_mobjects  # 更新Mobject列表
+
+
+@affects_mobject_list
+def remove_all_except(self, *mobjects_to_keep: Mobject):
+    """
+    移除场景中除指定 Mobject 外的所有对象（先清空，再添加需保留的对象），
+    适用于场景切换（如从“步骤1”切换到“步骤2”，仅保留必要元素）。
+    
+    逻辑：
+    1. 调用 clear() 清空场景所有 Mobject；
+    2. 调用 add() 添加需保留的 mobjects_to_keep；
+    3. 装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    参数：*mobjects_to_keep - 需保留的一个或多个 Mobject
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> text = Text("Keep Me")
+        >>> scene.add(circle, square, text)
+        >>> scene.remove_all_except(text)  # 仅保留文本，移除圆形和正方形
+    """
+    self.clear()  # 清空所有Mobject
+    self.add(*mobjects_to_keep)  # 添加需保留的对象
+
+
+def bring_to_front(self, *mobjects: Mobject):
+    """
+    将指定 Mobject 移到渲染层级的最上层（显示在所有其他对象上方）。
+    
+    逻辑：利用 add() 方法的“后添加对象默认在上层”特性——先移除 Mobject，再重新添加，
+    使其成为 mobjects 列表中排序靠后的元素（按 z_index+添加顺序排序后层级最高）。
+    
+    参数：*mobjects - 需移到顶层的一个或多个 Mobject
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> scene.add(circle, square)  # 正方形默认在顶层
+        >>> scene.bring_to_front(circle)  # 圆形移到顶层，覆盖正方形
+    """
+    self.add(*mobjects)  # 移除后重新添加，触发排序到上层
+    return self
+
+
+@affects_mobject_list
+def bring_to_back(self, *mobjects: Mobject):
+    """
+    将指定 Mobject 移到渲染层级的最下层（显示在所有其他对象下方）。
+    
+    逻辑：
+    1. 先从场景中移除指定 Mobject；
+    2. 将其插入到 mobjects 列表的最开头（排序后层级最低）；
+    3. 装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    参数：*mobjects - 需移到底层的一个或多个 Mobject
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> scene.add(circle, square)  # 圆形在底层，正方形在顶层
+        >>> scene.bring_to_back(square)  # 正方形移到底层，圆形在顶层
+    """
+    self.remove(*mobjects)  # 先移除
+    self.mobjects = list(mobjects) + self.mobjects  # 插入到列表开头
+    return self
+
+
+@affects_mobject_list
+def clear(self):
+    """
+    清空场景中所有 Mobject（重置 mobjects 列表为空），
+    适用于完全重置场景（如切换到全新的动画片段）。
+    
+    逻辑：将 mobjects 列表设为空列表，装饰器自动触发 assemble_render_groups() 重建渲染分组。
+    
+    返回：当前 Scene 对象，支持链式调用
+    
+    示例：
+        >>> scene.add(Circle(), Square(), Text("Hi"))
+        >>> scene.clear()  # 场景中无任何对象
+    """
+    self.mobjects = []
+    return self
     def get_mobjects(self) -> list[Mobject]:
         return list(self.mobjects)
 
