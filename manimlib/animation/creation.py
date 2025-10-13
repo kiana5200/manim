@@ -1,24 +1,39 @@
+# 从__future__导入annotations，用于支持 postponed的类型注解评估
 from __future__ import annotations
 
+# 从abc模块导入ABC（抽象基类）和abstractmethod（抽象方法装饰器）
 from abc import ABC, abstractmethod
 
+# 导入numpy库并简写为np，用于数值计算
 import numpy as np
 
+# 从manimlib的animation模块导入Animation类，基础动画类
 from manimlib.animation.animation import Animation
+# 从manimlib的mobject.svg模块导入StringMobject类，用于处理字符串的SVG对象
 from manimlib.mobject.svg.string_mobject import StringMobject
+# 从manimlib的mobject.types模块导入VMobject类，矢量图形对象基类
 from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从manimlib的utils.bezier模块导入integer_interpolate函数，用于整数插值
 from manimlib.utils.bezier import integer_interpolate
-from manimlib.utils.rate_functions import linear
-from manimlib.utils.rate_functions import double_smooth
-from manimlib.utils.rate_functions import smooth
+# 从manimlib的utils.rate_functions模块导入各种速率函数
+from manimlib.utils.rate_functions import linear  # 线性速率函数
+from manimlib.utils.rate_functions import double_smooth  # 双平滑速率函数
+from manimlib.utils.rate_functions import smooth  # 平滑速率函数
+# 从manimlib的utils.simple_functions模块导入clip函数，用于值的裁剪
 from manimlib.utils.simple_functions import clip
 
+# 从typing模块导入TYPE_CHECKING常量，用于条件类型检查
 from typing import TYPE_CHECKING
 
+# 仅在类型检查时执行以下代码，不影响运行时
 if TYPE_CHECKING:
+    # 从typing模块导入Callable类型，用于注解可调用对象
     from typing import Callable
+    # 从manimlib的mobject模块导入Mobject类，所有可移动对象的基类
     from manimlib.mobject.mobject import Mobject
+    # 从manimlib的scene模块导入Scene类，场景类
     from manimlib.scene.scene import Scene
+    # 从manimlib的typing模块导入ManimColor类型，用于颜色注解
     from manimlib.typing import ManimColor
 
 
