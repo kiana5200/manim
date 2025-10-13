@@ -749,94 +749,206 @@ def clear(self):
     """
     self.mobjects = []
     return self
-    def get_mobjects(self) -> list[Mobject]:
-        return list(self.mobjects)
+# 以下方法继续补充 Scene 类的核心功能，涵盖 Mobject 检索、坐标点交互、分组管理、动画进度控制等，
+# 是场景与对象交互、动画流程管理的关键接口。
 
-    def get_mobject_copies(self) -> list[Mobject]:
-        return [m.copy() for m in self.mobjects]
 
-    def point_to_mobject(
-        self,
-        point: np.ndarray,
-        search_set: Iterable[Mobject] | None = None,
-        buff: float = 0
-    ) -> Mobject | None:
-        """
-        E.g. if clicking on the scene, this returns the top layer mobject
-        under a given point
-        """
-        if search_set is None:
-            search_set = self.mobjects
-        for mobject in reversed(search_set):
-            if mobject.is_point_touching(point, buff=buff):
-                return mobject
-        return None
+def get_mobjects(self) -> list[Mobject]:
+    """
+    获取场景中所有 Mobject 的列表（返回副本，避免外部直接修改内部状态）。
+    
+    返回值：list[Mobject]，场景中当前所有 Mobject 的浅拷贝列表（修改列表本身不影响场景，
+    但修改列表中的 Mobject 会影响场景中的对象）。
+    """
+    return list(self.mobjects)  # 返回副本，防止外部直接操作内部列表
 
-    def get_group(self, *mobjects):
-        if all(isinstance(m, VMobject) for m in mobjects):
-            return VGroup(*mobjects)
-        else:
-            return Group(*mobjects)
 
-    def id_to_mobject(self, id_value):
-        return self.id_to_mobject_map[id_value]
+def get_mobject_copies(self) -> list[Mobject]:
+    """
+    获取场景中所有 Mobject 的“深拷贝”列表（独立于原对象，修改拷贝不影响场景中的原始对象），
+    适用于需要临时操作对象副本的场景（如预览修改效果、备份状态）。
+    
+    返回值：list[Mobject]，每个元素都是场景中对应 Mobject 的 copy() 结果。
+    """
+    return [m.copy() for m in self.mobjects]  # 对每个Mobject调用copy()生成独立副本
 
-    def ids_to_group(self, *id_values):
-        return self.get_group(*filter(
-            lambda x: x is not None,
-            map(self.id_to_mobject, id_values)
-        ))
 
-    def i2g(self, *id_values):
-        return self.ids_to_group(*id_values)
+def point_to_mobject(
+    self,
+    point: np.ndarray,
+    search_set: Iterable[Mobject] | None = None,
+    buff: float = 0
+) -> Mobject | None:
+    """
+    查找“包含指定坐标点”的顶层 Mobject（从上层到下层检查，返回第一个命中的对象），
+    常用于交互场景（如鼠标点击检测：确定点击位置对应的图形对象）。
+    
+    参数说明：
+        point : 三维坐标点（np.ndarray），待检测的位置；
+        search_set : 可选，待搜索的 Mobject 集合，默认搜索场景中所有 Mobject；
+        buff : 缓冲距离，默认0，扩大检测范围（buff>0 时，点在对象边缘外 buff 范围内也算命中）。
+    
+    逻辑：
+    1. 若未指定 search_set，默认使用场景的 mobjects 列表；
+    2. 按“逆序”遍历集合（从最后添加的对象开始，即顶层对象优先）；
+    3. 对每个 Mobject，调用 is_point_touching(point, buff) 判断点是否在对象上（含缓冲）；
+    4. 返回第一个命中的 Mobject，未命中则返回 None。
+    
+    返回值：Mobject 或 None，包含该点的顶层对象（或 None）。
+    """
+    if search_set is None:
+        search_set = self.mobjects  # 默认搜索所有场景对象
+    # 逆序遍历（顶层对象优先），返回第一个包含该点的Mobject
+    for mobject in reversed(search_set):
+        if mobject.is_point_touching(point, buff=buff):
+            return mobject
+    return None
 
-    def i2m(self, id_value):
-        return self.id_to_mobject(id_value)
 
-    # Related to skipping
+def get_group(self, *mobjects):
+    """
+    根据输入的 Mobject 类型，自动创建对应的“组对象”（VGroup 或 Group）：
+    - 若所有对象都是 VMobject（矢量图形），返回 VGroup（优化矢量渲染）；
+    - 否则返回通用 Group（适用于混合类型对象）。
+    
+    作用：简化分组操作，自动选择最优的组类型，提升渲染效率。
+    
+    参数：*mobjects - 待分组的一个或多个 Mobject
+    返回值：VGroup 或 Group，包含所有输入 Mobject 的组对象。
+    """
+    # 检查所有对象是否都是VMobject（矢量图形基类）
+    if all(isinstance(m, VMobject) for m in mobjects):
+        return VGroup(*mobjects)  # 矢量对象用VGroup优化渲染
+    else:
+        return Group(*mobjects)   # 混合类型用通用Group
 
-    def update_skipping_status(self) -> None:
-        if self.start_at_animation_number is not None:
-            if self.num_plays == self.start_at_animation_number:
-                self.skip_time = self.time
-                if not self.original_skipping_status:
-                    self.stop_skipping()
-        if self.end_at_animation_number is not None:
-            if self.num_plays >= self.end_at_animation_number:
-                raise EndScene()
 
-    def stop_skipping(self) -> None:
-        self.virtual_animation_start_time = self.time
-        self.real_animation_start_time = time.time()
-        self.skip_animations = False
+def id_to_mobject(self, id_value):
+    """
+    通过对象的 ID（内存地址标识）查找对应的 Mobject，依赖场景维护的 id_to_mobject_map。
+    
+    参数：id_value - Mobject 的 ID（可通过 id(mobject) 获取）
+    返回值：Mobject，与该 ID 关联的对象（若不存在会抛出 KeyError）。
+    """
+    return self.id_to_mobject_map[id_value]  # 从映射表中直接查找
 
-    # Methods associated with running animations
 
-    def get_time_progression(
-        self,
-        run_time: float,
-        n_iterations: int | None = None,
-        desc: str = "",
-        override_skip_animations: bool = False
-    ) -> list[float] | np.ndarray | ProgressDisplay:
-        if self.skip_animations and not override_skip_animations:
-            return [run_time]
+def ids_to_group(self, *id_values):
+    """
+    通过多个对象 ID 创建对应的组（自动过滤无效 ID），适用于通过 ID 批量恢复对象并分组。
+    
+    逻辑：
+    1. 用 map(self.id_to_mobject, id_values) 将每个 ID 转换为对应的 Mobject；
+    2. 用 filter 过滤掉 None（无效 ID 对应的结果）；
+    3. 调用 get_group() 创建组对象。
+    
+    参数：*id_values - 一个或多个 Mobject 的 ID
+    返回值：VGroup 或 Group，包含所有有效 ID 对应 Mobject 的组。
+    """
+    return self.get_group(*filter(
+        lambda x: x is not None,  # 过滤无效对象
+        map(self.id_to_mobject, id_values)  # ID转对象
+    ))
 
-        times = np.arange(0, run_time, 1 / self.camera.fps) + 1 / self.camera.fps
 
-        self.file_writer.set_progress_display_description(sub_desc=desc)
+def i2g(self, *id_values):
+    """ids_to_group 的简写，快速通过 ID 创建组对象（提升开发效率）。"""
+    return self.ids_to_group(*id_values)
 
-        if self.show_animation_progress:
-            return ProgressDisplay(
-                times,
-                total=n_iterations,
-                leave=self.leave_progress_bars,
-                ascii=True if platform.system() == 'Windows' else None,
-                desc=desc,
-                bar_format="{l_bar} {n_fmt:3}/{total_fmt:3} {rate_fmt}{postfix}",
-            )
-        else:
-            return times
+
+def i2m(self, id_value):
+    """id_to_mobject 的简写，快速通过 ID 查找对象（提升开发效率）。"""
+    return self.id_to_mobject(id_value)
+
+
+# ------------------------------ 与动画跳过（Skipping）相关的方法 ------------------------------
+def update_skipping_status(self) -> None:
+    """
+    更新动画跳过状态：根据 start_at_animation_number 和 end_at_animation_number 控制动画播放范围，
+    用于从指定动画编号开始播放，或在指定编号结束播放（常用于调试特定片段）。
+    
+    逻辑：
+    1. 若设置了 start_at_animation_number（起始动画编号）：
+        - 当当前播放次数（num_plays）达到该编号时，记录当前时间为 skip_time，
+          并在原本处于跳过状态时调用 stop_skipping() 开始播放；
+    2. 若设置了 end_at_animation_number（结束动画编号）：
+        - 当当前播放次数 >= 该编号时，抛出 EndScene 异常终止场景。
+    """
+    if self.start_at_animation_number is not None:
+        if self.num_plays == self.start_at_animation_number:
+            self.skip_time = self.time  # 记录跳过的时间点
+            if not self.original_skipping_status:
+                self.stop_skipping()  # 开始播放动画
+    if self.end_at_animation_number is not None:
+        if self.num_plays >= self.end_at_animation_number:
+            raise EndScene()  # 终止场景
+
+
+def stop_skipping(self) -> None:
+    """
+    停止“跳过动画”模式：重置动画时间基准，开始正常播放动画。
+    
+    逻辑：
+    1. 将虚拟动画开始时间（virtual_animation_start_time）设为当前场景时间；
+    2. 将真实动画开始时间（real_animation_start_time）设为当前系统时间；
+    3. 关闭 skip_animations 标记（开始渲染动画帧）。
+    """
+    self.virtual_animation_start_time = self.time  # 虚拟时间基准
+    self.real_animation_start_time = time.time()   # 真实时间基准
+    self.skip_animations = False  # 关闭跳过模式
+
+
+# ------------------------------ 与动画进度管理相关的方法 ------------------------------
+def get_time_progression(
+    self,
+    run_time: float,
+    n_iterations: int | None = None,
+    desc: str = "",
+    override_skip_animations: bool = False
+) -> list[float] | np.ndarray | ProgressDisplay:
+    """
+    生成动画播放的“时间进度序列”（每帧对应的时间点），或返回进度条显示对象，
+    用于控制动画在每帧的状态更新。
+    
+    参数说明：
+        run_time : 动画总时长（秒）；
+        n_iterations : 可选，总迭代次数（用于进度条显示）；
+        desc : 进度条描述文本；
+        override_skip_animations : 布尔值，是否强制生成完整时间序列（忽略 skip_animations），默认 False。
+    
+    逻辑：
+    1. 若处于跳过动画模式且未强制覆盖，返回 [run_time]（仅处理最后一帧状态）；
+    2. 否则，生成从 0 到 run_time 的时间序列，间隔为 1/帧率（确保每帧都被覆盖）；
+    3. 若开启动画进度显示（show_animation_progress），返回 ProgressDisplay 对象（用于终端进度条）；
+    4. 否则，返回时间序列数组（供动画帧迭代使用）。
+    
+    返回值：
+        - 若跳过动画：[run_time]（列表）；
+        - 若显示进度：ProgressDisplay 对象；
+        - 否则：np.ndarray（时间点数组）。
+    """
+    # 跳过动画模式：仅返回最后一帧的时间点
+    if self.skip_animations and not override_skip_animations:
+        return [run_time]
+
+    # 生成完整时间序列：从1/帧率开始，到run_time，间隔1/帧率（确保覆盖每帧）
+    times = np.arange(0, run_time, 1 / self.camera.fps) + 1 / self.camera.fps
+
+    # 设置文件写入器的进度描述
+    self.file_writer.set_progress_display_description(sub_desc=desc)
+
+    # 显示进度条：返回ProgressDisplay对象
+    if self.show_animation_progress:
+        return ProgressDisplay(
+            times,
+            total=n_iterations,
+            leave=self.leave_progress_bars,  # 是否保留进度条
+            ascii=True if platform.system() == 'Windows' else None,  # Windows用ASCII进度条
+            desc=desc,  # 描述文本
+            bar_format="{l_bar} {n_fmt:3}/{total_fmt:3} {rate_fmt}{postfix}",  # 进度条格式
+        )
+    else:
+        return times  # 返回时间序列数组
 
     def get_run_time(self, animations: Iterable[Animation]) -> float:
         return np.max([animation.get_run_time() for animation in animations])
