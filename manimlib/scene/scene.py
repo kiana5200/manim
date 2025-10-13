@@ -950,108 +950,260 @@ def get_time_progression(
     else:
         return times  # 返回时间序列数组
 
-    def get_run_time(self, animations: Iterable[Animation]) -> float:
-        return np.max([animation.get_run_time() for animation in animations])
+# 以下方法是 **Scene 类** 中“动画播放核心流程”的实现，涵盖动画时长计算、进度管理、播放前后准备与收尾，
+# 以及最核心的 `play()` 方法（动画播放入口），是 Manim 动画从定义到执行的关键链路。
 
-    def get_animation_time_progression(
-        self,
-        animations: Iterable[Animation]
-    ) -> list[float] | np.ndarray | ProgressDisplay:
-        animations = list(animations)
-        run_time = self.get_run_time(animations)
-        description = f"{self.num_plays} {animations[0]}"
-        if len(animations) > 1:
-            description += ", etc."
-        time_progression = self.get_time_progression(run_time, desc=description)
-        return time_progression
 
-    def get_wait_time_progression(
-        self,
-        duration: float,
-        stop_condition: Callable[[], bool] | None = None
-    ) -> list[float] | np.ndarray | ProgressDisplay:
-        kw = {"desc": f"{self.num_plays} Waiting"}
-        if stop_condition is not None:
-            kw["n_iterations"] = -1  # So it doesn't show % progress
-            kw["override_skip_animations"] = True
-        return self.get_time_progression(duration, **kw)
+def get_run_time(self, animations: Iterable[Animation]) -> float:
+    """
+    计算一组动画的“总播放时长”——取所有动画中最长的单动画时长（确保所有动画都能播放完成）。
+    
+    逻辑：遍历所有动画，调用每个动画的 `get_run_time()` 方法获取其时长，返回最大值。
+    （若多个动画并行播放，总时长由最长的动画决定，避免短动画提前结束）
+    
+    参数：animations - 可迭代对象，包含一个或多个 Animation 对象（如 Create、MoveAlongPath）
+    返回值：float，所有动画的最大时长（秒）。
+    """
+    return np.max([animation.get_run_time() for animation in animations])
 
-    def pre_play(self):
-        if self.presenter_mode and self.num_plays == 0:
-            self.hold_loop()
 
-        self.update_skipping_status()
+def get_animation_time_progression(
+    self,
+    animations: Iterable[Animation]
+) -> list[float] | np.ndarray | ProgressDisplay:
+    """
+    为一组动画生成“时间进度序列”——即动画播放过程中每帧对应的时间点，或返回进度条对象。
+    
+    逻辑步骤：
+    1. 将动画转换为列表，计算总播放时长（调用 `get_run_time()`）；
+    2. 生成进度描述文本（包含当前播放次数和第一个动画名称，多动画时加“etc.”）；
+    3. 调用 `get_time_progression()` 生成时间序列或进度条（复用通用时间进度逻辑）。
+    
+    参数：animations - 可迭代对象，包含一个或多个 Animation 对象
+    返回值：与 `get_time_progression()` 一致（时间序列列表/数组 或 ProgressDisplay 进度条）。
+    """
+    animations = list(animations)
+    run_time = self.get_run_time(animations)  # 计算总时长
+    # 生成进度描述（如“1 Create(Circle)”或“2 MoveAlongPath, etc.”）
+    description = f"{self.num_plays} {animations[0]}"
+    if len(animations) > 1:
+        description += ", etc."
+    # 生成时间进度（复用通用方法）
+    time_progression = self.get_time_progression(run_time, desc=description)
+    return time_progression
 
-        if not self.skip_animations:
-            self.file_writer.begin_animation()
 
-        if self.window:
-            self.virtual_animation_start_time = self.time
-            self.real_animation_start_time = time.time()
+def get_wait_time_progression(
+    self,
+    duration: float,
+    stop_condition: Callable[[], bool] | None = None
+) -> list[float] | np.ndarray | ProgressDisplay:
+    """
+    为“等待场景”（如 `self.wait(duration)`）生成时间进度序列，支持自定义停止条件。
+    
+    逻辑：
+    1. 基础参数设置：进度描述为“N Waiting”（N 为当前播放次数）；
+    2. 若有自定义停止条件（如鼠标点击停止）：
+        - 设置 `n_iterations=-1`（不显示百分比进度，因时长不确定）；
+        - 强制 `override_skip_animations=True`（即使跳过动画也需等待停止条件）；
+    3. 调用 `get_time_progression()` 生成时间进度。
+    
+    参数：
+        duration : 等待时长（秒）；
+        stop_condition : 可选，无参数布尔函数，返回 True 时提前停止等待（如检测鼠标点击）。
+    返回值：时间序列列表/数组 或 ProgressDisplay 进度条。
+    """
+    kw = {"desc": f"{self.num_plays} Waiting"}  # 进度描述
+    if stop_condition is not None:
+        kw["n_iterations"] = -1  # 不显示百分比（时长不确定）
+        kw["override_skip_animations"] = True  # 强制不跳过等待
+    return self.get_time_progression(duration, **kw)
 
-    def post_play(self):
-        if not self.skip_animations:
-            self.file_writer.end_animation()
 
-        if self.preview_while_skipping and self.skip_animations and self.window is not None:
-            # Show some quick frames along the way
-            self.update_frame(dt=0, force_draw=True)
+def pre_play(self):
+    """
+    动画播放前的“准备工作”——处理演示模式、更新跳过状态、初始化文件写入器、同步时间基准。
+    
+    核心逻辑：
+    1. 演示模式（presenter_mode）处理：若为首次播放（num_plays=0），进入 hold_loop（等待用户操作）；
+    2. 更新动画跳过状态（调用 `update_skipping_status()`），确定是否从指定帧开始播放；
+    3. 若不跳过动画，通知文件写入器开始记录动画（`file_writer.begin_animation()`）；
+    4. 若存在窗口，重置虚拟动画时间和真实时间基准（确保时序同步）。
+    """
+    # 演示模式：首次播放前等待用户操作
+    if self.presenter_mode and self.num_plays == 0:
+        self.hold_loop()
 
-        self.num_plays += 1
+    # 更新跳过状态（如从指定动画编号开始）
+    self.update_skipping_status()
 
-    def begin_animations(self, animations: Iterable[Animation]) -> None:
-        all_mobjects = set(self.get_mobject_family_members())
+    # 开始记录动画帧（不跳过动画时）
+    if not self.skip_animations:
+        self.file_writer.begin_animation()
+
+    # 同步窗口渲染的时间基准
+    if self.window:
+        self.virtual_animation_start_time = self.time
+        self.real_animation_start_time = time.time()
+
+
+def post_play(self):
+    """
+    动画播放后的“收尾工作”——结束文件写入、预览跳过帧、更新播放次数。
+    
+    核心逻辑：
+    1. 若不跳过动画，通知文件写入器结束当前动画记录（`file_writer.end_animation()`）；
+    2. 若开启“跳过动画时预览”（preview_while_skipping）且有窗口，强制绘制最后一帧（让用户看到结果）；
+    3. 播放次数计数器加 1（`num_plays`，用于进度跟踪和跳过状态判断）。
+    """
+    # 结束当前动画的帧记录
+    if not self.skip_animations:
+        self.file_writer.end_animation()
+
+    # 跳过动画时预览最终帧
+    if self.preview_while_skipping and self.skip_animations and self.window is not None:
+        self.update_frame(dt=0, force_draw=True)
+
+    # 更新播放次数
+    self.num_plays += 1
+
+
+def begin_animations(self, animations: Iterable[Animation]) -> None:
+    """
+    动画播放前的“初始化”——调用每个动画的 `begin()` 方法，并将未在场景中的动画对象添加到场景。
+    
+    核心逻辑：
+    1. 获取当前场景中所有 Mobject 的家族成员（避免重复添加）；
+    2. 遍历每个动画：
+        a. 调用动画的 `begin()` 方法（初始化动画起始状态，如记录对象初始位置）；
+        b. 若动画的目标 Mobject 不在场景中，将其添加到场景，并更新“已存在对象集合”；
+    （确保动画对象能被正确渲染，且场景 Mobject 列表同步）
+    """
+    # 获取当前场景中所有 Mobject（含子对象）
+    all_mobjects = set(self.get_mobject_family_members())
+    for animation in animations:
+        # 初始化动画（记录起始状态）
+        animation.begin()
+        # 若动画对象不在场景中，添加到场景
+        if animation.mobject not in all_mobjects:
+            self.add(animation.mobject)
+            # 更新已存在对象集合（包含新对象的所有子对象）
+            all_mobjects = all_mobjects.union(animation.mobject.get_family())
+
+
+def progress_through_animations(self, animations: Iterable[Animation]) -> None:
+    """
+    动画播放的“核心循环”——逐帧更新动画状态、渲染画面、写入帧数据。
+    
+    逻辑步骤：
+    1. 初始化上一帧时间（last_t=0），用于计算帧时间差（dt）；
+    2. 遍历时间进度序列（每帧对应的时间点 t）：
+        a. 计算当前帧与上一帧的时间差 dt = t - last_t；
+        b. 更新上一帧时间为当前 t；
+        c. 遍历每个动画：
+            - 调用 `animation.update_mobjects(dt)`：更新动画对象的时间相关状态；
+            - 计算动画进度 alpha = t / 动画时长（0~1，控制动画插值）；
+            - 调用 `animation.interpolate(alpha)`：根据进度更新对象状态（如位置、颜色）；
+        d. 调用 `update_frame(dt)`：渲染当前帧画面；
+        e. 调用 `emit_frame()`：将当前帧写入输出文件（不跳过动画时）。
+    """
+    last_t = 0
+    # 逐帧遍历时间进度序列
+    for t in self.get_animation_time_progression(animations):
+        dt = t - last_t  # 帧时间差
+        last_t = t
+
+        # 逐动画更新状态和进度
         for animation in animations:
-            animation.begin()
-            # Anything animated that's not already in the
-            # scene gets added to the scene.  Note, for
-            # animated mobjects that are in the family of
-            # those on screen, this can result in a restructuring
-            # of the scene.mobjects list, which is usually desired.
-            if animation.mobject not in all_mobjects:
-                self.add(animation.mobject)
-                all_mobjects = all_mobjects.union(animation.mobject.get_family())
+            animation.update_mobjects(dt)  # 更新时间相关状态
+            alpha = t / animation.run_time  # 计算动画进度（0~1）
+            animation.interpolate(alpha)    # 根据进度插值更新对象
 
-    def progress_through_animations(self, animations: Iterable[Animation]) -> None:
-        last_t = 0
-        for t in self.get_animation_time_progression(animations):
-            dt = t - last_t
-            last_t = t
-            for animation in animations:
-                animation.update_mobjects(dt)
-                alpha = t / animation.run_time
-                animation.interpolate(alpha)
-            self.update_frame(dt)
-            self.emit_frame()
+        # 渲染当前帧并写入文件
+        self.update_frame(dt)
+        self.emit_frame()
 
-    def finish_animations(self, animations: Iterable[Animation]) -> None:
-        for animation in animations:
-            animation.finish()
-            animation.clean_up_from_scene(self)
-        if self.skip_animations:
-            self.update_mobjects(self.get_run_time(animations))
-        else:
-            self.update_mobjects(0)
 
-    @affects_mobject_list
-    def play(
-        self,
-        *proto_animations: Animation | _AnimationBuilder,
-        run_time: float | None = None,
-        rate_func: Callable[[float], float] | None = None,
-        lag_ratio: float | None = None,
-    ) -> None:
-        if len(proto_animations) == 0:
-            log.warning("Called Scene.play with no animations")
-            return
-        animations = list(map(prepare_animation, proto_animations))
-        for anim in animations:
-            anim.update_rate_info(run_time, rate_func, lag_ratio)
-        self.pre_play()
-        self.begin_animations(animations)
-        self.progress_through_animations(animations)
-        self.finish_animations(animations)
-        self.post_play()
+def finish_animations(self, animations: Iterable[Animation]) -> None:
+    """
+    动画播放后的“收尾”——确保所有动画达到最终状态，清理临时资源。
+    
+    逻辑步骤：
+    1. 遍历每个动画：
+        a. 调用 `animation.finish()`：强制动画达到最终状态（避免因帧丢失导致未完成）；
+        b. 调用 `animation.clean_up_from_scene(self)`：清理动画在场景中产生的临时对象（如辅助线）；
+    2. 若跳过动画：一次性更新所有 Mobject 到最终状态（时间差设为总动画时长）；
+    3. 若不跳过动画：更新 Mobject 状态（时间差设为 0，仅处理必要更新）。
+    """
+    for animation in animations:
+        animation.finish()  # 强制动画完成
+        animation.clean_up_from_scene(self)  # 清理临时资源
+
+    # 跳过动画时，一次性更新到最终状态
+    if self.skip_animations:
+        self.update_mobjects(self.get_run_time(animations))
+    else:
+        self.update_mobjects(0)  # 正常播放后，处理必要更新
+
+
+@affects_mobject_list
+def play(
+    self,
+    *proto_animations: Animation | _AnimationBuilder,
+    run_time: float | None = None,
+    rate_func: Callable[[float], float] | None = None,
+    lag_ratio: float | None = None,
+) -> None:
+    """
+    **Scene 类的核心方法：动画播放入口**，支持传入多个动画（并行播放），并可配置时长、速度曲线、延迟比例。
+    
+    参数说明：
+        *proto_animations : 可变参数，动画对象（如 Create(Circle)）或动画构建器（如 circle.animate.move_to(ORIGIN)）；
+        run_time : 可选，动画总时长（秒），优先级高于单个动画的 run_time；
+        rate_func : 可选，速度曲线函数（如 linear、ease_in_out），控制动画速度变化；
+        lag_ratio : 可选，多个动画的延迟比例（0 为完全同步，1 为依次播放）。
+    
+    核心流程（完整动画生命周期）：
+    1. 空动画检查：若未传入动画，打印警告并返回；
+    2. 动画预处理：调用 `prepare_animation()` 将动画构建器转换为实际 Animation 对象；
+    3. 动画参数更新：为所有动画统一设置 run_time、rate_func、lag_ratio（覆盖单个动画配置）；
+    4. 播放前准备：调用 `pre_play()`（演示模式等待、跳过状态更新、文件写入初始化）；
+    5. 动画初始化：调用 `begin_animations()`（初始化动画起始状态、添加对象到场景）；
+    6. 逐帧播放：调用 `progress_through_animations()`（更新状态、渲染画面、写入帧）；
+    7. 播放后收尾：调用 `finish_animations()`（强制完成、清理资源）；
+    8. 最终收尾：调用 `post_play()`（结束文件写入、更新播放次数）。
+    
+    装饰器 `@affects_mobject_list` 确保动画过程中 Mobject 列表变化后，自动重建渲染分组。
+    
+    示例：
+        >>> circle = Circle()
+        >>> square = Square()
+        >>> # 并行播放“创建圆形”和“移动正方形”，总时长2秒，使用缓入缓出曲线
+        >>> self.play(
+        ...     Create(circle),
+        ...     square.animate.move_to(RIGHT),
+        ...     run_time=2,
+        ...     rate_func=rate_functions.ease_in_out
+        ... )
+    """
+    # 空动画检查
+    if len(proto_animations) == 0:
+        log.warning("Called Scene.play with no animations")
+        return
+
+    # 预处理动画：将构建器转换为Animation对象
+    animations = list(map(prepare_animation, proto_animations))
+
+    # 统一更新动画参数（时长、速度曲线、延迟比例）
+    for anim in animations:
+        anim.update_rate_info(run_time, rate_func, lag_ratio)
+
+    # 完整动画生命周期
+    self.pre_play()                  # 播放前准备
+    self.begin_animations(animations)# 动画初始化
+    self.progress_through_animations(animations)  # 逐帧播放
+    self.finish_animations(animations)# 播放后收尾
+    self.post_play()                 # 最终收尾
 
     def wait(
         self,
