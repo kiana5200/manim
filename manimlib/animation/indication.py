@@ -1,41 +1,56 @@
+# 从__future__导入annotations，支持在类型注解中使用尚未定义的类名
 from __future__ import annotations
 
+# 导入numpy库并简写为np，用于数值计算和数组操作
 import numpy as np
 
-from manimlib.animation.animation import Animation
-from manimlib.animation.composition import AnimationGroup
-from manimlib.animation.composition import Succession
-from manimlib.animation.creation import ShowCreation
-from manimlib.animation.creation import ShowPartial
-from manimlib.animation.fading import FadeOut
-from manimlib.animation.fading import FadeIn
-from manimlib.animation.movement import Homotopy
-from manimlib.animation.transform import Transform
-from manimlib.constants import FRAME_X_RADIUS, FRAME_Y_RADIUS
-from manimlib.constants import ORIGIN, RIGHT, UP
-from manimlib.constants import SMALL_BUFF
-from manimlib.constants import DEG
-from manimlib.constants import TAU
-from manimlib.constants import GREY, YELLOW
-from manimlib.mobject.geometry import Circle
-from manimlib.mobject.geometry import Dot
-from manimlib.mobject.geometry import Line
-from manimlib.mobject.shape_matchers import SurroundingRectangle
-from manimlib.mobject.shape_matchers import Underline
-from manimlib.mobject.types.vectorized_mobject import VMobject
-from manimlib.mobject.types.vectorized_mobject import VGroup
-from manimlib.utils.bezier import interpolate
-from manimlib.utils.rate_functions import smooth
-from manimlib.utils.rate_functions import squish_rate_func
-from manimlib.utils.rate_functions import there_and_back
-from manimlib.utils.rate_functions import wiggle
+# 从manimlib.animation模块导入动画相关类
+from manimlib.animation.animation import Animation  # 动画基类
+from manimlib.animation.composition import AnimationGroup  # 动画组，同时播放多个动画
+from manimlib.animation.composition import Succession  # 连续动画，按顺序播放多个动画
+from manimlib.animation.creation import ShowCreation  # 用于创建对象的动画（逐步绘制）
+from manimlib.animation.creation import ShowPartial  # 用于部分显示对象的动画
+from manimlib.animation.fading import FadeOut  # 淡出动画
+from manimlib.animation.fading import FadeIn  # 淡入动画
+from manimlib.animation.movement import Homotopy  # 同伦变换动画（连续变形）
+from manimlib.animation.transform import Transform  # 变换动画（从一个对象变为另一个）
 
+# 从manimlib.constants导入常量
+from manimlib.constants import FRAME_X_RADIUS, FRAME_Y_RADIUS  # 帧的X和Y方向半径
+from manimlib.constants import ORIGIN, RIGHT, UP  # 原点坐标、右方向向量、上方向向量
+from manimlib.constants import SMALL_BUFF  # 小间距常量
+from manimlib.constants import DEG  # 角度单位：度
+from manimlib.constants import TAU  # 数学常量：2π（约6.283）
+from manimlib.constants import GREY, YELLOW  # 颜色常量：灰色、黄色
+
+# 从manimlib.mobject.geometry导入几何图形类
+from manimlib.mobject.geometry import Circle  # 圆形类
+from manimlib.mobject.geometry import Dot  # 点类
+from manimlib.mobject.geometry import Line  # 线段类
+
+# 从manimlib.mobject.shape_matchers导入形状匹配类
+from manimlib.mobject.shape_matchers import SurroundingRectangle  # 环绕矩形（包围目标对象）
+from manimlib.mobject.shape_matchers import Underline  # 下划线类
+
+# 从manimlib.mobject.types导入矢量图形对象类
+from manimlib.mobject.types.vectorized_mobject import VMobject  # 矢量图形对象基类
+from manimlib.mobject.types.vectorized_mobject import VGroup  # 矢量图形对象组
+
+# 从manimlib.utils导入工具函数
+from manimlib.utils.bezier import interpolate  # 贝塞尔插值函数
+from manimlib.utils.rate_functions import smooth  # 平滑速率函数（缓入缓出）
+from manimlib.utils.rate_functions import squish_rate_func  # 压缩速率函数（调整时间范围）
+from manimlib.utils.rate_functions import there_and_back  # 往返速率函数（去而复返）
+from manimlib.utils.rate_functions import wiggle  # 摆动速率函数
+
+# 从typing模块导入TYPE_CHECKING，用于条件类型检查
 from typing import TYPE_CHECKING
 
+# 仅在类型检查时执行以下导入（不影响运行时）
 if TYPE_CHECKING:
-    from typing import Callable
-    from manimlib.typing import ManimColor
-    from manimlib.mobject.mobject import Mobject
+    from typing import Callable  # 导入Callable类型，用于注解可调用对象
+    from manimlib.typing import ManimColor  # 导入Manim颜色类型
+    from manimlib.mobject.mobject import Mobject  # 导入所有可移动对象的基类
 
 
 class FocusOn(Transform):
