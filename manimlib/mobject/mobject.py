@@ -1549,164 +1549,211 @@ def shift_onto_screen(self, **kwargs) -> Self:
             self.to_edge(vect, **kwargs)
     return self
 
-    def is_off_screen(self) -> bool:
-        if self.get_left()[0] > FRAME_X_RADIUS:
-            return True
-        if self.get_right()[0] < -FRAME_X_RADIUS:
-            return True
-        if self.get_bottom()[1] > FRAME_Y_RADIUS:
-            return True
-        if self.get_top()[1] < -FRAME_Y_RADIUS:
-            return True
-        return False
+def is_off_screen(self) -> bool:
+    # 检查对象左边缘是否超出屏幕右边界
+    if self.get_left()[0] > FRAME_X_RADIUS:
+        return True
+    # 检查对象右边缘是否超出屏幕左边界
+    if self.get_right()[0] < -FRAME_X_RADIUS:
+        return True
+    # 检查对象下边缘是否超出屏幕上边界
+    if self.get_bottom()[1] > FRAME_Y_RADIUS:
+        return True
+    # 检查对象上边缘是否超出屏幕下边界
+    if self.get_top()[1] < -FRAME_Y_RADIUS:
+        return True
+    # 所有边界均未超出，返回False
+    return False
 
-    def stretch_about_point(self, factor: float, dim: int, point: Vect3) -> Self:
-        return self.stretch(factor, dim, about_point=point)
+def stretch_about_point(self, factor: float, dim: int, point: Vect3) -> Self:
+    # 围绕指定点在指定维度上拉伸对象（复用stretch方法，指定about_point参数）
+    return self.stretch(factor, dim, about_point=point)
 
-    def stretch_in_place(self, factor: float, dim: int) -> Self:
-        # Now redundant with stretch
-        return self.stretch(factor, dim)
+def stretch_in_place(self, factor: float, dim: int) -> Self:
+    # 原地拉伸对象（当前已冗余，直接调用stretch即可，默认围绕对象中心拉伸）
+    return self.stretch(factor, dim)
 
-    def rescale_to_fit(self, length: float, dim: int, stretch: bool = False, **kwargs) -> Self:
-        old_length = self.length_over_dim(dim)
-        if old_length == 0:
-            return self
-        if stretch:
-            self.stretch(length / old_length, dim, **kwargs)
-        else:
-            self.scale(length / old_length, **kwargs)
+def rescale_to_fit(self, length: float, dim: int, stretch: bool = False, **kwargs) -> Self:
+    # 获取对象在指定维度上的当前长度
+    old_length = self.length_over_dim(dim)
+    # 若当前长度为0，无需缩放，直接返回
+    if old_length == 0:
         return self
+    # 计算缩放因子：目标长度 / 当前长度
+    scale_factor = length / old_length
+    # 若指定拉伸模式，在指定维度上单独拉伸
+    if stretch:
+        self.stretch(scale_factor, dim,** kwargs)
+    # 否则进行整体缩放（所有维度按同一比例缩放）
+    else:
+        self.scale(scale_factor, **kwargs)
+    return self
 
-    def stretch_to_fit_width(self, width: float, **kwargs) -> Self:
-        return self.rescale_to_fit(width, 0, stretch=True, **kwargs)
+def stretch_to_fit_width(self, width: float, **kwargs) -> Self:
+    # 拉伸对象以适配指定宽度（X轴，维度0，强制拉伸模式）
+    return self.rescale_to_fit(width, 0, stretch=True, **kwargs)
 
-    def stretch_to_fit_height(self, height: float, **kwargs) -> Self:
-        return self.rescale_to_fit(height, 1, stretch=True, **kwargs)
+def stretch_to_fit_height(self, height: float, **kwargs) -> Self:
+    # 拉伸对象以适配指定高度（Y轴，维度1，强制拉伸模式）
+    return self.rescale_to_fit(height, 1, stretch=True, **kwargs)
 
-    def stretch_to_fit_depth(self, depth: float, **kwargs) -> Self:
-        return self.rescale_to_fit(depth, 2, stretch=True, **kwargs)
+def stretch_to_fit_depth(self, depth: float, **kwargs) -> Self:
+    # 拉伸对象以适配指定深度（Z轴，维度2，强制拉伸模式）
+    return self.rescale_to_fit(depth, 2, stretch=True, **kwargs)
 
-    def set_width(self, width: float, stretch: bool = False, **kwargs) -> Self:
-        return self.rescale_to_fit(width, 0, stretch=stretch, **kwargs)
+def set_width(self, width: float, stretch: bool = False, **kwargs) -> Self:
+    # 设置对象宽度（X轴，维度0），可选择拉伸或整体缩放
+    return self.rescale_to_fit(width, 0, stretch=stretch, **kwargs)
 
-    def set_height(self, height: float, stretch: bool = False, **kwargs) -> Self:
-        return self.rescale_to_fit(height, 1, stretch=stretch, **kwargs)
+def set_height(self, height: float, stretch: bool = False, **kwargs) -> Self:
+    # 设置对象高度（Y轴，维度1），可选择拉伸或整体缩放
+    return self.rescale_to_fit(height, 1, stretch=stretch, **kwargs)
 
-    def set_depth(self, depth: float, stretch: bool = False, **kwargs) -> Self:
-        return self.rescale_to_fit(depth, 2, stretch=stretch, **kwargs)
+def set_depth(self, depth: float, stretch: bool = False, **kwargs) -> Self:
+    # 设置对象深度（Z轴，维度2），可选择拉伸或整体缩放
+    return self.rescale_to_fit(depth, 2, stretch=stretch, **kwargs)
 
-    def set_max_width(self, max_width: float, **kwargs) -> Self:
-        if self.get_width() > max_width:
-            self.set_width(max_width, **kwargs)
+def set_max_width(self, max_width: float, **kwargs) -> Self:
+    # 仅当对象当前宽度超过最大允许宽度时，将宽度设置为最大值
+    if self.get_width() > max_width:
+        self.set_width(max_width,** kwargs)
+    return self
+
+def set_max_height(self, max_height: float, **kwargs) -> Self:
+    # 仅当对象当前高度超过最大允许高度时，将高度设置为最大值
+    if self.get_height() > max_height:
+        self.set_height(max_height, **kwargs)
+    return self
+
+def set_max_depth(self, max_depth: float, **kwargs) -> Self:
+    # 仅当对象当前深度超过最大允许深度时，将深度设置为最大值
+    if self.get_depth() > max_depth:
+        self.set_depth(max_depth,** kwargs)
+    return self
+
+def set_min_width(self, min_width: float, **kwargs) -> Self:
+    # 仅当对象当前宽度小于最小允许宽度时，将宽度设置为最小值
+    if self.get_width() < min_width:
+        self.set_width(min_width, **kwargs)
+    return self
+
+def set_min_height(self, min_height: float, **kwargs) -> Self:
+    # 仅当对象当前高度小于最小允许高度时，将高度设置为最小值
+    if self.get_height() < min_height:
+        self.set_height(min_height,** kwargs)
+    return self
+
+def set_min_depth(self, min_depth: float, **kwargs) -> Self:
+    # 仅当对象当前深度小于最小允许深度时，将深度设置为最小值
+    if self.get_depth() < min_depth:
+        self.set_depth(min_depth, **kwargs)
+    return self
+
+def set_shape(
+    self,
+    width: Optional[float] = None,
+    height: Optional[float] = None,
+    depth: Optional[float] = None,** kwargs
+) -> Self:
+    # 若指定了宽度，拉伸对象以适配该宽度
+    if width is not None:
+        self.set_width(width, stretch=True, **kwargs)
+    # 若指定了高度，拉伸对象以适配该高度
+    if height is not None:
+        self.set_height(height, stretch=True, **kwargs)
+    # 若指定了深度，拉伸对象以适配该深度
+    if depth is not None:
+        self.set_depth(depth, stretch=True, **kwargs)
+    return self
+
+def set_coord(self, value: float, dim: int, direction: Vect3 = ORIGIN) -> Self:
+    # 获取对象在指定维度、指定方向上的当前坐标
+    curr = self.get_coord(dim, direction)
+    # 创建维度与对象匹配的零向量（用于存储平移量）
+    shift_vect = np.zeros(self.dim)
+    # 计算指定维度的平移量：目标值 - 当前值
+    shift_vect[dim] = value - curr
+    # 执行平移，将对象指定维度的坐标设置为目标值
+    self.shift(shift_vect)
+    return self
+
+def set_x(self, x: float, direction: Vect3 = ORIGIN) -> Self:
+    # 设置对象X轴坐标（维度0），复用set_coord方法
+    return self.set_coord(x, 0, direction)
+
+def set_y(self, y: float, direction: Vect3 = ORIGIN) -> Self:
+    # 设置对象Y轴坐标（维度1），复用set_coord方法
+    return self.set_coord(y, 1, direction)
+
+def set_z(self, z: float, direction: Vect3 = ORIGIN) -> Self:
+    # 设置对象Z轴坐标（维度2），复用set_coord方法
+    return self.set_coord(z, 2, direction)
+
+def set_z_index(self, z_index: int) -> Self:
+    # 设置对象的Z索引（用于控制渲染层级，Z索引高的对象优先渲染）
+    self.z_index = z_index
+    return self
+
+def space_out_submobjects(self, factor: float = 1.5, **kwargs) -> Self:
+    # 先整体缩放当前对象（放大factor倍），拉开子对象间距
+    self.scale(factor,** kwargs)
+    # 再将每个子对象缩小回原尺寸（1/factor倍），保持子对象大小不变
+    for submob in self.submobjects:
+        submob.scale(1. / factor)
+    return self
+
+def move_to(
+    self,
+    point_or_mobject: Mobject | Vect3,
+    aligned_edge: Vect3 = ORIGIN,
+    coor_mask: Vect3 = np.array([1, 1, 1])
+) -> Self:
+    # 处理目标为Mobject的情况：获取目标对象指定对齐边缘的边界点
+    if isinstance(point_or_mobject, Mobject):
+        target = point_or_mobject.get_bounding_box_point(aligned_edge)
+    # 处理目标为点的情况：直接使用该点作为目标点
+    else:
+        target = point_or_mobject
+    # 获取当前对象指定对齐边缘的边界点（待对齐的点）
+    point_to_align = self.get_bounding_box_point(aligned_edge)
+    # 计算平移量：(目标点 - 待对齐点) × 坐标掩码（过滤不需要平移的维度）
+    self.shift((target - point_to_align) * coor_mask)
+    return self
+
+def replace(self, mobject: Mobject, dim_to_match: int = 0, stretch: bool = False) -> Self:
+    # 若目标对象无点数据且无子对象（空对象），将当前对象缩放到0（隐藏）
+    if not mobject.get_num_points() and not mobject.submobjects:
+        self.scale(0)
         return self
+    # 拉伸模式：按目标对象的每个维度单独拉伸当前对象
+    if stretch:
+        for i in range(self.dim):
+            self.rescale_to_fit(mobject.length_over_dim(i), i, stretch=True)
+    # 非拉伸模式：仅按指定维度缩放当前对象（保持原比例）
+    else:
+        self.rescale_to_fit(
+            mobject.length_over_dim(dim_to_match),  # 目标对象指定维度的长度
+            dim_to_match,                          # 待匹配的维度
+            stretch=False                          # 禁用拉伸（整体缩放）
+        )
+    # 将当前对象平移到目标对象的中心点位置
+    self.shift(mobject.get_center() - self.get_center())
+    return self
 
-    def set_max_height(self, max_height: float, **kwargs) -> Self:
-        if self.get_height() > max_height:
-            self.set_height(max_height, **kwargs)
-        return self
-
-    def set_max_depth(self, max_depth: float, **kwargs) -> Self:
-        if self.get_depth() > max_depth:
-            self.set_depth(max_depth, **kwargs)
-        return self
-
-    def set_min_width(self, min_width: float, **kwargs) -> Self:
-        if self.get_width() < min_width:
-            self.set_width(min_width, **kwargs)
-        return self
-
-    def set_min_height(self, min_height: float, **kwargs) -> Self:
-        if self.get_height() < min_height:
-            self.set_height(min_height, **kwargs)
-        return self
-
-    def set_min_depth(self, min_depth: float, **kwargs) -> Self:
-        if self.get_depth() < min_depth:
-            self.set_depth(min_depth, **kwargs)
-        return self
-
-    def set_shape(
-        self,
-        width: Optional[float] = None,
-        height: Optional[float] = None,
-        depth: Optional[float] = None,
-        **kwargs
-    ) -> Self:
-        if width is not None:
-            self.set_width(width, stretch=True, **kwargs)
-        if height is not None:
-            self.set_height(height, stretch=True, **kwargs)
-        if depth is not None:
-            self.set_depth(depth, stretch=True, **kwargs)
-        return self
-
-    def set_coord(self, value: float, dim: int, direction: Vect3 = ORIGIN) -> Self:
-        curr = self.get_coord(dim, direction)
-        shift_vect = np.zeros(self.dim)
-        shift_vect[dim] = value - curr
-        self.shift(shift_vect)
-        return self
-
-    def set_x(self, x: float, direction: Vect3 = ORIGIN) -> Self:
-        return self.set_coord(x, 0, direction)
-
-    def set_y(self, y: float, direction: Vect3 = ORIGIN) -> Self:
-        return self.set_coord(y, 1, direction)
-
-    def set_z(self, z: float, direction: Vect3 = ORIGIN) -> Self:
-        return self.set_coord(z, 2, direction)
-
-    def set_z_index(self, z_index: int) -> Self:
-        self.z_index = z_index
-        return self
-
-    def space_out_submobjects(self, factor: float = 1.5, **kwargs) -> Self:
-        self.scale(factor, **kwargs)
-        for submob in self.submobjects:
-            submob.scale(1. / factor)
-        return self
-
-    def move_to(
-        self,
-        point_or_mobject: Mobject | Vect3,
-        aligned_edge: Vect3 = ORIGIN,
-        coor_mask: Vect3 = np.array([1, 1, 1])
-    ) -> Self:
-        if isinstance(point_or_mobject, Mobject):
-            target = point_or_mobject.get_bounding_box_point(aligned_edge)
-        else:
-            target = point_or_mobject
-        point_to_align = self.get_bounding_box_point(aligned_edge)
-        self.shift((target - point_to_align) * coor_mask)
-        return self
-
-    def replace(self, mobject: Mobject, dim_to_match: int = 0, stretch: bool = False) -> Self:
-        if not mobject.get_num_points() and not mobject.submobjects:
-            self.scale(0)
-            return self
-        if stretch:
-            for i in range(self.dim):
-                self.rescale_to_fit(mobject.length_over_dim(i), i, stretch=True)
-        else:
-            self.rescale_to_fit(
-                mobject.length_over_dim(dim_to_match),
-                dim_to_match,
-                stretch=False
-            )
-        self.shift(mobject.get_center() - self.get_center())
-        return self
-
-    def surround(
-        self,
-        mobject: Mobject,
-        dim_to_match: int = 0,
-        stretch: bool = False,
-        buff: float = MED_SMALL_BUFF
-    ) -> Self:
-        self.replace(mobject, dim_to_match, stretch)
-        length = mobject.length_over_dim(dim_to_match)
-        self.scale((length + buff) / length)
-        return self
+def surround(
+    self,
+    mobject: Mobject,
+    dim_to_match: int = 0,
+    stretch: bool = False,
+    buff: float = MED_SMALL_BUFF
+) -> Self:
+    # 先调用replace方法，使当前对象与目标对象尺寸、位置初步匹配
+    self.replace(mobject, dim_to_match, stretch)
+    # 获取目标对象指定维度的长度
+    length = mobject.length_over_dim(dim_to_match)
+    # 缩放当前对象，在目标对象基础上增加指定间距（实现"包围"效果）
+    self.scale((length + buff) / length)
+    return self
 
     def put_start_and_end_on(self, start: Vect3, end: Vect3) -> Self:
         curr_start, curr_end = self.get_start_and_end()
