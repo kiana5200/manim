@@ -1720,106 +1720,202 @@ def on_key_press(
 
 
 # ------------------------------ 空实现的事件回调（供子类重写） ------------------------------
+# 以下代码补充 Scene 类的窗口控制与背景配置方法，并解析 **SceneState（场景状态快照）**、**EndScene（场景终止异常）** 和 **ThreeDScene（3D场景子类）**，
+# 是场景状态管理、3D动画开发的核心组件。
+
+
+# ------------------------------ Scene 类补充方法：窗口与背景 ------------------------------
 def on_resize(self, width: int, height: int) -> None:
     """
-    窗口“调整大小”事件的回调函数：默认空实现，子类可重写以处理窗口大小变化时的逻辑（如适配分辨率、调整UI）。
+    窗口“调整大小”事件的回调函数：默认空实现，子类可重写以处理窗口缩放逻辑（如适配相机分辨率、调整UI布局）。
     
-    参数：width/height - 调整后的窗口宽/高（像素）。
+    参数：
+        width : 调整后的窗口宽度（像素）；
+        height : 调整后的窗口高度（像素）。
     """
     pass
 
 
 def on_show(self) -> None:
     """
-    窗口“显示”事件的回调函数：默认空实现，子类可重写以处理窗口显示时的初始化逻辑（如加载资源、显示提示）。
+    窗口“显示”事件的回调函数：默认空实现，子类可重写以处理窗口显示时的初始化（如加载临时资源、弹出提示信息）。
     """
     pass
 
 
 def on_hide(self) -> None:
     """
-    窗口“隐藏”事件的回调函数：默认空实现，子类可重写以处理窗口隐藏时的逻辑（如暂停动画、释放临时资源）。
+    窗口“隐藏”事件的回调函数：默认空实现，子类可重写以处理窗口隐藏时的资源管理（如暂停动画、释放GPU缓存）。
     """
     pass
 
 
 def on_close(self) -> None:
     """
-    窗口“关闭”事件的回调函数：默认空实现，子类可重写以处理窗口关闭时的清理逻辑（如保存数据、释放内存）。
+    窗口“关闭”事件的回调函数：默认空实现，子类可重写以处理窗口关闭时的清理（如保存动画进度、释放文件句柄）。
     """
     pass
 
-    def focus(self) -> None:
-        """
-        Puts focus on the ManimGL window.
-        """
-        if not self.window:
-            return
-        self.window.focus()
 
-    def set_background_color(self, background_color, background_opacity=1) -> None:
-        self.camera.background_rgba = list(color_to_rgba(
-            background_color, background_opacity
-        ))
+def focus(self) -> None:
+    """
+    将系统焦点切换到 Manim 窗口（确保窗口能响应键盘/鼠标事件），适用于多窗口环境下的交互优先级设置。
+    
+    逻辑：若窗口已创建（self.window 非 None），调用窗口的 focus() 方法获取焦点。
+    """
+    if not self.window:
+        return
+    self.window.focus()
 
 
+def set_background_color(self, background_color, background_opacity=1) -> None:
+    """
+    设置场景的背景颜色和透明度，直接修改相机的背景 RGBA 值（影响整个渲染画面的背景）。
+    
+    参数说明：
+        background_color : 背景颜色（支持 Manim 颜色常量如 WHITE、十六进制字符串如 "#FF0000"、RGB 元组如 (1,0,0)）；
+        background_opacity : 背景透明度（0=完全透明，1=完全不透明），默认1。
+    
+    逻辑：
+    1. 调用 color_to_rgba() 工具函数，将颜色和透明度转换为 RGBA 列表（每个值0~1）；
+    2. 赋值给相机的 background_rgba 属性，相机渲染时会使用该背景值。
+    """
+    self.camera.background_rgba = list(color_to_rgba(
+        background_color, background_opacity
+    ))
+
+
+# ------------------------------ SceneState：场景状态快照 ------------------------------
 class SceneState():
+    """
+    场景状态的“快照容器”，用于保存场景在某个时间点的关键状态（时间、播放次数、Mobject 状态），
+    是 `undo/redo` 功能的核心数据结构，支持状态对比与场景恢复。
+    """
     def __init__(self, scene: Scene, ignore: list[Mobject] | None = None):
-        self.time = scene.time
-        self.num_plays = scene.num_plays
+        """
+        初始化场景状态快照：保存场景时间、播放次数，并为每个 Mobject 创建副本（避免原始对象修改影响快照）。
+        
+        参数：
+            scene : 待保存状态的 Scene 对象；
+            ignore : 可选，需忽略的 Mobject 列表（不保存这些对象的状态）。
+        """
+        # 保存场景的核心时间状态
+        self.time = scene.time  # 场景当前累计时间
+        self.num_plays = scene.num_plays  # 场景已播放动画次数
+
+        # 初始化 Mobject 到副本的映射（使用 OrderedDict 保持顺序）
         self.mobjects_to_copies = OrderedDict.fromkeys(scene.mobjects)
+        # 移除需忽略的 Mobject
         if ignore:
             for mob in ignore:
                 self.mobjects_to_copies.pop(mob, None)
 
+        # 优化：若 Mobject 自上一状态未变化，复用之前的副本（节省内存）
+        # 获取上一状态的 Mobject 副本映射（若撤销栈非空）
         last_m2c = scene.undo_stack[-1].mobjects_to_copies if scene.undo_stack else dict()
         for mob in self.mobjects_to_copies:
-            # If it hasn't changed since the last state, just point to the
-            # same copy as before
+            # 若当前 Mobject 在上一状态中存在且外观未变，复用副本
             if mob in last_m2c and last_m2c[mob].looks_identical(mob):
                 self.mobjects_to_copies[mob] = last_m2c[mob]
             else:
+                # 否则创建新副本（深拷贝，保存当前状态）
                 self.mobjects_to_copies[mob] = mob.copy()
 
-    def __eq__(self, state: SceneState):
+    def __eq__(self, state: SceneState) -> bool:
+        """
+        重载 == 运算符：判断两个场景状态是否完全一致（时间、播放次数、Mobject 状态均相同）。
+        
+        参数：state - 待对比的 SceneState 对象
+        返回：布尔值，True 表示状态完全一致。
+        """
         return all((
-            self.time == state.time,
-            self.num_plays == state.num_plays,
-            self.mobjects_to_copies == state.mobjects_to_copies
+            self.time == state.time,  # 时间一致
+            self.num_plays == state.num_plays,  # 播放次数一致
+            self.mobjects_to_copies == state.mobjects_to_copies  # Mobject 状态一致
         ))
 
-    def mobjects_match(self, state: SceneState):
+    def mobjects_match(self, state: SceneState) -> bool:
+        """
+        判断两个场景状态的 Mobject 状态是否一致（忽略时间和播放次数）。
+        
+        参数：state - 待对比的 SceneState 对象
+        返回：布尔值，True 表示 Mobject 状态一致。
+        """
         return self.mobjects_to_copies == state.mobjects_to_copies
 
-    def n_changes(self, state: SceneState):
-        m2c = state.mobjects_to_copies
+    def n_changes(self, state: SceneState) -> int:
+        """
+        计算当前状态与目标状态的 Mobject 变化数量（统计外观不同的 Mobject 个数）。
+        
+        参数：state - 目标 SceneState 对象
+        返回：整数，外观变化的 Mobject 数量。
+        """
+        target_m2c = state.mobjects_to_copies
+        # 遍历当前状态的 Mobject，统计与目标状态外观不同的数量
         return sum(
-            1 - int(mob in m2c and mob.looks_identical(m2c[mob]))
+            1 - int(mob in target_m2c and mob.looks_identical(target_m2c[mob]))
             for mob in self.mobjects_to_copies
         )
 
-    def restore_scene(self, scene: Scene):
+    def restore_scene(self, scene: Scene) -> None:
+        """
+        从当前状态快照恢复场景：将场景的时间、播放次数、Mobject 状态重置为快照记录的值。
+        
+        参数：scene - 待恢复的 Scene 对象
+        """
+        # 恢复时间和播放次数
         scene.time = self.time
         scene.num_plays = self.num_plays
+        # 恢复 Mobject 状态：调用每个 Mobject 的 become() 方法，将其状态改为快照中的副本状态
         scene.mobjects = [
             mob.become(mob_copy)
             for mob, mob_copy in self.mobjects_to_copies.items()
         ]
 
 
+# ------------------------------ EndScene：场景终止异常 ------------------------------
 class EndScene(Exception):
+    """
+    场景终止异常：用于在特定条件下主动终止场景生命周期（如达到指定动画播放次数、用户触发退出）。
+    
+    使用方式：在场景方法中（如 update_skipping_status）通过 `raise EndScene()` 抛出，
+    外层场景循环捕获后会停止渲染并清理资源。
+    """
     pass
 
 
+# ------------------------------ ThreeDScene：3D场景子类 ------------------------------
 class ThreeDScene(Scene):
-    samples = 4
-    default_frame_orientation = (-30, 70)
-    always_depth_test = True
+    """
+    3D 场景子类：继承自 Scene，针对 3D 动画优化（如深度测试、3D 笔触配置），
+    是开发 3D 动画（如立体几何、3D 模型）的基础类。
+    """
+    # 3D 渲染相关默认配置
+    samples = 4  # 抗锯齿采样数（值越高画面越平滑，性能消耗越大）
+    default_frame_orientation = (-30, 70)  # 默认相机视角（θ=-30°, φ=70°，对应3D空间中的初始视角）
+    always_depth_test = True  # 始终启用深度测试（确保3D对象按前后顺序正确渲染，避免遮挡错误）
 
-    def add(self, *mobjects: Mobject, set_depth_test: bool = True, perp_stroke: bool = True):
+    def add(self, *mobjects: Mobject, set_depth_test: bool = True, perp_stroke: bool = True) -> None:
+        """
+        重写父类 add 方法：为 3D 场景添加 Mobject 时，自动配置 3D 相关属性（深度测试、笔触方向）。
+        
+        参数说明：
+            *mobjects : 待添加的 Mobject 对象；
+            set_depth_test : 布尔值，是否为 Mobject 启用深度测试（默认 True，确保3D遮挡正确）；
+            perp_stroke : 布尔值，是否将笔触设置为“垂直于相机视角”（默认 True，3D中笔触更清晰）。
+        
+        逻辑：
+        1. 遍历每个待添加的 Mobject：
+            a. 若启用深度测试、Mobject 非固定在2D帧中、且场景默认启用深度测试，为 Mobject 应用深度测试；
+            b. 若 Mobject 是 VMobject 且有笔触，将其 flat_stroke 设为 False（笔触垂直于相机，3D效果更真实）；
+        2. 调用父类 Scene 的 add 方法，完成 Mobject 添加。
+        """
         for mob in mobjects:
+            # 配置深度测试（3D对象必须启用，否则遮挡顺序错误）
             if set_depth_test and not mob.is_fixed_in_frame() and self.always_depth_test:
                 mob.apply_depth_test()
+            # 配置3D笔触（非平面笔触，垂直于相机视角）
             if isinstance(mob, VMobject) and mob.has_stroke() and perp_stroke:
                 mob.set_flat_stroke(False)
+        # 调用父类方法完成添加
         super().add(*mobjects)
