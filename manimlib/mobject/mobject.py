@@ -1158,172 +1158,206 @@ def get_grid(
 
     # Updating
 
-    def init_updaters(self):
-        self.updaters: list[Updater] = list()
-        self._has_updaters_in_family: Optional[bool] = False
-        self.updating_suspended: bool = False
+def init_updaters(self):
+    # 初始化更新器相关属性
+    self.updaters: list[Updater] = list()  # 存储更新器函数的列表
+    self._has_updaters_in_family: Optional[bool] = False  # 标记家族中是否有更新器
+    self.updating_suspended: bool = False  # 标记更新是否被暂停
 
-    def update(self, dt: float = 0, recurse: bool = True) -> Self:
-        if not self.has_updaters() or self.updating_suspended:
-            return self
-        if recurse:
-            for submob in self.submobjects:
-                submob.update(dt, recurse)
-        for updater in self.updaters:
-            # This is hacky, but if an updater takes dt as an arg,
-            # it will be passed the change in time from here
-            if "dt" in updater.__code__.co_varnames:
-                updater(self, dt=dt)
-            else:
-                updater(self)
+def update(self, dt: float = 0, recurse: bool = True) -> Self:
+    # 如果没有更新器或更新被暂停，则直接返回
+    if not self.has_updaters() or self.updating_suspended:
         return self
-
-    def get_updaters(self) -> list[Updater]:
-        return self.updaters
-
-    def add_updater(self, update_func: Updater, call: bool = True) -> Self:
-        self.updaters.append(update_func)
-        if call:
-            self.update(dt=0)
-        self.refresh_has_updater_status()
-        self.update()
-        return self
-
-    def insert_updater(self, update_func: Updater, index=0):
-        self.updaters.insert(index, update_func)
-        self.refresh_has_updater_status()
-        return self
-
-    def remove_updater(self, update_func: Updater) -> Self:
-        while update_func in self.updaters:
-            self.updaters.remove(update_func)
-        self.refresh_has_updater_status()
-        return self
-
-    def clear_updaters(self, recurse: bool = True) -> Self:
-        for mob in self.get_family(recurse):
-            mob.updaters = []
-            mob._has_updaters_in_family = False
-        for parent in self.get_ancestors():
-            parent._has_updaters_in_family = False
-        return self
-
-    def match_updaters(self, mobject: Mobject) -> Self:
-        self.updaters = list(mobject.updaters)
-        self.refresh_has_updater_status()
-        return self
-
-    def suspend_updating(self, recurse: bool = True) -> Self:
-        self.updating_suspended = True
-        if recurse:
-            for submob in self.submobjects:
-                submob.suspend_updating(recurse)
-        return self
-
-    def resume_updating(self, recurse: bool = True, call_updater: bool = True) -> Self:
-        self.updating_suspended = False
-        if recurse:
-            for submob in self.submobjects:
-                submob.resume_updating(recurse)
-        for parent in self.parents:
-            parent.resume_updating(recurse=False, call_updater=False)
-        if call_updater:
-            self.update(dt=0, recurse=recurse)
-        return self
-
-    def has_updaters(self) -> bool:
-        if self._has_updaters_in_family is None:
-            # Recompute and save
-            self._has_updaters_in_family = bool(self.updaters) or any(
-                sm.has_updaters() for sm in self.submobjects
-            )
-        return self._has_updaters_in_family
-
-    def refresh_has_updater_status(self) -> Self:
-        self._has_updaters_in_family = None
-        for parent in self.parents:
-            parent.refresh_has_updater_status()
-        return self
-
-    # Check if mark as static or not for camera
-
-    def is_changing(self) -> bool:
-        return self._is_animating or self.has_updaters()
-
-    def set_animating_status(self, is_animating: bool, recurse: bool = True) -> Self:
-        for mob in (*self.get_family(recurse), *self.get_ancestors()):
-            mob._is_animating = is_animating
-        return self
-
-    # Transforming operations
-
-    def shift(self, vector: Vect3) -> Self:
-        self.apply_points_function(
-            lambda points: points + vector,
-            about_edge=None,
-            works_on_bounding_box=True,
-        )
-        return self
-
-    def scale(
-        self,
-        scale_factor: float | npt.ArrayLike,
-        min_scale_factor: float = 1e-8,
-        about_point: Vect3 | None = None,
-        about_edge: Vect3 = ORIGIN
-    ) -> Self:
-        """
-        Default behavior is to scale about the center of the mobject.
-        The argument about_edge can be a vector, indicating which side of
-        the mobject to scale about, e.g., mob.scale(about_edge = RIGHT)
-        scales about mob.get_right().
-
-        Otherwise, if about_point is given a value, scaling is done with
-        respect to that point.
-        """
-        if isinstance(scale_factor, numbers.Number):
-            scale_factor = max(scale_factor, min_scale_factor)
+    # 如果需要递归更新，先更新所有子对象
+    if recurse:
+        for submob in self.submobjects:
+            submob.update(dt, recurse)
+    # 执行当前对象的所有更新器
+    for updater in self.updaters:
+        # 检查更新器是否接受dt参数，如果是则传入时间增量
+        if "dt" in updater.__code__.co_varnames:
+            updater(self, dt=dt)
+        # 否则直接调用更新器
         else:
-            scale_factor = np.array(scale_factor).clip(min=min_scale_factor)
-        self.apply_points_function(
-            lambda points: scale_factor * points,
-            about_point=about_point,
-            about_edge=about_edge,
-            works_on_bounding_box=True,
+            updater(self)
+    return self
+
+def get_updaters(self) -> list[Updater]:
+    # 返回当前对象的更新器列表
+    return self.updaters
+
+def add_updater(self, update_func: Updater, call: bool = True) -> Self:
+    # 向更新器列表添加新的更新函数
+    self.updaters.append(update_func)
+    # 如果需要，立即调用一次更新（时间增量为0）
+    if call:
+        self.update(dt=0)
+    # 刷新更新器状态标记
+    self.refresh_has_updater_status()
+    # 执行一次更新
+    self.update()
+    return self
+
+def insert_updater(self, update_func: Updater, index=0):
+    # 在指定位置插入更新函数
+    self.updaters.insert(index, update_func)
+    # 刷新更新器状态标记
+    self.refresh_has_updater_status()
+    return self
+
+def remove_updater(self, update_func: Updater) -> Self:
+    # 移除所有匹配的更新函数
+    while update_func in self.updaters:
+        self.updaters.remove(update_func)
+    # 刷新更新器状态标记
+    self.refresh_has_updater_status()
+    return self
+
+def clear_updaters(self, recurse: bool = True) -> Self:
+    # 清除家族中所有对象的更新器（根据recurse参数决定是否递归）
+    for mob in self.get_family(recurse):
+        mob.updaters = []
+        mob._has_updaters_in_family = False
+    # 刷新祖先的更新器状态标记
+    for parent in self.get_ancestors():
+        parent._has_updaters_in_family = False
+    return self
+
+def match_updaters(self, mobject: Mobject) -> Self:
+    # 将当前对象的更新器设置为与目标对象相同
+    self.updaters = list(mobject.updaters)
+    # 刷新更新器状态标记
+    self.refresh_has_updater_status()
+    return self
+
+def suspend_updating(self, recurse: bool = True) -> Self:
+    # 暂停当前对象的更新
+    self.updating_suspended = True
+    # 如果需要递归，暂停所有子对象的更新
+    if recurse:
+        for submob in self.submobjects:
+            submob.suspend_updating(recurse)
+    return self
+
+def resume_updating(self, recurse: bool = True, call_updater: bool = True) -> Self:
+    # 恢复当前对象的更新
+    self.updating_suspended = False
+    # 如果需要递归，恢复所有子对象的更新
+    if recurse:
+        for submob in self.submobjects:
+            submob.resume_updating(recurse)
+    # 恢复所有父对象的更新（不递归，不立即调用更新器）
+    for parent in self.parents:
+        parent.resume_updating(recurse=False, call_updater=False)
+    # 如果需要，立即调用一次更新
+    if call_updater:
+        self.update(dt=0, recurse=recurse)
+    return self
+
+def has_updaters(self) -> bool:
+    # 检查是否有更新器（包括子对象的）
+    if self._has_updaters_in_family is None:
+        # 重新计算并保存状态：如果自身有更新器或任何子对象有更新器，则返回True
+        self._has_updaters_in_family = bool(self.updaters) or any(
+            sm.has_updaters() for sm in self.submobjects
         )
-        for mob in self.get_family():
-            mob._handle_scale_side_effects(scale_factor)
-        return self
+    return self._has_updaters_in_family
 
-    def _handle_scale_side_effects(self, scale_factor):
-        # In case subclasses, such as DecimalNumber, need to make
-        # any other changes when the size gets altered
-        pass
+def refresh_has_updater_status(self) -> Self:
+    # 刷新更新器状态标记（设为None将触发重新计算）
+    self._has_updaters_in_family = None
+    # 递归刷新所有父对象的状态
+    for parent in self.parents:
+        parent.refresh_has_updater_status()
+    return self
 
-    def stretch(self, factor: float, dim: int, **kwargs) -> Self:
-        def func(points):
-            points[:, dim] *= factor
-            return points
-        self.apply_points_function(func, works_on_bounding_box=True, **kwargs)
-        return self
+# 检查是否标记为静态或用于相机
 
-    def rotate_about_origin(self, angle: float, axis: Vect3 = OUT) -> Self:
-        return self.rotate(angle, axis, about_point=ORIGIN)
+def is_changing(self) -> bool:
+    # 检查对象是否正在变化（处于动画中或有更新器）
+    return self._is_animating or self.has_updaters()
 
-    def rotate(
-        self,
-        angle: float,
-        axis: Vect3 = OUT,
-        about_point: Vect3 | None = None,
-        **kwargs
-    ) -> Self:
-        rot_matrix_T = rotation_matrix_transpose(angle, axis)
-        self.apply_points_function(
-            lambda points: np.dot(points, rot_matrix_T),
-            about_point,
-            **kwargs
-        )
-        return self
+def set_animating_status(self, is_animating: bool, recurse: bool = True) -> Self:
+    # 设置对象的动画状态（是否正在动画中）
+    # 对家族成员和祖先应用此状态
+    for mob in (*self.get_family(recurse), *self.get_ancestors()):
+        mob._is_animating = is_animating
+    return self
+
+# 变换操作
+
+def shift(self, vector: Vect3) -> Self:
+    # 平移对象：将所有点加上指定向量
+    self.apply_points_function(
+        lambda points: points + vector,
+        about_edge=None,
+        works_on_bounding_box=True,  # 同时更新边界框
+    )
+    return self
+
+def scale(
+    self,
+    scale_factor: float | npt.ArrayLike,
+    min_scale_factor: float = 1e-8,
+    about_point: Vect3 | None = None,
+    about_edge: Vect3 = ORIGIN
+) -> Self:
+    """
+    默认行为是围绕对象的中心缩放。
+    about_edge参数可以是一个向量，表示围绕对象的哪个边缘缩放，
+    例如，mob.scale(about_edge = RIGHT) 围绕mob.get_right()缩放。
+    此外，如果指定了about_point，则围绕该点进行缩放。
+    """
+    # 确保缩放因子不小于最小缩放因子
+    if isinstance(scale_factor, numbers.Number):
+        scale_factor = max(scale_factor, min_scale_factor)
+    else:
+        scale_factor = np.array(scale_factor).clip(min=min_scale_factor)
+    # 应用缩放变换到所有点
+    self.apply_points_function(
+        lambda points: scale_factor * points,
+        about_point=about_point,
+        about_edge=about_edge,
+        works_on_bounding_box=True,  # 同时更新边界框
+    )
+    # 处理缩放带来的副作用（子类可能需要重写此方法）
+    for mob in self.get_family():
+        mob._handle_scale_side_effects(scale_factor)
+    return self
+
+def _handle_scale_side_effects(self, scale_factor):
+    # 处理缩放带来的副作用
+    # 供子类（如DecimalNumber）重写，在尺寸改变时进行其他调整
+    pass
+
+def stretch(self, factor: float, dim: int, **kwargs) -> Self:
+    # 在指定维度上拉伸对象
+    def func(points):
+        points[:, dim] *= factor  # 仅在指定维度上应用拉伸因子
+        return points
+    # 应用拉伸变换
+    self.apply_points_function(func, works_on_bounding_box=True,** kwargs)
+    return self
+
+def rotate_about_origin(self, angle: float, axis: Vect3 = OUT) -> Self:
+    # 围绕原点旋转对象
+    return self.rotate(angle, axis, about_point=ORIGIN)
+
+def rotate(
+    self,
+    angle: float,
+    axis: Vect3 = OUT,
+    about_point: Vect3 | None = None,
+    **kwargs
+) -> Self:
+    # 计算旋转矩阵的转置（用于点的旋转）
+    rot_matrix_T = rotation_matrix_transpose(angle, axis)
+    # 应用旋转变换：将点与旋转矩阵相乘
+    self.apply_points_function(
+        lambda points: np.dot(points, rot_matrix_T),
+        about_point,** kwargs
+    )
+    return self
 
     def flip(self, axis: Vect3 = UP, **kwargs) -> Self:
         return self.rotate(TAU / 2, axis, **kwargs)
