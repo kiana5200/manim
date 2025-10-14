@@ -589,90 +589,124 @@ def is_touching(self, mobject: Mobject, buff: float = 1e-2) -> bool:
 
     # Family matters
 
-    def __getitem__(self, value: int | slice) -> Mobject:
-        if isinstance(value, slice):
-            GroupClass = self.get_group_class()
-            return GroupClass(*self.split().__getitem__(value))
-        return self.split().__getitem__(value)
+def __getitem__(self, value: int | slice) -> Mobject:
+    # 支持通过索引或切片访问子对象
+    if isinstance(value, slice):
+        # 如果是切片，创建一个包含对应子对象的组
+        GroupClass = self.get_group_class()
+        return GroupClass(*self.split().__getitem__(value))
+    # 如果是索引，直接返回对应子对象
+    return self.split().__getitem__(value)
 
-    def __iter__(self) -> Iterator[Self]:
-        return iter(self.split())
+def __iter__(self) -> Iterator[Self]:
+    # 支持迭代子对象
+    return iter(self.split())
 
-    def __len__(self) -> int:
-        return len(self.split())
+def __len__(self) -> int:
+    # 返回子对象的数量
+    return len(self.split())
 
-    def split(self) -> list[Self]:
-        return self.submobjects
+def split(self) -> list[Self]:
+    # 返回所有子对象的列表
+    return self.submobjects
 
-    @affects_data
-    def note_changed_family(self, only_changed_order=False) -> Self:
-        self.family = None
-        if not only_changed_order:
-            self.refresh_has_updater_status()
-            self.refresh_bounding_box()
-        for parent in self.parents:
+@affects_data
+def note_changed_family(self, only_changed_order=False) -> Self:
+    # 标记家族关系已更改（清除缓存的家族列表）
+    self.family = None
+    # 如果不只是顺序改变，更新相关状态
+    if not only_changed_order:
+        self.refresh_has_updater_status()
+        self.refresh_bounding_box()
+    # 通知所有父对象家族关系已更改
+    for parent in self.parents:
+        parent.note_changed_family()
+    # 返回自身以支持链式调用
+    return self
+
+def get_family(self, recurse: bool = True) -> list[Mobject]:
+    # 如果不需要递归，只返回自身
+    if not recurse:
+        return [self]
+    # 如果家族列表未缓存，重新构建
+    if self.family is None:
+        # 递归获取所有子对象的家族成员
+        sub_families = (sm.get_family() for sm in self.submobjects)
+        # 构建包含自身和所有子对象家族成员的列表
+        self.family = [self, *it.chain(*sub_families)]
+    # 返回完整的家族成员列表
+    return self.family
+
+def family_members_with_points(self) -> list[Mobject]:
+    # 返回家族中所有有数据的成员（数据不为空的Mobject）
+    return [m for m in self.get_family() if len(m.data) > 0]
+
+def get_ancestors(self, extended: bool = False) -> list[Mobject]:
+    """
+    返回父对象、祖父对象等祖先对象。
+    结果顺序应为从层级结构中较高的成员到较低的成员。
+
+    如果extended设为True，将包含所有家族成员的祖先，
+    例如子对象的其他父对象
+    """
+    ancestors = []
+    # 需要处理的对象列表（如果extended为True，则包含所有家族成员）
+    to_process = list(self.get_family(recurse=extended))
+    # 排除自身及子对象（避免循环引用）
+    excluded = set(to_process)
+    # 遍历处理所有需要处理的对象
+    while to_process:
+        # 取出最后一个对象并获取其所有父对象
+        for p in to_process.pop().parents:
+            # 如果父对象不在排除列表中
+            if p not in excluded:
+                # 添加到祖先列表
+                ancestors.append(p)
+                # 将该父对象加入待处理列表，以便查找其上一级祖先
+                to_process.append(p)
+    # 反转列表，使层级最高的祖先排在前面
+    ancestors.reverse()
+    # 去除重复项同时保持顺序
+    return list(dict.fromkeys(ancestors))
+
+def add(self, *mobjects: Mobject) -> Self:
+    # 检查是否尝试添加自身，不允许自包含
+    if self in mobjects:
+        raise Exception("Mobject cannot contain self")
+    # 遍历所有要添加的对象
+    for mobject in mobjects:
+        # 如果对象不在子对象列表中，则添加
+        if mobject not in self.submobjects:
+            self.submobjects.append(mobject)
+        # 如果当前对象不在该子对象的父列表中，则添加
+        if self not in mobject.parents:
+            mobject.parents.append(self)
+    # 通知家族关系已更改
+    self.note_changed_family()
+    # 返回自身以支持链式调用
+    return self
+
+def remove(
+    self,
+    *to_remove: Mobject,
+    reassemble: bool = True,
+    recurse: bool = True
+) -> Self:
+    # 遍历当前对象家族中的所有成员（根据recurse参数决定是否递归）
+    for parent in self.get_family(recurse):
+        # 遍历所有要移除的对象
+        for child in to_remove:
+            # 如果子对象在当前父对象的子列表中，则移除
+            if child in parent.submobjects:
+                parent.submobjects.remove(child)
+            # 如果当前父对象在子对象的父列表中，则移除
+            if parent in child.parents:
+                child.parents.remove(parent)
+        # 如果需要重新组装，通知家族关系已更改
+        if reassemble:
             parent.note_changed_family()
-        return self
-
-    def get_family(self, recurse: bool = True) -> list[Mobject]:
-        if not recurse:
-            return [self]
-        if self.family is None:
-            # Reconstruct and save
-            sub_families = (sm.get_family() for sm in self.submobjects)
-            self.family = [self, *it.chain(*sub_families)]
-        return self.family
-
-    def family_members_with_points(self) -> list[Mobject]:
-        return [m for m in self.get_family() if len(m.data) > 0]
-
-    def get_ancestors(self, extended: bool = False) -> list[Mobject]:
-        """
-        Returns parents, grandparents, etc.
-        Order of result should be from higher members of the hierarchy down.
-
-        If extended is set to true, it includes the ancestors of all family members,
-        e.g. any other parents of a submobject
-        """
-        ancestors = []
-        to_process = list(self.get_family(recurse=extended))
-        excluded = set(to_process)
-        while to_process:
-            for p in to_process.pop().parents:
-                if p not in excluded:
-                    ancestors.append(p)
-                    to_process.append(p)
-        # Ensure mobjects highest in the hierarchy show up first
-        ancestors.reverse()
-        # Remove list redundancies while preserving order
-        return list(dict.fromkeys(ancestors))
-
-    def add(self, *mobjects: Mobject) -> Self:
-        if self in mobjects:
-            raise Exception("Mobject cannot contain self")
-        for mobject in mobjects:
-            if mobject not in self.submobjects:
-                self.submobjects.append(mobject)
-            if self not in mobject.parents:
-                mobject.parents.append(self)
-        self.note_changed_family()
-        return self
-
-    def remove(
-        self,
-        *to_remove: Mobject,
-        reassemble: bool = True,
-        recurse: bool = True
-    ) -> Self:
-        for parent in self.get_family(recurse):
-            for child in to_remove:
-                if child in parent.submobjects:
-                    parent.submobjects.remove(child)
-                if parent in child.parents:
-                    child.parents.remove(parent)
-            if reassemble:
-                parent.note_changed_family()
-        return self
+    # 返回自身以支持链式调用
+    return self
 
     def clear(self) -> Self:
         self.remove(*self.submobjects, recurse=False)
