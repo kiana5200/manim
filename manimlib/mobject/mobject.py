@@ -483,85 +483,109 @@ def match_points(self, mobject: Mobject) -> Self:
 
     # Others related to points
 
-    def get_points(self) -> Vect3Array:
-        return self.data["point"]
+def get_points(self) -> Vect3Array:
+    # 返回当前Mobject的点数据
+    return self.data["point"]
 
-    def clear_points(self) -> Self:
-        self.resize_points(0)
-        return self
+def clear_points(self) -> Self:
+    # 清除所有点数据（通过将点数量调整为0）
+    self.resize_points(0)
+    # 返回自身以支持链式调用
+    return self
 
-    def get_num_points(self) -> int:
-        return len(self.get_points())
+def get_num_points(self) -> int:
+    # 返回点的数量
+    return len(self.get_points())
 
-    def get_all_points(self) -> Vect3Array:
-        if self.submobjects:
-            return np.vstack([sm.get_points() for sm in self.get_family()])
-        else:
-            return self.get_points()
+def get_all_points(self) -> Vect3Array:
+    # 如果存在子对象
+    if self.submobjects:
+        # 垂直堆叠所有家族成员（包括自身和所有子对象）的点数据
+        return np.vstack([sm.get_points() for sm in self.get_family()])
+    else:
+        # 如果没有子对象，直接返回自身的点数据
+        return self.get_points()
 
-    def has_points(self) -> bool:
-        return len(self.get_points()) > 0
+def has_points(self) -> bool:
+    # 检查是否包含任何点数据
+    return len(self.get_points()) > 0
 
-    def get_bounding_box(self) -> Vect3Array:
-        if self._needs_new_bounding_box:
-            self.bounding_box[:] = self.compute_bounding_box()
-            self._needs_new_bounding_box = False
-        return self.bounding_box
+def get_bounding_box(self) -> Vect3Array:
+    # 如果需要更新边界框
+    if self._needs_new_bounding_box:
+        # 计算新的边界框并更新
+        self.bounding_box[:] = self.compute_bounding_box()
+        # 标记为不需要更新
+        self._needs_new_bounding_box = False
+    # 返回当前边界框
+    return self.bounding_box
 
-    def compute_bounding_box(self) -> Vect3Array:
-        all_points = np.vstack([
-            self.get_points(),
-            *(
-                mob.get_bounding_box()
-                for mob in self.get_family()[1:]
-                if mob.has_points()
-            )
-        ])
-        if len(all_points) == 0:
-            return np.zeros((3, self.dim))
-        else:
-            # Lower left and upper right corners
-            mins = all_points.min(0)
-            maxs = all_points.max(0)
-            mids = (mins + maxs) / 2
-            return np.array([mins, mids, maxs])
+def compute_bounding_box(self) -> Vect3Array:
+    # 收集自身的点数据和所有子对象的边界框
+    all_points = np.vstack([
+        self.get_points(),
+        *(
+            mob.get_bounding_box()
+            for mob in self.get_family()[1:]  # 从家族中排除自身
+            if mob.has_points()  # 只包含有数据点的对象
+        )
+    ])
+    # 如果没有任何点数据，返回零矩阵
+    if len(all_points) == 0:
+        return np.zeros((3, self.dim))
+    else:
+        # 计算最小点、最大点和中点
+        mins = all_points.min(0)  # 各维度最小值
+        maxs = all_points.max(0)  # 各维度最大值
+        mids = (mins + maxs) / 2  # 各维度中点
+        # 返回包含最小点、中点和最大点的边界框
+        return np.array([mins, mids, maxs])
 
-    def refresh_bounding_box(
-        self,
-        recurse_down: bool = False,
-        recurse_up: bool = True
-    ) -> Self:
-        for mob in self.get_family(recurse_down):
-            mob._needs_new_bounding_box = True
-        if recurse_up:
-            for parent in self.parents:
-                parent.refresh_bounding_box()
-        return self
+def refresh_bounding_box(
+    self,
+    recurse_down: bool = False,
+    recurse_up: bool = True
+) -> Self:
+    # 标记家族中所有对象需要更新边界框（如果需要向下递归）
+    for mob in self.get_family(recurse_down):
+        mob._needs_new_bounding_box = True
+    # 如果需要向上递归，通知所有父对象刷新边界框
+    if recurse_up:
+        for parent in self.parents:
+            parent.refresh_bounding_box()
+    # 返回自身以支持链式调用
+    return self
 
-    def are_points_touching(
-        self,
-        points: Vect3Array,
-        buff: float = 0
-    ) -> np.ndarray:
-        bb = self.get_bounding_box()
-        mins = (bb[0] - buff)
-        maxs = (bb[2] + buff)
-        return ((points >= mins) * (points <= maxs)).all(1)
+def are_points_touching(
+    self,
+    points: Vect3Array,
+    buff: float = 0
+) -> np.ndarray:
+    # 获取当前对象的边界框
+    bb = self.get_bounding_box()
+    # 计算考虑缓冲值的最小和最大边界
+    mins = (bb[0] - buff)
+    maxs = (bb[2] + buff)
+    # 检查每个点是否在边界范围内（返回布尔数组）
+    return ((points >= mins) * (points <= maxs)).all(1)
 
-    def is_point_touching(
-        self,
-        point: Vect3,
-        buff: float = 0
-    ) -> bool:
-        return self.are_points_touching(np.array(point, ndmin=2), buff)[0]
+def is_point_touching(
+    self,
+    point: Vect3,
+    buff: float = 0
+) -> bool:
+    # 检查单个点是否在边界范围内（将点转换为二维数组后调用are_points_touching）
+    return self.are_points_touching(np.array(point, ndmin=2), buff)[0]
 
-    def is_touching(self, mobject: Mobject, buff: float = 1e-2) -> bool:
-        bb1 = self.get_bounding_box()
-        bb2 = mobject.get_bounding_box()
-        return not any((
-            (bb2[2] < bb1[0] - buff).any(),  # E.g. Right of mobject is left of self's left
-            (bb2[0] > bb1[2] + buff).any(),  # E.g. Left of mobject is right of self's right
-        ))
+def is_touching(self, mobject: Mobject, buff: float = 1e-2) -> bool:
+    # 获取当前对象和目标对象的边界框
+    bb1 = self.get_bounding_box()
+    bb2 = mobject.get_bounding_box()
+    # 检查两个边界框是否有重叠（没有分离）
+    return not any((
+        (bb2[2] < bb1[0] - buff).any(),  # 目标对象右边界在当前对象左边界左侧
+        (bb2[0] > bb1[2] + buff).any(),  # 目标对象左边界在当前对象右边界右侧
+    ))
 
     # Family matters
 
