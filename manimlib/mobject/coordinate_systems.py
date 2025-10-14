@@ -140,6 +140,7 @@ class CoordinateSystem(ABC):
     def get_z_axis(self) -> NumberLine:
         return self.get_axis(2)
 
+    # 为x轴创建并定位一个标签。
     def get_x_axis_label(
         self,
         label_tex: str,
@@ -152,6 +153,7 @@ class CoordinateSystem(ABC):
             edge, direction, **kwargs
         )
 
+    # 为y轴创建并定位一个标签。
     def get_y_axis_label(
         self,
         label_tex: str,
@@ -164,6 +166,7 @@ class CoordinateSystem(ABC):
             edge, direction, **kwargs
         )
 
+    # 为指定坐标轴创建标签并定位。
     def get_axis_label(
         self,
         label_tex: str,
@@ -173,26 +176,33 @@ class CoordinateSystem(ABC):
         buff: float = MED_SMALL_BUFF,
         ensure_on_screen: bool = False
     ) -> Tex:
+        # 创建LaTeX标签对象
         label = Tex(label_tex)
+        # 将标签定位在坐标轴指定端点的指定方向
         label.next_to(
             axis.get_edge_center(edge), direction,
             buff=buff
         )
+        # 如果需要，将标签移至屏幕内
         if ensure_on_screen:
             label.shift_onto_screen(buff=MED_SMALL_BUFF)
         return label
 
+    # 同时创建x轴和y轴的标签，并将它们组合成一个VGroup。
     def get_axis_labels(
         self,
         x_label_tex: str = "x",
         y_label_tex: str = "y"
     ) -> VGroup:
+        # 创建并组合x轴和y轴标签
         self.axis_labels = VGroup(
             self.get_x_axis_label(x_label_tex),
             self.get_y_axis_label(y_label_tex),
         )
         return self.axis_labels
 
+    # 从指定坐标轴向给定点绘制一条辅助线（默认是虚线）。
+    # 这条线从点在坐标轴上的投影开始，延伸到点本身，用于直观展示点与坐标轴的对应关系。
     def get_line_from_axis_to_point(
         self, 
         index: int,
@@ -201,18 +211,27 @@ class CoordinateSystem(ABC):
         color: ManimColor = GREY_A,
         stroke_width: float = 2
     ) -> T:
+        # 获取指定索引的坐标轴
         axis = self.get_axis(index)
+        # 创建从点在坐标轴上的投影到点本身的线
         line = line_func(axis.get_projection(point), point)
+        # 设置线的样式（颜色和宽度）
         line.set_stroke(color, stroke_width)
         return line
 
+    # 从x轴向给定点绘制一条垂直线（辅助线）。
+    # 是`get_line_from_axis_to_point`方法的便捷包装，固定使用x轴（索引0）。
     def get_v_line(self, point: Vect3, **kwargs):
         return self.get_line_from_axis_to_point(0, point, **kwargs)
 
+    # 从y轴向给定点绘制一条水平线（辅助线）。
+    # 是`get_line_from_axis_to_point`方法的便捷包装，固定使用y轴（索引1）。
     def get_h_line(self, point: Vect3, **kwargs):
         return self.get_line_from_axis_to_point(1, point, **kwargs)
 
     # Useful for graphing
+    # 根据给定的函数创建并返回一个参数曲线（函数图像）。
+    # 该曲线会自动适配当前坐标系的范围和转换规则。
     def get_graph(
         self,
         function: Callable[[float], float],
@@ -220,70 +239,94 @@ class CoordinateSystem(ABC):
         bind: bool = False,
         **kwargs
     ) -> ParametricCurve:
+        # 确定函数图像的x范围，若未指定则使用坐标系默认的x_range
         x_range = x_range or self.x_range
+        # 准备参数t的范围（用于参数曲线采样）
         t_range = np.ones(3)
+        # 将x_range的值复制到t_range（最多前3个元素）
         t_range[:len(x_range)] = x_range
         # For axes, the third coordinate of x_range indicates
         # tick frequency.  But for functions, it indicates a
         # sample frequency
+        # 调整采样步长：原x_range的步长表示刻度间隔，这里转换为采样间隔
+        # 通过除以每个刻度的采样点数，使采样更密集，曲线更平滑
         t_range[2] /= self.num_sampled_graph_points_per_tick
 
+        # 定义参数曲线函数：将t（即x值）转换为坐标系中的三维点
         def parametric_function(t: float) -> Vect3:
+            # 先计算函数值y = function(t)，再通过c2p转换为场景中的点坐标
             return self.c2p(t, function(t))
 
+        # 创建参数曲线对象
         graph = ParametricCurve(
             parametric_function,
-            t_range=tuple(t_range),
+            t_range=tuple(t_range),  # 采样范围和步长
             **kwargs
         )
+        # 为曲线添加额外属性，存储原始函数和x范围
         graph.underlying_function = function
         graph.x_range = x_range
 
+        # 如果需要绑定，则将曲线与函数关联（通常用于动态更新）
         if bind:
             self.bind_graph_to_func(graph, function)
 
         return graph
 
+    # 创建一条参数曲线，该曲线会自动适配当前坐标系的坐标转换规则。
+    # 适用于绘制参数方程定义的曲线（如圆、椭圆、螺旋线等）。
     def get_parametric_curve(
         self,
         function: Callable[[float], Vect3],
         **kwargs
     ) -> ParametricCurve:
+        # 获取坐标系的维度（通常为2，三维坐标系为3）
         dim = self.dimension
+        # 创建参数曲线：将函数返回的坐标通过坐标系转换为场景中的点
+        # 截取与坐标系维度匹配的坐标分量（例如2D时忽略z分量）
         graph = ParametricCurve(
             lambda t: self.coords_to_point(*function(t)[:dim]),
             **kwargs
         )
+        # 存储原始参数函数，便于后续引用或动态更新
         graph.underlying_function = function
         return graph
 
+    # 根据给定的x值，找到函数图像上对应的点在场景中的坐标。
+    # 支持两种方式：直接计算（若曲线绑定了原始函数）或通过二分查找（通用方法）。
     def input_to_graph_point(
         self,
         x: float,
         graph: ParametricCurve
     ) -> Vect3 | None:
+        # 情况1：如果曲线存储了原始函数，直接计算对应点
         if hasattr(graph, "underlying_function"):
             return self.coords_to_point(x, graph.underlying_function(x))
+        # 情况2：通用方法，通过二分查找在曲线上定位x对应的点
         else:
             alpha = binary_search(
                 function=lambda a: self.point_to_coords(
                     graph.quick_point_from_proportion(a)
                 )[0],
                 target=x,
-                lower_bound=self.x_range[0],
-                upper_bound=self.x_range[1],
+                lower_bound=self.x_range[0],  # 搜索范围下限
+                upper_bound=self.x_range[1],  # 搜索范围上限
             )
+            # 若找到有效比例，则返回对应点；否则返回None
             if alpha is not None:
                 return graph.quick_point_from_proportion(alpha)
             else:
                 return None
 
+    # `input_to_graph_point` 方法的缩写，用于快速调用。
     def i2gp(self, x: float, graph: ParametricCurve) -> Vect3 | None:
         """
         Alias for input_to_graph_point
         """
         return self.input_to_graph_point(x, graph)
 
+    # 将函数图像与函数绑定，使图像能随函数动态更新（适用于会随时间或条件变化的函数）。
+    # 当函数发生变化时，图像会自动重新计算并更新形状。
     def bind_graph_to_func(
         self,
         graph: VMobject,
@@ -295,24 +338,34 @@ class CoordinateSystem(ABC):
         Use for graphing functions which might change over time, or change with
         conditions
         """
+        # 初始化x值数组：从图像当前点反推对应的x坐标（数值坐标，非场景坐标）
         x_values = np.array([self.x_axis.p2n(p) for p in graph.get_points()])
 
+        # 定义用于更新图像点的函数
         def get_graph_points():
+            # 基础x值使用初始化的数组
             xs = x_values
+            # 若提供了不连续点获取函数，则在不连续点附近添加额外采样点
             if get_discontinuities:
                 ds = get_discontinuities()
-                ep = 1e-6
+                ep = 1e-6  # 微小偏移量，用于在不连续点两侧采样
+                # 在每个不连续点d的两侧添加d-epsilon和d+epsilon两个点
                 added_xs = it.chain(*((d - ep, d + ep) for d in ds))
+                # 将新增点与原有x值合并，排序后截取与原长度相同的点（保持采样密度）
                 xs[:] = sorted([*x_values, *added_xs])[:len(x_values)]
+            # 计算所有x对应的y值，并转换为场景中的点坐标
             return self.c2p(xs, func(xs))
 
+        # 为图像添加更新器：每帧重新计算并设置图像的顶点
         graph.add_updater(
             lambda g: g.set_points_as_corners(get_graph_points())
         )
+        # 若不需要锯齿状边缘，则添加平滑处理的更新器
         if not jagged:
             graph.add_updater(lambda g: g.make_smooth(approx=True))
         return graph
 
+    # 为函数图像添加标签，并自动定位在合适的位置。
     def get_graph_label(
         self,
         graph: ParametricCurve,
@@ -322,63 +375,89 @@ class CoordinateSystem(ABC):
         buff: float = MED_SMALL_BUFF,
         color: ManimColor | None = None
     ) -> Tex | Mobject:
+        # 1. 处理标签对象：若为字符串则转换为Tex对象
         if isinstance(label, str):
             label = Tex(label)
+        # 2. 设置标签颜色：默认与图像颜色一致
         if color is None:
             label.match_color(graph)
+        # 3. 自动确定标签位置的x坐标（如果未指定）
         if x is None:
             # Searching from the right, find a point
             # whose y value is in bounds
+            # 定义屏幕范围内的最大y和x值（留出标签空间）
             max_y = FRAME_Y_RADIUS - label.get_height()
             max_x = FRAME_X_RADIUS - label.get_width()
+            # 从右向左搜索合适的x位置（优先右侧）
+            # 寻找图像上y值在屏幕范围内的点
             for x0 in np.arange(*self.x_range)[::-1]:
-                pt = self.i2gp(x0, graph)
+                pt = self.i2gp(x0, graph)  # 获取x0对应的图像点
+                # 检查点是否在屏幕范围内
                 if abs(pt[0]) < max_x and abs(pt[1]) < max_y:
                     x = x0
                     break
+            # 若未找到合适位置，默认放在x轴范围的右端点
             if x is None:
                 x = self.x_range[1]
 
+        # 4. 获取标签附着点在图像上的坐标
         point = self.input_to_graph_point(x, graph)
+        # 5. 计算图像在该点的切线角度，确定标签的法线方向（垂直于切线）
         angle = self.angle_of_tangent(x, graph)
         normal = rotate_vector(RIGHT, angle + 90 * DEG)
+        # 6. 确保法线方向向上（避免标签出现在图像下方）
         if normal[1] < 0:
             normal *= -1
+        # 7. 定位标签：沿法线方向放置在附着点旁边
         label.next_to(point, normal, buff=buff)
+        # 8. 确保标签在屏幕内
         label.shift_onto_screen()
         return label
 
+    # 从x轴绘制一条垂直线到函数图像上指定x值对应的点。
     def get_v_line_to_graph(self, x: float, graph: ParametricCurve, **kwargs):
+        # 先获取x对应的图像点，再绘制垂直线
         return self.get_v_line(self.i2gp(x, graph), **kwargs)
 
+    # 从y轴绘制一条水平线到函数图像上指定x值对应的点。
     def get_h_line_to_graph(self, x: float, graph: ParametricCurve, **kwargs):
+        # 先获取x对应的图像点，再绘制水平线
         return self.get_h_line(self.i2gp(x, graph), **kwargs)
 
+    # 根据给定的x和y值数组创建散点图。
     def get_scatterplot(self,
                         x_values: Vect3Array,
                         y_values: Vect3Array,
                         **dot_config):
+        # 将(x, y)坐标转换为场景中的点，再创建点云
         return DotCloud(self.c2p(x_values, y_values), **dot_config)
 
     # For calculus
+    # # 微积分相关工具方法
+    # 计算函数图像在指定x处的切线与水平方向的夹角（弧度）。
     def angle_of_tangent(
         self,
         x: float,
         graph: ParametricCurve,
         dx: float = EPSILON
     ) -> float:
+        # 获取x和x+dx处的图像点
         p0 = self.input_to_graph_point(x, graph)
         p1 = self.input_to_graph_point(x + dx, graph)
+        # 计算两点连线（近似切线）的角度
         return angle_of_vector(p1 - p0)
 
+    # 计算函数图像在指定x处的切线斜率。
     def slope_of_tangent(
         self,
         x: float,
         graph: ParametricCurve,
         **kwargs
     ) -> float:
+        # 斜率 = tan(切线角度)
         return np.tan(self.angle_of_tangent(x, graph, **kwargs))
 
+    # 计算并返回函数图像在指定x处的切线。
     def get_tangent_line(
         self,
         x: float,
@@ -386,12 +465,17 @@ class CoordinateSystem(ABC):
         length: float = 5,
         line_func: Type[T] = Line
     ) -> T:
+        # 创建一条水平线段作为基础
         line = line_func(LEFT, RIGHT)
+        # 设置线段长度
         line.set_width(length)
+        # 按照切线角度旋转线段
         line.rotate(self.angle_of_tangent(x, graph))
+        # 将线段移动到图像上的目标点
         line.move_to(self.input_to_graph_point(x, graph))
         return line
 
+    # 创建用于黎曼求和的矩形组，可视化函数与x轴之间的面积近似。
     def get_riemann_rectangles(
         self,
         graph: ParametricCurve,
@@ -406,71 +490,104 @@ class CoordinateSystem(ABC):
         stroke_background: bool = True,
         show_signed_area: bool = True
     ) -> VGroup:
+        # 处理x范围和步长
         if x_range is None:
             x_range = self.x_range[:2]
         if dx is None:
             dx = self.x_range[2]
         if len(x_range) < 3:
-            x_range = [*x_range, dx]
+            x_range = [*x_range, dx]  # 确保x_range是三元组 (min, max, dx)
 
         rects = []
+        # 扩展x范围上限，确保最后一个矩形完整
         x_range[1] = x_range[1] + dx
+        # 生成所有矩形的左端点
         xs = np.arange(*x_range)
+        # 逐个创建矩形
         for x0, x1 in zip(xs, xs[1:]):
+            # 根据采样方式确定矩形高度的采样点
             if input_sample_type == "left":
-                sample = x0
+                sample = x0  # 左端点采样
             elif input_sample_type == "right":
-                sample = x1
+                sample = x1  # 右端点采样
             elif input_sample_type == "center":
-                sample = 0.5 * x0 + 0.5 * x1
+                sample = 0.5 * x0 + 0.5 * x1  # 中点采样
             else:
                 raise Exception("Invalid input sample type")
+            
+            # 计算矩形高度（函数值对应的场景距离）
+            # 从x轴上的点到图像上的点的向量
             height_vect = self.i2gp(sample, graph) - self.c2p(sample, 0)
+            # 创建矩形
             rect = Rectangle(
+                # 宽度：x1和x0在场景中的距离
                 width=self.x_axis.n2p(x1)[0] - self.x_axis.n2p(x0)[0],
+                # 高度：函数值向量的长度
                 height=get_norm(height_vect),
             )
+            # 标记矩形是否在x轴上方（正值区域）
             rect.positive = height_vect[1] > 0
+            # 定位矩形：根据正负区域决定锚点
             rect.move_to(self.c2p(x0, 0), DL if rect.positive else UL)
             rects.append(rect)
+        # 将所有矩形组合成VGroup
         result = VGroup(*rects)
+        # 设置矩形的渐变色
         result.set_submobject_colors_by_gradient(*colors)
+        # 设置矩形的基础样式
         result.set_style(
             stroke_width=stroke_width,
             stroke_color=stroke_color,
             fill_opacity=fill_opacity,
-            stroke_behind=stroke_background
+            stroke_behind=stroke_background  # 边框在填充下方
         )
+        # 对负区域的矩形设置特殊颜色
         for rect in result:
             if not rect.positive:
                 rect.set_fill(negative_color)
         return result
 
+    # 计算并创建函数图像与x轴在指定x范围内围成的填充区域。
     def get_area_under_graph(self, graph, x_range, fill_color=BLUE, fill_opacity=0.5):
+        # 检查graph是否有x_range属性（用于后续计算比例）
         if not hasattr(graph, "x_range"):
             raise Exception("Argument `graph` must have attribute `x_range`")
 
+        # 1. 将x轴范围转换为图像上的比例范围（0到1之间）
+        # inverse_interpolate用于计算x在graph.x_range中的相对位置
         alpha_bounds = [
             inverse_interpolate(*graph.x_range, x)
             for x in x_range
         ]
+        # 2. 提取指定x范围内的子图像
         sub_graph = graph.copy()
+        # 只保留图像在alpha_bounds比例范围内的部分
         sub_graph.pointwise_become_partial(graph, *alpha_bounds)
-        sub_graph.add_line_to(self.c2p(x_range[1], 0))
-        sub_graph.add_line_to(self.c2p(x_range[0], 0))
-        sub_graph.add_line_to(sub_graph.get_start())
+        # 3. 连接子图像与x轴，形成闭合区域
+        sub_graph.add_line_to(self.c2p(x_range[1], 0))  # 从子图像终点连到(x_max, 0)
+        sub_graph.add_line_to(self.c2p(x_range[0], 0))  # 从(x_max, 0)连到(x_min, 0)
+        sub_graph.add_line_to(sub_graph.get_start())    # 从(x_min, 0)连回子图像起点，闭合区域
 
-        sub_graph.set_stroke(width=0)
-        sub_graph.set_fill(fill_color, fill_opacity)
+        # 4. 设置填充样式（隐藏边框，添加填充色和透明度）
+        sub_graph.set_stroke(width=0)  # 边框宽度设为0，不显示边框
+        sub_graph.set_fill(fill_color, fill_opacity)  # 设置填充色和透明度
 
         return sub_graph
 
 
 class Axes(VGroup, CoordinateSystem):
+    """
+    具体的坐标轴类，继承自复合图形类VGroup和坐标系抽象类CoordinateSystem。
+    用于在Manim场景中创建带刻度、标签的标准二维坐标轴，支持坐标转换、函数绘制等功能。
+    """
+    # 坐标轴的默认配置字典，用于统一设置轴的样式（如颜色、线宽等）
     default_axis_config: dict = dict()
+    # x轴的专属默认配置，会覆盖default_axis_config中的同名配置
     default_x_axis_config: dict = dict()
+    # y轴的专属默认配置，默认设置数值标签在轴的左侧（line_to_number_direction=LEFT）
     default_y_axis_config: dict = dict(line_to_number_direction=LEFT)
 
+    # 初始化Axes对象，创建带有刻度和标签的二维坐标轴。
     def __init__(
         self,
         x_range: RangeSpecifier = DEFAULT_X_RANGE,
@@ -483,11 +600,17 @@ class Axes(VGroup, CoordinateSystem):
         unit_size: float = 1.0,
         **kwargs
     ):
+        # 1. 初始化父类CoordinateSystem（处理坐标范围等核心属性）
         CoordinateSystem.__init__(self, x_range, y_range, **kwargs)
+        # 移除可能从父类传递过来的不相关参数
         kwargs.pop("num_sampled_graph_points_per_tick", None)
+        # 2. 初始化父类VGroup（作为复合图形容器）
         VGroup.__init__(self, **kwargs)
 
+        # 3. 准备坐标轴配置（合并默认配置与用户配置）
+        # 基础配置中加入单位大小
         axis_config = dict(**axis_config, unit_size=unit_size)
+        # 创建x轴：合并多层配置（默认通用配置 → 默认x轴配置 → 通用用户配置 → x轴用户配置）
         self.x_axis = self.create_axis(
             self.x_range,
             axis_config=merge_dicts_recursively(
@@ -496,8 +619,9 @@ class Axes(VGroup, CoordinateSystem):
                 axis_config,
                 x_axis_config
             ),
-            length=width,
+            length=width,  # 指定x轴长度
         )
+        # 创建y轴：类似x轴，但使用y轴专属配置
         self.y_axis = self.create_axis(
             self.y_range,
             axis_config=merge_dicts_recursively(
@@ -506,13 +630,17 @@ class Axes(VGroup, CoordinateSystem):
                 axis_config,
                 y_axis_config
             ),
-            length=height,
+            length=height,  # 指定y轴长度
         )
+        # 4. 旋转y轴使其垂直于x轴（绕原点旋转90度）
         self.y_axis.rotate(90 * DEG, about_point=ORIGIN)
         # Add as a separate group in case various other
         # mobjects are added to self, as for example in
         # NumberPlane below
+        # 5. 将坐标轴组合成单独的VGroup（便于统一管理）
+        # 这样即使后续添加其他图形，坐标轴仍能作为整体被操作
         self.axes = VGroup(self.x_axis, self.y_axis)
+        # 6. 将坐标轴添加到当前Axes对象中，并居中显示
         self.add(*self.axes)
         self.center()
 
