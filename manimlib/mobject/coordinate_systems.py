@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+# 导入抽象基类（ABC）和抽象方法（abstractmethod），用于定义接口和强制子类实现特定方法
 from abc import ABC, abstractmethod
+
+# 导入numbers模块，用于检查数值类型
 import numbers
 
+# 导入NumPy库，用于高效的数值计算和数组操作
 import numpy as np
+
+# 导入itertools模块，提供创建和操作迭代器的工具函数
 import itertools as it
 
 from manimlib.constants import BLACK, BLUE, BLUE_D, BLUE_E, GREEN, GREY_A, RED, DEFAULT_MOBJECT_COLOR
@@ -32,6 +38,7 @@ from manimlib.utils.space_ops import normalize
 
 from typing import TYPE_CHECKING
 
+# 仅在类型检查模式下导入类型注解（避免运行时依赖）
 if TYPE_CHECKING:
     from typing import Callable, Iterable, Sequence, Type, TypeVar, Optional
     from manimlib.mobject.mobject import Mobject
@@ -40,12 +47,20 @@ if TYPE_CHECKING:
     T = TypeVar("T", bound=Mobject)
 
 
-EPSILON = 1e-8
-DEFAULT_X_RANGE = (-8.0, 8.0, 1.0)
-DEFAULT_Y_RANGE = (-4.0, 4.0, 1.0)
+# 数学/数值计算相关常量
+EPSILON = 1e-8  # 极小值，用于比较浮点数时避免精度问题
+DEFAULT_X_RANGE = (-8.0, 8.0, 1.0)  # 默认x轴范围 (min, max, step)
+DEFAULT_Y_RANGE = (-4.0, 4.0, 1.0)  # 默认y轴范围 (min, max, step)
 
 
 def full_range_specifier(range_args):
+    """
+    确保范围参数是三元组 (min, max, step)。
+    如果只提供了 (min, max)，则自动添加 step=1。
+
+    参数:
+        range_args: 范围参数，可以是二元组 (min, max) 或三元组 (min, max, step)。
+    """
     if len(range_args) == 2:
         return (*range_args, 1)
     return range_args
@@ -55,54 +70,73 @@ class CoordinateSystem(ABC):
     """
     Abstract class for Axes and NumberPlane
     """
+    """
+    坐标系的抽象基类（ABC），为所有具体坐标系（如Axes, NumberPlane）提供统一的接口。
+    它定义了坐标与点之间相互转换的核心方法，以及配置坐标轴范围的基本属性。
+    """
+    # 类属性：坐标系的维度，默认为2（二维平面）
     dimension: int = 2
 
+    # 初始化坐标系的基本参数
     def __init__(
         self,
         x_range: RangeSpecifier = DEFAULT_X_RANGE,
         y_range: RangeSpecifier = DEFAULT_Y_RANGE,
         num_sampled_graph_points_per_tick: int = 5,
     ):
+        # 使用辅助函数确保x_range和y_range都是三元组 (min, max, step)
         self.x_range = full_range_specifier(x_range)
         self.y_range = full_range_specifier(y_range)
+        # 存储每个刻度间隔的采样点数
         self.num_sampled_graph_points_per_tick = num_sampled_graph_points_per_tick
 
     @abstractmethod
+    # 抽象方法：将一组数学坐标（如(x, y)）转换为Manim场景中的三维空间点。
     def coords_to_point(self, *coords: float | VectN) -> Vect3 | Vect3Array:
         raise Exception("Not implemented")
 
     @abstractmethod
+    # 抽象方法：将Manim场景中的三维空间点转换回数学坐标。
     def point_to_coords(self, point: Vect3 | Vect3Array) -> tuple[float | VectN, ...]:
         raise Exception("Not implemented")
 
+    #  `coords_to_point` 方法的缩写，用于快速调用。
     def c2p(self, *coords: float) -> Vect3 | Vect3Array:
         """Abbreviation for coords_to_point"""
         return self.coords_to_point(*coords)
 
+    # `point_to_coords` 方法的缩写，用于快速调用。
     def p2c(self, point: Vect3) -> tuple[float | VectN, ...]:
         """Abbreviation for point_to_coords"""
         return self.point_to_coords(point)
 
+    # 获取坐标系原点在Manim场景中的三维点坐标。
     def get_origin(self) -> Vect3:
         return self.c2p(*[0] * self.dimension)
 
     @abstractmethod
+    # 抽象方法：获取包含所有坐标轴的VGroup。
     def get_axes(self) -> VGroup:
         raise Exception("Not implemented")
 
     @abstractmethod
+    # 抽象方法：获取所有坐标轴的数值范围数组。
     def get_all_ranges(self) -> list[np.ndarray]:
         raise Exception("Not implemented")
 
+    # 根据索引获取特定的坐标轴。
     def get_axis(self, index: int) -> NumberLine:
         return self.get_axes()[index]
 
+    # 获取x轴。
     def get_x_axis(self) -> NumberLine:
         return self.get_axis(0)
 
+    # 获取y轴。
     def get_y_axis(self) -> NumberLine:
         return self.get_axis(1)
 
+    # 获取z轴。
     def get_z_axis(self) -> NumberLine:
         return self.get_axis(2)
 
