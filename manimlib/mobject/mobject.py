@@ -1055,39 +1055,54 @@ def become(self, mobject: Mobject, match_updaters=False) -> Self:
         self.match_updaters(mobject)
     return self
 
-    def looks_identical(self, mobject: Mobject) -> bool:
-        fam1 = self.family_members_with_points()
-        fam2 = mobject.family_members_with_points()
-        if len(fam1) != len(fam2):
+def looks_identical(self, mobject: Mobject) -> bool:
+    # 检查当前对象与另一个对象是否看起来完全相同
+    # 获取包含点数据的家族成员
+    fam1 = self.family_members_with_points()
+    fam2 = mobject.family_members_with_points()
+    # 家族成员数量不同则不相同
+    if len(fam1) != len(fam2):
+        return False
+    # 逐个检查家族成员的属性
+    for m1, m2 in zip(fam1, fam2):
+        # 点数量不同则不相同
+        if m1.get_num_points() != m2.get_num_points():
             return False
-        for m1, m2 in zip(fam1, fam2):
-            if m1.get_num_points() != m2.get_num_points():
+        # 数据类型不同则不相同
+        if not m1.data.dtype == m2.data.dtype:
+            return False
+        # 检查数据中每个字段是否接近
+        for key in m1.data.dtype.names:
+            if not np.isclose(m1.data[key], m2.data[key]).all():
                 return False
-            if not m1.data.dtype == m2.data.dtype:
+        # 检查uniforms的键是否一致
+        if set(m1.uniforms).difference(m2.uniforms):
+            return False
+        # 检查每个uniform的值是否接近
+        for key in m1.uniforms:
+            value1 = m1.uniforms[key]
+            value2 = m2.uniforms[key]
+            # 数组大小不同则不相同
+            if isinstance(value1, np.ndarray) and isinstance(value2, np.ndarray) and not value1.size == value2.size:
                 return False
-            for key in m1.data.dtype.names:
-                if not np.isclose(m1.data[key], m2.data[key]).all():
-                    return False
-            if set(m1.uniforms).difference(m2.uniforms):
+            # 值不接近则不相同
+            if not np.isclose(value1, value2).all():
                 return False
-            for key in m1.uniforms:
-                value1 = m1.uniforms[key]
-                value2 = m2.uniforms[key]
-                if isinstance(value1, np.ndarray) and isinstance(value2, np.ndarray) and not value1.size == value2.size:
-                    return False
-                if not np.isclose(value1, value2).all():
-                    return False
-        return True
+    # 所有检查通过，认为相同
+    return True
 
-    def has_same_shape_as(self, mobject: Mobject) -> bool:
-        # Normalize both point sets by centering and making height 1
-        points1, points2 = (
-            (m.get_all_points() - m.get_center()) / m.get_height()
-            for m in (self, mobject)
-        )
-        if len(points1) != len(points2):
-            return False
-        return bool(np.isclose(points1, points2, atol=self.get_width() * 1e-2).all())
+def has_same_shape_as(self, mobject: Mobject) -> bool:
+    # 检查当前对象与另一个对象是否具有相同的形状（忽略位置和大小差异）
+    # 通过中心化和归一化高度来标准化点集
+    points1, points2 = (
+        (m.get_all_points() - m.get_center()) / m.get_height()
+        for m in (self, mobject)
+    )
+    # 点数量不同则形状不同
+    if len(points1) != len(points2):
+        return False
+    # 检查标准化后的点是否接近（容差为宽度的1%）
+    return bool(np.isclose(points1, points2, atol=self.get_width() * 1e-2).all())
 
     # Creating new Mobjects from this one
 
@@ -1095,37 +1110,51 @@ def become(self, mobject: Mobject, match_updaters=False) -> Self:
         group_class = self.get_group_class()
         return group_class(*(self.copy() for _ in range(n)))
 
-    def get_grid(
-        self,
-        n_rows: int,
-        n_cols: int,
-        height: float | None = None,
-        width: float | None = None,
-        group_by_rows: bool = False,
-        group_by_cols: bool = False,
-        **kwargs
-    ) -> Self:
-        """
-        Returns a new mobject containing multiple copies of this one
-        arranged in a grid
-        """
-        total = n_rows * n_cols
-        grid = self.replicate(total)
-        if group_by_cols:
-            kwargs["fill_rows_first"] = False
-        grid.arrange_in_grid(n_rows, n_cols, **kwargs)
-        if height is not None:
-            grid.set_height(height)
-        if width is not None:
-            grid.set_height(width)
+def replicate(self, n: int) -> Self:
+    # 获取当前对象的组类（用于创建新的组）
+    group_class = self.get_group_class()
+    # 创建n个当前对象的副本，并使用组类包装返回
+    return group_class(*(self.copy() for _ in range(n)))
 
-        group_class = self.get_group_class()
-        if group_by_rows:
-            return group_class(*(grid[n:n + n_cols] for n in range(0, total, n_cols)))
-        elif group_by_cols:
-            return group_class(*(grid[n:n + n_rows] for n in range(0, total, n_rows)))
-        else:
-            return grid
+def get_grid(
+    self,
+    n_rows: int,
+    n_cols: int,
+    height: float | None = None,
+    width: float | None = None,
+    group_by_rows: bool = False,
+    group_by_cols: bool = False,** kwargs
+) -> Self:
+    """
+    返回一个包含当前对象多个副本的新对象，这些副本排列成网格状
+    """
+    # 计算网格中对象的总数
+    total = n_rows * n_cols
+    # 复制当前对象total次，形成网格的基础元素
+    grid = self.replicate(total)
+    # 如果按列分组，设置填充方式为先填充列
+    if group_by_cols:
+        kwargs["fill_rows_first"] = False
+    # 将复制的对象排列成指定行列的网格
+    grid.arrange_in_grid(n_rows, n_cols, **kwargs)
+    # 如果指定了高度，设置网格的总高度
+    if height is not None:
+        grid.set_height(height)
+    # 如果指定了宽度，设置网格的总宽度（这里原文可能笔误，应该是set_width）
+    if width is not None:
+        grid.set_height(width)
+
+    # 获取组类用于后续分组
+    group_class = self.get_group_class()
+    # 如果按行分组，将网格按行分割并包装成组
+    if group_by_rows:
+        return group_class(*(grid[n:n + n_cols] for n in range(0, total, n_cols)))
+    # 如果按列分组，将网格按列分割并包装成组
+    elif group_by_cols:
+        return group_class(*(grid[n:n + n_rows] for n in range(0, total, n_rows)))
+    # 否则直接返回排列好的网格
+    else:
+        return grid
 
     # Updating
 
