@@ -53,70 +53,83 @@ if TYPE_CHECKING:
     from manimlib.mobject.mobject import Mobject  # 导入所有可移动对象的基类
 
 
+# 定义FocusOn类，继承自Transform（变换基类）
 class FocusOn(Transform):
+    # 构造方法，初始化FocusOn实例
     def __init__(
         self,
-        focus_point: np.ndarray | Mobject,
-        opacity: float = 0.2,
-        color: ManimColor = GREY,
-        run_time: float = 2,
-        remover: bool = True,
-        **kwargs
+        focus_point: np.ndarray | Mobject,  # 聚焦点，可以是numpy数组（坐标）或Mobject对象
+        opacity: float = 0.2,  # 透明度，默认值0.2
+        color: ManimColor = GREY,  # 颜色，默认灰色
+        run_time: float = 2,  # 动画运行时间，默认2秒
+        remover: bool = True,  # 是否在动画结束后移除，默认True
+        **kwargs  # 其他关键字参数，传递给父类
     ):
-        self.focus_point = focus_point
-        self.opacity = opacity
-        self.color = color
-        # Initialize with blank mobject, while create_target
-        # and create_starting_mobject handle the meat
-        super().__init__(VMobject(), run_time=run_time, remover=remover, **kwargs)
+        self.focus_point = focus_point  # 保存聚焦点到实例变量
+        self.opacity = opacity  # 保存透明度到实例变量
+        self.color = color  # 保存颜色到实例变量
+        # 调用父类构造方法，初始化一个空的VMobject作为基础
+        # 实际的动画内容由create_target和create_starting_mobject处理
+        super().__init__(VMobject(), run_time=run_time, remover=remover,** kwargs)
 
+    # 创建动画的目标状态Mobject
     def create_target(self) -> Dot:
-        little_dot = Dot(radius=0)
-        little_dot.set_fill(self.color, opacity=self.opacity)
+        little_dot = Dot(radius=0)  # 创建一个半径为0的点（不可见的点）
+        little_dot.set_fill(self.color, opacity=self.opacity)  # 设置填充颜色和透明度
+        # 添加更新器，使这个点始终跟随聚焦点移动
         little_dot.add_updater(lambda d: d.move_to(self.focus_point))
-        return little_dot
+        return little_dot  # 返回目标状态的点
 
+    # 创建动画的起始状态Mobject
     def create_starting_mobject(self) -> Dot:
         return Dot(
-            radius=FRAME_X_RADIUS + FRAME_Y_RADIUS,
-            stroke_width=0,
-            fill_color=self.color,
-            fill_opacity=0,
+            radius=FRAME_X_RADIUS + FRAME_Y_RADIUS,  # 半径设为帧宽半径+帧高半径（覆盖整个画面）
+            stroke_width=0,  # 描边宽度为0（无描边）
+            fill_color=self.color,  # 填充颜色
+            fill_opacity=0,  # 初始填充透明度为0（完全透明）
         )
 
 
+
+# 定义Indicate类，继承自Transform（变换基类）
 class Indicate(Transform):
+    # 构造方法，初始化Indicate实例
     def __init__(
         self,
-        mobject: Mobject,
-        scale_factor: float = 1.2,
-        color: ManimColor = YELLOW,
-        rate_func: Callable[[float], float] = there_and_back,
-        **kwargs
+        mobject: Mobject,  # 要强调的Mobject对象
+        scale_factor: float = 1.2,  # 缩放因子，默认1.2倍
+        color: ManimColor = YELLOW,  # 强调颜色，默认黄色
+        rate_func: Callable[[float], float] = there_and_back,  # 速率函数，默认there_and_back（去而复返）
+        **kwargs  # 其他关键字参数，传递给父类
     ):
-        self.scale_factor = scale_factor
-        self.color = color
-        super().__init__(mobject, rate_func=rate_func, **kwargs)
+        self.scale_factor = scale_factor  # 保存缩放因子到实例变量
+        self.color = color  # 保存颜色到实例变量
+        # 调用父类构造方法，传入要变换的mobject和速率函数等参数
+        super().__init__(mobject, rate_func=rate_func,** kwargs)
 
+    # 创建动画的目标状态Mobject
     def create_target(self) -> Mobject:
-        target = self.mobject.copy()
-        target.scale(self.scale_factor)
-        target.set_color(self.color)
-        return target
+        target = self.mobject.copy()  # 复制原始Mobject作为目标基础
+        target.scale(self.scale_factor)  # 按缩放因子缩放目标
+        target.set_color(self.color)  # 设置目标的颜色
+        return target  # 返回目标状态的Mobject
 
 
+# 定义Flash类，继承自AnimationGroup（动画组），用于创建闪烁动画效果
 class Flash(AnimationGroup):
+    # 构造方法，初始化Flash动画实例
     def __init__(
         self,
-        point: np.ndarray | Mobject,
-        color: ManimColor = YELLOW,
-        line_length: float = 0.2,
-        num_lines: int = 12,
-        flash_radius: float = 0.3,
-        line_stroke_width: float = 3.0,
-        run_time: float = 1.0,
-        **kwargs
+        point: np.ndarray | Mobject,  # 闪烁中心点，可以是坐标数组或Mobject对象
+        color: ManimColor = YELLOW,  # 闪烁线条颜色，默认黄色
+        line_length: float = 0.2,  # 每条闪烁线的长度，默认0.2
+        num_lines: int = 12,  # 闪烁线的数量，默认12条
+        flash_radius: float = 0.3,  # 闪烁效果的初始半径，默认0.3
+        line_stroke_width: float = 3.0,  # 线条粗细，默认3.0
+        run_time: float = 1.0,  # 动画运行时间，默认1秒
+        **kwargs  # 其他关键字参数，传递给父类
     ):
+        # 将参数保存为实例变量，供后续方法使用
         self.point = point
         self.color = color
         self.line_length = line_length
@@ -124,30 +137,44 @@ class Flash(AnimationGroup):
         self.flash_radius = flash_radius
         self.line_stroke_width = line_stroke_width
 
+        # 创建闪烁效果所需的所有线条
         self.lines = self.create_lines()
+        # 为每条线创建对应的动画
         animations = self.create_line_anims()
+        # 调用父类构造方法，将所有线条动画组合成一个动画组
         super().__init__(
-            *animations,
-            group=self.lines,
-            run_time=run_time,
-            **kwargs,
+            *animations,  # 解包动画列表，作为动画组的子动画
+            group=self.lines,  # 指定动画组操作的Mobject组
+            run_time=run_time,  # 动画总时长
+            **kwargs,  # 传递其他关键字参数
         )
 
+    # 创建组成闪烁效果的所有线条，返回一个VGroup（矢量对象组）
     def create_lines(self) -> VGroup:
-        lines = VGroup()
+        lines = VGroup()  # 初始化一个空的矢量对象组，用于存放所有线条
+        # 按角度均匀分布创建线条（TAU是2π，即360度）
         for angle in np.arange(0, TAU, TAU / self.num_lines):
+            # 创建一条从原点到右侧的线段，长度为line_length
             line = Line(ORIGIN, self.line_length * RIGHT)
+            # 将线段向右偏移，使线段起点位于闪烁半径位置
+            # 偏移距离 = 闪烁半径 - 线段长度（确保线段末端在半径边界）
             line.shift((self.flash_radius - self.line_length) * RIGHT)
+            # 绕原点旋转线段到当前角度，实现放射状分布
             line.rotate(angle, about_point=ORIGIN)
+            # 将线段添加到线条组中
             lines.add(line)
+        # 设置所有线条的样式：颜色和粗细
         lines.set_stroke(
             color=self.color,
             width=self.line_stroke_width
         )
+        # 添加更新器，使整个线条组始终跟随目标点移动
         lines.add_updater(lambda l: l.move_to(self.point))
-        return lines
+        return lines  # 返回创建好的线条组
 
+    # 为每条线创建显示后消失的动画，返回动画列表
     def create_line_anims(self) -> list[Animation]:
+        # 对线条组中的每条线，创建"先显示再消失"的动画
         return [
             ShowCreationThenDestruction(line)
             for line in self.lines
