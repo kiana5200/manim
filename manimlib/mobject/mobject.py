@@ -1755,148 +1755,193 @@ def surround(
     self.scale((length + buff) / length)
     return self
 
-    def put_start_and_end_on(self, start: Vect3, end: Vect3) -> Self:
-        curr_start, curr_end = self.get_start_and_end()
-        curr_vect = curr_end - curr_start
-        if np.all(curr_vect == 0):
-            raise Exception("Cannot position endpoints of closed loop")
-        target_vect = end - start
-        self.scale(
-            get_norm(target_vect) / get_norm(curr_vect),
-            about_point=curr_start,
-        )
-        self.rotate(
-            angle_of_vector(target_vect) - angle_of_vector(curr_vect),
-        )
-        self.rotate(
-            np.arctan2(curr_vect[2], get_norm(curr_vect[:2])) - np.arctan2(target_vect[2], get_norm(target_vect[:2])),
-            axis=np.array([-target_vect[1], target_vect[0], 0]),
-        )
-        self.shift(start - self.get_start())
-        return self
+def put_start_and_end_on(self, start: Vect3, end: Vect3) -> Self:
+    # 获取当前对象的起始点和终止点（如线段的两端）
+    curr_start, curr_end = self.get_start_and_end()
+    # 计算当前对象起始点到终止点的向量
+    curr_vect = curr_end - curr_start
+    # 若当前向量为零向量（闭合图形），抛出异常（无法定位闭合图形的端点）
+    if np.all(curr_vect == 0):
+        raise Exception("Cannot position endpoints of closed loop")
+    # 计算目标起始点到目标终止点的向量
+    target_vect = end - start
 
+    # 1. 缩放当前对象：使当前向量长度匹配目标向量长度（围绕当前起始点缩放）
+    self.scale(
+        get_norm(target_vect) / get_norm(curr_vect),  # 缩放因子：目标长度/当前长度
+        about_point=curr_start,                       # 围绕当前起始点缩放（避免起始点偏移）
+    )
+
+    # 2. 2D平面旋转：使当前向量在XY平面的角度匹配目标向量
+    self.rotate(
+        angle_of_vector(target_vect) - angle_of_vector(curr_vect),  # 旋转角度差
+    )
+
+    # 3. 3D空间旋转：调整Z轴方向的角度，使当前向量完全匹配目标向量的3D方向
+    self.rotate(
+        # 计算Z轴方向的角度差：当前向量的Z角 - 目标向量的Z角
+        np.arctan2(curr_vect[2], get_norm(curr_vect[:2])) - np.arctan2(target_vect[2], get_norm(target_vect[:2])),
+        axis=np.array([-target_vect[1], target_vect[0], 0]),  # 旋转轴：垂直于目标向量的XY平面法向量
+    )
+
+    # 4. 平移当前对象：将当前起始点移动到目标起始点
+    self.shift(start - self.get_start())
+    return self
     # Color functions
 
-    @affects_family_data
-    def set_rgba_array(
-        self,
-        rgba_array: npt.ArrayLike,
-        name: str = "rgba",
-        recurse: bool = False
-    ) -> Self:
-        for mob in self.get_family(recurse):
-            data = mob.data if mob.get_num_points() > 0 else mob._data_defaults
-            data[name][:] = rgba_array
-        return self
+@affects_family_data  # 装饰器：标记该方法会修改家族成员的数据，需触发相关更新
+def set_rgba_array(
+    self,
+    rgba_array: npt.ArrayLike,
+    name: str = "rgba",
+    recurse: bool = False
+) -> Self:
+    # 遍历当前对象的家族成员（根据recurse决定是否递归子对象）
+    for mob in self.get_family(recurse):
+        # 若当前成员有数据点，使用其数据；否则使用默认数据模板
+        data = mob.data if mob.get_num_points() > 0 else mob._data_defaults
+        # 将RGBA数组赋值到指定名称的字段（默认是"rgba"字段，存储颜色和透明度）
+        data[name][:] = rgba_array
+    return self
 
-    def set_color_by_rgba_func(
-        self,
-        func: Callable[[Vect3Array], Vect4Array],
-        recurse: bool = True
-    ) -> Self:
-        """
-        Func should take in a point in R3 and output an rgba value
-        """
-        for mob in self.get_family(recurse):
-            mob.set_rgba_array(func(mob.get_points()))
-        return self
+def set_color_by_rgba_func(
+    self,
+    func: Callable[[Vect3Array], Vect4Array],
+    recurse: bool = True
+) -> Self:
+    """
+    输入函数需接收3D坐标点数组，输出对应的RGBA颜色数组（每个点对应一个RGBA值）
+    """
+    # 遍历家族成员，为每个成员设置颜色
+    for mob in self.get_family(recurse):
+        # 1. 获取成员的所有3D点；2. 用自定义函数计算每个点的RGBA；3. 应用RGBA数组
+        mob.set_rgba_array(func(mob.get_points()))
+    return self
 
-    def set_color_by_rgb_func(
-        self,
-        func: Callable[[Vect3Array], Vect3Array],
-        opacity: float = 1,
-        recurse: bool = True
-    ) -> Self:
-        """
-        Func should take in a point in R3 and output an rgb value
-        """
-        for mob in self.get_family(recurse):
-            points = mob.get_points()
-            opacity = np.ones((points.shape[0], 1)) * opacity
-            mob.set_rgba_array(np.hstack((func(points), opacity)))
-        return self
+def set_color_by_rgb_func(
+    self,
+    func: Callable[[Vect3Array], Vect3Array],
+    opacity: float = 1,
+    recurse: bool = True
+) -> Self:
+    """
+    输入函数需接收3D坐标点数组，输出对应的RGB颜色数组（每个点对应一个RGB值）
+    """
+    # 遍历家族成员，为每个成员设置颜色和透明度
+    for mob in self.get_family(recurse):
+        # 获取成员的所有3D点
+        points = mob.get_points()
+        # 创建与点数量匹配的透明度数组（所有点使用统一透明度）
+        opacity_array = np.ones((points.shape[0], 1)) * opacity
+        # 1. 用自定义函数计算RGB；2. 将RGB与透明度拼接成RGBA；3. 应用RGBA数组
+        mob.set_rgba_array(np.hstack((func(points), opacity_array)))
+    return self
 
-    @affects_family_data
-    def set_rgba_array_by_color(
-        self,
-        color: ManimColor | Iterable[ManimColor] | None = None,
-        opacity: float | Iterable[float] | None = None,
-        name: str = "rgba",
-        recurse: bool = True
-    ) -> Self:
-        for mob in self.get_family(recurse):
-            data = mob.data if mob.has_points() > 0 else mob._data_defaults
-            if color is not None:
-                rgbs = np.array(list(map(color_to_rgb, listify(color))))
-                if 1 < len(rgbs):
-                    rgbs = resize_with_interpolation(rgbs, len(data))
-                data[name][:, :3] = rgbs
-            if opacity is not None:
-                if not isinstance(opacity, (float, int, np.floating)):
-                    opacity = resize_with_interpolation(np.array(opacity), len(data))
-                data[name][:, 3] = opacity
-        return self
+@affects_family_data  # 装饰器：标记该方法会修改家族成员的数据
+def set_rgba_array_by_color(
+    self,
+    color: ManimColor | Iterable[ManimColor] | None = None,
+    opacity: float | Iterable[float] | None = None,
+    name: str = "rgba",
+    recurse: bool = True
+) -> Self:
+    # 遍历家族成员，为每个成员设置RGBA
+    for mob in self.get_family(recurse):
+        # 选择成员的数据（有数据点则用自身数据，否则用默认模板）
+        data = mob.data if mob.has_points() > 0 else mob._data_defaults
+        
+        # 处理颜色：若指定了颜色
+        if color is not None:
+            # 1. 将颜色（或颜色列表）转为RGB数组；2. 用listify统一格式（处理单个颜色/颜色列表）
+            rgbs = np.array(list(map(color_to_rgb, listify(color))))
+            # 若颜色数量大于1，插值调整颜色数组长度以匹配数据长度（实现渐变等效果）
+            if 1 < len(rgbs):
+                rgbs = resize_with_interpolation(rgbs, len(data))
+            # 将RGB值赋值到RGBA字段的前3列（RGB通道）
+            data[name][:, :3] = rgbs
+        
+        # 处理透明度：若指定了透明度
+        if opacity is not None:
+            # 若透明度不是单个数值（如透明度列表），插值调整长度以匹配数据长度
+            if not isinstance(opacity, (float, int, np.floating)):
+                opacity = resize_with_interpolation(np.array(opacity), len(data))
+            # 将透明度赋值到RGBA字段的第4列（Alpha通道）
+            data[name][:, 3] = opacity
+    return self
 
-    def set_color(
-        self,
-        color: ManimColor | Iterable[ManimColor] | None,
-        opacity: float | Iterable[float] | None = None,
-        recurse: bool = True
-    ) -> Self:
-        self.set_rgba_array_by_color(color, opacity, recurse=False)
-        # Recurse to submobjects differently from how set_rgba_array_by_color
-        # in case they implement set_color differently
-        if recurse:
-            for submob in self.submobjects:
-                submob.set_color(color, recurse=True)
-        return self
+def set_color(
+    self,
+    color: ManimColor | Iterable[ManimColor] | None,
+    opacity: float | Iterable[float] | None = None,
+    recurse: bool = True
+) -> Self:
+    # 先为当前对象设置颜色和透明度（不递归，避免重复处理）
+    self.set_rgba_array_by_color(color, opacity, recurse=False)
+    # 若需要递归，单独调用子对象的set_color（允许子对象重写该方法实现自定义逻辑）
+    if recurse:
+        for submob in self.submobjects:
+            submob.set_color(color, recurse=True)
+    return self
 
-    def set_opacity(
-        self,
-        opacity: float | Iterable[float] | None,
-        recurse: bool = True
-    ) -> Self:
-        self.set_rgba_array_by_color(color=None, opacity=opacity, recurse=False)
-        if recurse:
-            for submob in self.submobjects:
-                submob.set_opacity(opacity, recurse=True)
-        return self
+def set_opacity(
+    self,
+    opacity: float | Iterable[float] | None,
+    recurse: bool = True
+) -> Self:
+    # 先为当前对象设置透明度（颜色设为None，仅修改Alpha通道，不递归）
+    self.set_rgba_array_by_color(color=None, opacity=opacity, recurse=False)
+    # 若需要递归，调用子对象的set_opacity
+    if recurse:
+        for submob in self.submobjects:
+            submob.set_opacity(opacity, recurse=True)
+    return self
 
-    def get_color(self) -> str:
-        return rgb_to_hex(self.data["rgba"][0, :3])
+def get_color(self) -> str:
+    # 获取当前对象的颜色：1. 取RGBA字段第一个点的RGB值；2. 转为十六进制颜色字符串
+    return rgb_to_hex(self.data["rgba"][0, :3])
 
-    def get_opacity(self) -> float:
-        return float(self.data["rgba"][0, 3])
+def get_opacity(self) -> float:
+    # 获取当前对象的透明度：取RGBA字段第一个点的Alpha值（转为Python浮点数）
+    return float(self.data["rgba"][0, 3])
 
-    def get_opacities(self) -> float:
-        return self.data["rgba"][:, 3]
+def get_opacities(self) -> float:
+    # 获取所有点的透明度：返回RGBA字段的第4列（所有点的Alpha通道）
+    return self.data["rgba"][:, 3]
 
-    def set_color_by_gradient(self, *colors: ManimColor) -> Self:
-        if self.has_points():
-            self.set_color(colors)
-        else:
-            self.set_submobject_colors_by_gradient(*colors)
-        return self
+def set_color_by_gradient(self, *colors: ManimColor) -> Self:
+    # 若当前对象有数据点，直接为其设置渐变颜色（通过set_color处理多颜色插值）
+    if self.has_points():
+        self.set_color(colors)
+    # 若当前对象无数据点（如组对象），为其子对象设置渐变颜色
+    else:
+        self.set_submobject_colors_by_gradient(*colors)
+    return self
 
-    def set_submobject_colors_by_gradient(self, *colors: ManimColor) -> Self:
-        if len(colors) == 0:
-            raise Exception("Need at least one color")
-        elif len(colors) == 1:
-            return self.set_color(*colors)
+def set_submobject_colors_by_gradient(self, *colors: ManimColor) -> Self:
+    # 检查颜色数量：至少需要1个颜色
+    if len(colors) == 0:
+        raise Exception("Need at least one color")
+    # 若只有1个颜色，直接为所有子对象设置统一颜色
+    elif len(colors) == 1:
+        return self.set_color(*colors)
 
-        # mobs = self.family_members_with_points()
-        mobs = self.submobjects
-        new_colors = color_gradient(colors, len(mobs))
+    # 获取当前对象的子对象列表（用于逐个分配渐变颜色）
+    mobs = self.submobjects
+    # 生成与子对象数量匹配的渐变颜色数组（插值计算中间色）
+    new_colors = color_gradient(colors, len(mobs))
 
-        for mob, color in zip(mobs, new_colors):
-            mob.set_color(color)
-        return self
+    # 为每个子对象分配对应的渐变颜色
+    for mob, color in zip(mobs, new_colors):
+        mob.set_color(color)
+    return self
 
-    def fade(self, darkness: float = 0.5, recurse: bool = True) -> Self:
-        self.set_opacity(1.0 - darkness, recurse=recurse)
+def fade(self, darkness: float = 0.5, recurse: bool = True) -> Self:
+    # 实现"褪色"效果：透明度 = 1 - 暗度（darkness越大，透明度越低，越暗）
+    self.set_opacity(1.0 - darkness, recurse=recurse)
 
-    def get_shading(self) -> np.ndarray:
-        return self.uniforms["shading"]
+def get_shading(self) -> np.ndarray:
+    # 获取当前对象的着色参数（从uniforms中读取"shading"字段，控制光照反射效果）
+    return self.uniforms["shading"]
 
     def set_shading(
         self,
