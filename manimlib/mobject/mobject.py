@@ -842,86 +842,118 @@ def arrange_in_grid(
     # 返回自身以支持链式调用
     return self
 
-    def arrange_to_fit_dim(self, length: float, dim: int, about_edge=ORIGIN) -> Self:
-        ref_point = self.get_bounding_box_point(about_edge)
-        n_submobs = len(self.submobjects)
-        if n_submobs <= 1:
-            return
-        total_length = sum(sm.length_over_dim(dim) for sm in self.submobjects)
-        buff = (length - total_length) / (n_submobs - 1)
-        vect = np.zeros(self.dim)
-        vect[dim] = 1
-        x = 0
+def arrange_to_fit_dim(self, length: float, dim: int, about_edge=ORIGIN) -> Self:
+    # 获取参考点（基于指定边缘）
+    ref_point = self.get_bounding_box_point(about_edge)
+    # 子对象数量
+    n_submobs = len(self.submobjects)
+    # 如果子对象数量小于等于1，则无需排列
+    if n_submobs <= 1:
+        return
+    # 计算所有子对象在指定维度上的总长度
+    total_length = sum(sm.length_over_dim(dim) for sm in self.submobjects)
+    # 计算每个子对象之间的缓冲
+    buff = (length - total_length) / (n_submobs - 1)
+    # 创建指定维度的单位向量
+    vect = np.zeros(self.dim)
+    vect[dim] = 1
+    # 初始位置
+    x = 0
+    # 遍历子对象并设置位置
+    for submob in self.submobjects:
+        submob.set_coord(x, dim, -vect)
+        # 更新下一个子对象的位置（当前长度+缓冲）
+        x += submob.length_over_dim(dim) + buff
+    # 将整个组移动回参考点（保持对齐）
+    self.move_to(ref_point, about_edge)
+    # 返回自身以支持链式调用
+    return self
+
+def arrange_to_fit_width(self, width: float, about_edge=ORIGIN) -> Self:
+    # 调用arrange_to_fit_dim方法，指定宽度方向(0维)进行排列调整
+    return self.arrange_to_fit_dim(width, 0, about_edge)
+
+def arrange_to_fit_height(self, height: float, about_edge=ORIGIN) -> Self:
+    # 调用arrange_to_fit_dim方法，指定高度方向(1维)进行排列调整
+    return self.arrange_to_fit_dim(height, 1, about_edge)
+
+def arrange_to_fit_depth(self, depth: float, about_edge=ORIGIN) -> Self:
+    # 调用arrange_to_fit_dim方法，指定深度方向(2维)进行排列调整
+    return self.arrange_to_fit_dim(depth, 2, about_edge)
+
+def sort(
+    self,
+    point_to_num_func: Callable[[np.ndarray], float] = lambda p: p[0],
+    submob_func: Callable[[Mobject]] | None = None
+) -> Self:
+    # 如果提供了子对象排序函数，则使用该函数对submobjects进行排序
+    if submob_func is not None:
+        self.submobjects.sort(key=submob_func)
+    # 否则使用默认的中心点排序函数（按x坐标排序）
+    else:
+        self.submobjects.sort(key=lambda m: point_to_num_func(m.get_center()))
+    # 通知家族成员顺序已改变（仅顺序改变）
+    self.note_changed_family(only_changed_order=True)
+    return self
+
+def shuffle(self, recurse: bool = False) -> Self:
+    # 如果需要递归打乱，则对每个子对象也执行shuffle
+    if recurse:
         for submob in self.submobjects:
-            submob.set_coord(x, dim, -vect)
-            x += submob.length_over_dim(dim) + buff
-        self.move_to(ref_point, about_edge)
-        return self
+            submob.shuffle(recurse=True)
+    # 随机打乱当前对象的submobjects顺序
+    random.shuffle(self.submobjects)
+    # 通知家族成员顺序已改变（仅顺序改变）
+    self.note_changed_family(only_changed_order=True)
+    return self
 
-    def arrange_to_fit_width(self, width: float, about_edge=ORIGIN) -> Self:
-        return self.arrange_to_fit_dim(width, 0, about_edge)
+def reverse_submobjects(self) -> Self:
+    # 反转submobjects列表的顺序
+    self.submobjects.reverse()
+    # 通知家族成员顺序已改变（仅顺序改变）
+    self.note_changed_family(only_changed_order=True)
+    return self
 
-    def arrange_to_fit_height(self, height: float, about_edge=ORIGIN) -> Self:
-        return self.arrange_to_fit_dim(height, 1, about_edge)
+# 复制和序列化相关方法
 
-    def arrange_to_fit_depth(self, depth: float, about_edge=ORIGIN) -> Self:
-        return self.arrange_to_fit_dim(depth, 2, about_edge)
+@staticmethod
+def stash_mobject_pointers(func: Callable[..., T]) -> Callable[..., T]:
+    # 装饰器：用于在序列化/深拷贝前暂存不需要复制的Mobject指针属性
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        # 不需要复制的属性列表
+        uncopied_attrs = ["parents", "target", "saved_state"]
+        # 用于暂存属性值的字典
+        stash = dict()
+        # 暂存并清空指定属性
+        for attr in uncopied_attrs:
+            if hasattr(self, attr):
+                value = getattr(self, attr)
+                stash[attr] = value
+                # 根据属性类型设置空值（列表类型用空列表，其他用None）
+                null_value = [] if isinstance(value, list) else None
+                setattr(self, attr, null_value)
+        # 执行被装饰的函数（序列化/深拷贝）
+        result = func(self, *args, **kwargs)
+        # 恢复暂存的属性值
+        self.__dict__.update(stash)
+        return result
+    return wrapper
 
-    def sort(
-        self,
-        point_to_num_func: Callable[[np.ndarray], float] = lambda p: p[0],
-        submob_func: Callable[[Mobject]] | None = None
-    ) -> Self:
-        if submob_func is not None:
-            self.submobjects.sort(key=submob_func)
-        else:
-            self.submobjects.sort(key=lambda m: point_to_num_func(m.get_center()))
-        self.note_changed_family(only_changed_order=True)
-        return self
+@stash_mobject_pointers
+def serialize(self) -> bytes:
+    # 使用pickle序列化当前对象，返回字节流
+    return pickle.dumps(self)
 
-    def shuffle(self, recurse: bool = False) -> Self:
-        if recurse:
-            for submob in self.submobjects:
-                submob.shuffle(recurse=True)
-        random.shuffle(self.submobjects)
-        self.note_changed_family(only_changed_order=True)
-        return self
+def deserialize(self, data: bytes) -> Self:
+    # 从字节流反序列化对象，并替换当前对象的内容
+    self.become(pickle.loads(data))
+    return self
 
-    def reverse_submobjects(self) -> Self:
-        self.submobjects.reverse()
-        self.note_changed_family(only_changed_order=True)
-        return self
-
-    # Copying and serialization
-
-    @staticmethod
-    def stash_mobject_pointers(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            uncopied_attrs = ["parents", "target", "saved_state"]
-            stash = dict()
-            for attr in uncopied_attrs:
-                if hasattr(self, attr):
-                    value = getattr(self, attr)
-                    stash[attr] = value
-                    null_value = [] if isinstance(value, list) else None
-                    setattr(self, attr, null_value)
-            result = func(self, *args, **kwargs)
-            self.__dict__.update(stash)
-            return result
-        return wrapper
-
-    @stash_mobject_pointers
-    def serialize(self) -> bytes:
-        return pickle.dumps(self)
-
-    def deserialize(self, data: bytes) -> Self:
-        self.become(pickle.loads(data))
-        return self
-
-    @stash_mobject_pointers
-    def deepcopy(self) -> Self:
-        return copy.deepcopy(self)
+@stash_mobject_pointers
+def deepcopy(self) -> Self:
+    # 创建当前对象的深拷贝
+    return copy.deepcopy(self)
 
     def copy(self, deep: bool = False) -> Self:
         if deep:
