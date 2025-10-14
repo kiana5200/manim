@@ -1359,149 +1359,195 @@ def rotate(
     )
     return self
 
-    def flip(self, axis: Vect3 = UP, **kwargs) -> Self:
-        return self.rotate(TAU / 2, axis, **kwargs)
+def flip(self, axis: Vect3 = UP, **kwargs) -> Self:
+    # 翻转对象：本质是围绕指定轴旋转180度（TAU/2，TAU=2π）
+    return self.rotate(TAU / 2, axis, **kwargs)
 
-    def apply_function(self, function: Callable[[np.ndarray], np.ndarray], **kwargs) -> Self:
-        # Default to applying matrix about the origin, not mobjects center
-        if len(kwargs) == 0:
-            kwargs["about_point"] = ORIGIN
-        self.apply_points_function(
-            lambda points: np.array([function(p) for p in points]),
-            **kwargs
-        )
-        return self
+def apply_function(self, function: Callable[[np.ndarray], np.ndarray], **kwargs) -> Self:
+    # 对对象的每个点应用自定义函数（默认围绕原点，而非对象中心）
+    # 如果未指定变换中心点，默认使用原点
+    if len(kwargs) == 0:
+        kwargs["about_point"] = ORIGIN
+    # 调用点处理函数，对每个点执行自定义function
+    self.apply_points_function(
+        lambda points: np.array([function(p) for p in points]),
+        **kwargs
+    )
+    return self
 
-    def apply_function_to_position(self, function: Callable[[np.ndarray], np.ndarray]) -> Self:
-        self.move_to(function(self.get_center()))
-        return self
+def apply_function_to_position(self, function: Callable[[np.ndarray], np.ndarray]) -> Self:
+    # 对对象的位置（中心点）应用自定义函数，移动对象到新位置
+    # 计算新中心点：将原中心点传入function
+    self.move_to(function(self.get_center()))
+    return self
 
-    def apply_function_to_submobject_positions(
-        self,
-        function: Callable[[np.ndarray], np.ndarray]
-    ) -> Self:
-        for submob in self.submobjects:
-            submob.apply_function_to_position(function)
-        return self
+def apply_function_to_submobject_positions(
+    self,
+    function: Callable[[np.ndarray], np.ndarray]
+) -> Self:
+    # 对所有子对象的位置（中心点）应用自定义函数
+    for submob in self.submobjects:
+        submob.apply_function_to_position(function)
+    return self
 
-    def apply_matrix(self, matrix: npt.ArrayLike, **kwargs) -> Self:
-        # Default to applying matrix about the origin, not mobjects center
-        if ("about_point" not in kwargs) and ("about_edge" not in kwargs):
-            kwargs["about_point"] = ORIGIN
-        full_matrix = np.identity(self.dim)
-        matrix = np.array(matrix)
-        full_matrix[:matrix.shape[0], :matrix.shape[1]] = matrix
-        self.apply_points_function(
-            lambda points: np.dot(points, full_matrix.T),
-            **kwargs
-        )
-        return self
+def apply_matrix(self, matrix: npt.ArrayLike, **kwargs) -> Self:
+    # 对对象应用矩阵变换（默认围绕原点，而非对象中心）
+    # 如果未指定变换中心点（about_point/about_edge），默认使用原点
+    if ("about_point" not in kwargs) and ("about_edge" not in kwargs):
+        kwargs["about_point"] = ORIGIN
+    # 创建与对象维度匹配的单位矩阵（确保矩阵维度正确）
+    full_matrix = np.identity(self.dim)
+    matrix = np.array(matrix)
+    # 将输入矩阵嵌入到单位矩阵中（处理低维矩阵适配高维对象）
+    full_matrix[:matrix.shape[0], :matrix.shape[1]] = matrix
+    # 应用矩阵变换：点与矩阵转置相乘（符合点的变换规则）
+    self.apply_points_function(
+        lambda points: np.dot(points, full_matrix.T),
+        **kwargs
+    )
+    return self
 
-    def apply_complex_function(self, function: Callable[[complex], complex], **kwargs) -> Self:
-        def R3_func(point):
-            x, y, z = point
-            xy_complex = function(complex(x, y))
-            return [
-                xy_complex.real,
-                xy_complex.imag,
-                z
-            ]
-        return self.apply_function(R3_func, **kwargs)
+def apply_complex_function(self, function: Callable[[complex], complex], **kwargs) -> Self:
+    # 对对象应用复变函数（仅作用于XY平面，Z轴保持不变）
+    def R3_func(point):
+        # 提取点的XY坐标，转换为复数
+        x, y, z = point
+        xy_complex = function(complex(x, y))
+        # 返回变换后的3D点（Z轴不变）
+        return [
+            xy_complex.real,  # 复数实部作为新X坐标
+            xy_complex.imag,  # 复数虚部作为新Y坐标
+            z                 # 保持Z坐标不变
+        ]
+    # 调用3D点处理函数执行变换
+    return self.apply_function(R3_func, **kwargs)
 
-    def wag(
-        self,
-        direction: Vect3 = RIGHT,
-        axis: Vect3 = DOWN,
-        wag_factor: float = 1.0
-    ) -> Self:
-        for mob in self.family_members_with_points():
-            alphas = np.dot(mob.get_points(), np.transpose(axis))
-            alphas -= min(alphas)
-            alphas /= max(alphas)
-            alphas = alphas**wag_factor
-            mob.set_points(mob.get_points() + np.dot(
-                alphas.reshape((len(alphas), 1)),
-                np.array(direction).reshape((1, mob.dim))
-            ))
-        return self
+def wag(
+    self,
+    direction: Vect3 = RIGHT,
+    axis: Vect3 = DOWN,
+    wag_factor: float = 1.0
+) -> Self:
+    # 使对象产生"摆动"效果（沿指定方向，按轴的分布梯度偏移）
+    # 遍历所有包含点数据的家族成员
+    for mob in self.family_members_with_points():
+        # 计算每个点在指定轴上的投影值（用于生成偏移梯度）
+        alphas = np.dot(mob.get_points(), np.transpose(axis))
+        # 归一化投影值到[0,1]区间
+        alphas -= min(alphas)
+        alphas /= max(alphas)
+        # 应用摆动因子调整偏移梯度（指数级调整，控制摆动幅度分布）
+        alphas = alphas**wag_factor
+        # 计算每个点的偏移向量：梯度值 × 摆动方向
+        mob.set_points(mob.get_points() + np.dot(
+            alphas.reshape((len(alphas), 1)),  # 梯度值转为列向量
+            np.array(direction).reshape((1, mob.dim))  # 摆动方向转为行向量
+        ))
+    return self
 
-    # Positioning methods
+# 定位相关方法
 
-    def center(self) -> Self:
-        self.shift(-self.get_center())
-        return self
+def center(self) -> Self:
+    # 将对象移动到原点（通过平移抵消当前中心点坐标）
+    self.shift(-self.get_center())
+    return self
 
-    def align_on_border(
-        self,
-        direction: Vect3,
-        buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
-    ) -> Self:
-        """
-        Direction just needs to be a vector pointing towards side or
-        corner in the 2d plane.
-        """
-        target_point = np.sign(direction) * (FRAME_X_RADIUS, FRAME_Y_RADIUS, 0)
-        point_to_align = self.get_bounding_box_point(direction)
-        shift_val = target_point - point_to_align - buff * np.array(direction)
-        shift_val = shift_val * abs(np.sign(direction))
-        self.shift(shift_val)
-        return self
+def align_on_border(
+    self,
+    direction: Vect3,
+    buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
+) -> Self:
+    """
+    方向参数只需是2D平面中指向边缘或角落的向量即可。
+    """
+    # 计算目标边界点：根据方向向量的符号，获取帧的边缘/角落坐标
+    target_point = np.sign(direction) * (FRAME_X_RADIUS, FRAME_Y_RADIUS, 0)
+    # 获取对象上与目标方向对应的边界点（需对齐的点）
+    point_to_align = self.get_bounding_box_point(direction)
+    # 计算平移量：目标点 - 待对齐点 - 边界间距（避免紧贴边缘）
+    shift_val = target_point - point_to_align - buff * np.array(direction)
+    # 过滤无效维度的平移（仅保留方向向量非零的维度）
+    shift_val = shift_val * abs(np.sign(direction))
+    # 执行平移，将对象对齐到边界
+    self.shift(shift_val)
+    return self
 
-    def to_corner(
-        self,
-        corner: Vect3 = LEFT + DOWN,
-        buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
-    ) -> Self:
-        return self.align_on_border(corner, buff)
+def to_corner(
+    self,
+    corner: Vect3 = LEFT + DOWN,
+    buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
+) -> Self:
+    # 将对象移动到帧的角落（复用align_on_border，方向为角落向量）
+    return self.align_on_border(corner, buff)
 
-    def to_edge(
-        self,
-        edge: Vect3 = LEFT,
-        buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
-    ) -> Self:
-        return self.align_on_border(edge, buff)
+def to_edge(
+    self,
+    edge: Vect3 = LEFT,
+    buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
+) -> Self:
+    # 将对象移动到帧的边缘（复用align_on_border，方向为边缘向量）
+    return self.align_on_border(edge, buff)
 
-    def next_to(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        direction: Vect3 = RIGHT,
-        buff: float = DEFAULT_MOBJECT_TO_MOBJECT_BUFF,
-        aligned_edge: Vect3 = ORIGIN,
-        submobject_to_align: Mobject | None = None,
-        index_of_submobject_to_align: int | slice | None = None,
-        coor_mask: Vect3 = np.array([1, 1, 1]),
-    ) -> Self:
-        if isinstance(mobject_or_point, Mobject):
-            mob = mobject_or_point
-            if index_of_submobject_to_align is not None:
-                target_aligner = mob[index_of_submobject_to_align]
-            else:
-                target_aligner = mob
-            target_point = target_aligner.get_bounding_box_point(
-                aligned_edge + direction
-            )
+def next_to(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    direction: Vect3 = RIGHT,
+    buff: float = DEFAULT_MOBJECT_TO_MOBJECT_BUFF,
+    aligned_edge: Vect3 = ORIGIN,
+    submobject_to_align: Mobject | None = None,
+    index_of_submobject_to_align: int | slice | None = None,
+    coor_mask: Vect3 = np.array([1, 1, 1]),
+) -> Self:
+    # 处理目标为Mobject的情况（获取目标对齐点）
+    if isinstance(mobject_or_point, Mobject):
+        mob = mobject_or_point
+        # 根据子对象索引指定目标对齐器（子对象级对齐）
+        if index_of_submobject_to_align is not None:
+            target_aligner = mob[index_of_submobject_to_align]
+        # 无索引则使用目标对象本身作为对齐器
         else:
-            target_point = mobject_or_point
-        if submobject_to_align is not None:
-            aligner = submobject_to_align
-        elif index_of_submobject_to_align is not None:
-            aligner = self[index_of_submobject_to_align]
-        else:
-            aligner = self
-        point_to_align = aligner.get_bounding_box_point(aligned_edge - direction)
-        self.shift((target_point - point_to_align + buff * direction) * coor_mask)
-        return self
+            target_aligner = mob
+        # 计算目标对齐点：目标对齐器的"aligned_edge + direction"边界点
+        target_point = target_aligner.get_bounding_box_point(
+            aligned_edge + direction
+        )
+    # 处理目标为点的情况（直接使用该点作为目标对齐点）
+    else:
+        target_point = mobject_or_point
 
-    def shift_onto_screen(self, **kwargs) -> Self:
-        space_lengths = [FRAME_X_RADIUS, FRAME_Y_RADIUS]
-        for vect in UP, DOWN, LEFT, RIGHT:
-            dim = np.argmax(np.abs(vect))
-            buff = kwargs.get("buff", DEFAULT_MOBJECT_TO_EDGE_BUFF)
-            max_val = space_lengths[dim] - buff
-            edge_center = self.get_edge_center(vect)
-            if np.dot(edge_center, vect) > max_val:
-                self.to_edge(vect, **kwargs)
-        return self
+    # 确定当前对象的对齐器（子对象级对齐）
+    if submobject_to_align is not None:
+        aligner = submobject_to_align
+    elif index_of_submobject_to_align is not None:
+        aligner = self[index_of_submobject_to_align]
+    # 无指定则使用当前对象本身作为对齐器
+    else:
+        aligner = self
+
+    # 计算当前对象的待对齐点：对齐器的"aligned_edge - direction"边界点
+    point_to_align = aligner.get_bounding_box_point(aligned_edge - direction)
+
+    # 计算平移量：(目标点 - 待对齐点 + 间距) × 坐标掩码（过滤无效维度）
+    self.shift((target_point - point_to_align + buff * direction) * coor_mask)
+    return self
+
+def shift_onto_screen(self, **kwargs) -> Self:
+    # 定义屏幕在X、Y轴的半长（用于计算屏幕边界）
+    space_lengths = [FRAME_X_RADIUS, FRAME_Y_RADIUS]
+    # 遍历四个方向（上、下、左、右），检查对象是否超出屏幕边界
+    for vect in UP, DOWN, LEFT, RIGHT:
+        # 确定当前方向对应的维度（X轴或Y轴）
+        dim = np.argmax(np.abs(vect))
+        # 从参数中获取边界间距，默认使用全局默认值
+        buff = kwargs.get("buff", DEFAULT_MOBJECT_TO_EDGE_BUFF)
+        # 计算当前方向的最大允许坐标（屏幕边界 - 间距）
+        max_val = space_lengths[dim] - buff
+        # 获取对象在当前方向上的边缘中心点
+        edge_center = self.get_edge_center(vect)
+        # 如果边缘中心点超出最大允许坐标，将对象对齐到该方向的屏幕边缘
+        if np.dot(edge_center, vect) > max_val:
+            self.to_edge(vect, **kwargs)
+    return self
 
     def is_off_screen(self) -> bool:
         if self.get_left()[0] > FRAME_X_RADIUS:
