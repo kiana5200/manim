@@ -1,23 +1,50 @@
+# 从__future__模块导入annotations，支持类型注释的延迟评估
+# 允许在类型提示中使用尚未定义的类或函数，提升代码灵活性
 from __future__ import annotations
 
+# 导入inspect模块，用于获取对象的运行时信息（如函数参数、类结构等）
 import inspect
 
+# 导入numpy库并简写为np，用于科学计算和数组操作
 import numpy as np
 
+# 从manimlib.animation.animation导入Animation基类
+# Animation是所有动画类的父类，提供动画的基本框架和生命周期方法
 from manimlib.animation.animation import Animation
+
+# 从manimlib.constants导入DEG常量，表示角度单位（度）
 from manimlib.constants import DEG
+# 从manimlib.constants导入OUT常量，表示3D空间中的向外方向（垂直屏幕向外）
 from manimlib.constants import OUT
+
+# 从manimlib.mobject.mobject导入Group类
+# Group是多个Mobject的容器，用于统一管理一组对象
 from manimlib.mobject.mobject import Group
+# 从manimlib.mobject.mobject导入Mobject基类
+# Mobject是所有可移动对象的基类，提供位置、旋转、缩放等基础功能
 from manimlib.mobject.mobject import Mobject
+
+# 从manimlib.utils.paths导入path_along_arc函数
+# 用于生成沿圆弧的路径，常用于定义对象的运动轨迹
 from manimlib.utils.paths import path_along_arc
+# 从manimlib.utils.paths导入straight_path函数
+# 用于生成直线路径，定义对象从起点到终点的直线运动轨迹
 from manimlib.utils.paths import straight_path
 
+# 从typing模块导入TYPE_CHECKING常量
+# 该常量在类型检查时为True，运行时为False，用于条件导入类型提示
 from typing import TYPE_CHECKING
 
+# 条件判断：仅在类型检查阶段执行以下代码
 if TYPE_CHECKING:
+    # 从typing模块导入Callable类型，用于标注可调用对象（如函数、方法）
     from typing import Callable
+    # 导入numpy.typing模块并简写为npt，用于numpy数组的类型标注
     import numpy.typing as npt
+    # 从manimlib.scene.scene导入Scene类
+    # Scene是场景基类，用于组织和播放动画
     from manimlib.scene.scene import Scene
+    # 从manimlib.typing导入ManimColor类型，用于颜色相关的类型标注
     from manimlib.typing import ManimColor
 
 

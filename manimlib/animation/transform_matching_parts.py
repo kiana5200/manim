@@ -1,20 +1,39 @@
+# 从__future__模块导入annotations，支持类型注释的延迟评估
+# 允许在类型提示中使用尚未定义的类或函数
 from __future__ import annotations
 
+# 导入itertools模块并简写为it，用于创建迭代器和处理迭代相关操作
 import itertools as it
+# 从difflib模块导入SequenceMatcher，用于字符串序列的相似性比较
 from difflib import SequenceMatcher
 
+# 从manimlib.animation.composition导入AnimationGroup
+# AnimationGroup用于将多个动画组合在一起同时或按顺序播放
 from manimlib.animation.composition import AnimationGroup
+# 从manimlib.animation.fading导入FadeInFromPoint
+# FadeInFromPoint是从指定点淡入的动画效果
 from manimlib.animation.fading import FadeInFromPoint
-from manimlib.animation.fading import FadeOutToPoint
+# 从manimlib.animation.fading导入FadeOutToPoint
+# FadeOutToPoint是向指定点淡出的动画效果
 from manimlib.animation.transform import Transform
+# 从manimlib.mobject.mobject导入Mobject
+# Mobject是所有可移动对象的基类
 from manimlib.mobject.mobject import Mobject
-from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从manimlib.mobject.types.vectorized_mobject导入VMobject
+# VMobject是向量图形对象的基类，支持更复杂的图形操作
 from manimlib.mobject.svg.string_mobject import StringMobject
+# StringMobject用于处理字符串的可移动对象
 
+# 从typing模块导入TYPE_CHECKING常量
+# 用于在类型检查阶段执行特定代码，运行时不执行
 from typing import TYPE_CHECKING
 
+# 条件判断：仅在类型检查时执行以下代码块
 if TYPE_CHECKING:
+    # 从typing模块导入Iterable类型，用于标注可迭代对象
     from typing import Iterable
+    # 从manimlib.scene.scene导入Scene类
+    # Scene是所有场景的基类，用于组织和播放动画
     from manimlib.scene.scene import Scene
 
 
