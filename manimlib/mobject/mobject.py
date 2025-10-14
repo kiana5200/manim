@@ -708,102 +708,139 @@ def remove(
     # 返回自身以支持链式调用
     return self
 
-    def clear(self) -> Self:
-        self.remove(*self.submobjects, recurse=False)
+def clear(self) -> Self:
+    # 移除所有子对象（不递归）
+    self.remove(*self.submobjects, recurse=False)
+    # 返回自身以支持链式调用
+    return self
+
+def add_to_back(self, *mobjects: Mobject) -> Self:
+    # 将新对象添加到子对象列表的前面（显示在后方）
+    self.set_submobjects(list_update(mobjects, self.submobjects))
+    # 返回自身以支持链式调用
+    return self
+
+def replace_submobject(self, index: int, new_submob: Mobject) -> Self:
+    # 获取指定索引处的旧子对象
+    old_submob = self.submobjects[index]
+    # 如果当前对象在旧子对象的父列表中，则移除
+    if self in old_submob.parents:
+        old_submob.parents.remove(self)
+    # 替换子对象列表中指定索引处的对象
+    self.submobjects[index] = new_submob
+    # 将当前对象添加到新子对象的父列表中
+    new_submob.parents.append(self)
+    # 通知家族关系已更改
+    self.note_changed_family()
+    # 返回自身以支持链式调用
+    return self
+
+def insert_submobject(self, index: int, new_submob: Mobject) -> Self:
+    # 在指定索引处插入新子对象
+    self.submobjects.insert(index, new_submob)
+    # 通知家族关系已更改
+    self.note_changed_family()
+    # 返回自身以支持链式调用
+    return self
+
+def set_submobjects(self, submobject_list: list[Mobject]) -> Self:
+    # 如果子对象列表没有变化，则直接返回
+    if self.submobjects == submobject_list:
         return self
+    # 清除现有子对象
+    self.clear()
+    # 添加新的子对象列表
+    self.add(*submobject_list)
+    # 返回自身以支持链式调用
+    return self
 
-    def add_to_back(self, *mobjects: Mobject) -> Self:
-        self.set_submobjects(list_update(mobjects, self.submobjects))
-        return self
+def digest_mobject_attrs(self) -> Self:
+    """
+    确保所有作为Mobject类型的属性都包含在子对象列表中。
+    """
+    # 获取所有类型为Mobject的属性值
+    mobject_attrs = [x for x in list(self.__dict__.values()) if isinstance(x, Mobject)]
+    # 更新子对象列表，添加所有Mobject类型的属性
+    self.set_submobjects(list_update(self.submobjects, mobject_attrs))
+    # 返回自身以支持链式调用
+    return self
 
-    def replace_submobject(self, index: int, new_submob: Mobject) -> Self:
-        old_submob = self.submobjects[index]
-        if self in old_submob.parents:
-            old_submob.parents.remove(self)
-        self.submobjects[index] = new_submob
-        new_submob.parents.append(self)
-        self.note_changed_family()
-        return self
+# 子对象排列方法
 
-    def insert_submobject(self, index: int, new_submob: Mobject) -> Self:
-        self.submobjects.insert(index, new_submob)
-        self.note_changed_family()
-        return self
-
-    def set_submobjects(self, submobject_list: list[Mobject]) -> Self:
-        if self.submobjects == submobject_list:
-            return self
-        self.clear()
-        self.add(*submobject_list)
-        return self
-
-    def digest_mobject_attrs(self) -> Self:
-        """
-        Ensures all attributes which are mobjects are included
-        in the submobjects list.
-        """
-        mobject_attrs = [x for x in list(self.__dict__.values()) if isinstance(x, Mobject)]
-        self.set_submobjects(list_update(self.submobjects, mobject_attrs))
-        return self
-
-    # Submobject organization
-
-    def arrange(
-        self,
-        direction: Vect3 = RIGHT,
-        center: bool = True,
-        **kwargs
-    ) -> Self:
-        for m1, m2 in zip(self.submobjects, self.submobjects[1:]):
-            m2.next_to(m1, direction, **kwargs)
-        if center:
-            self.center()
-        return self
-
-    def arrange_in_grid(
-        self,
-        n_rows: int | None = None,
-        n_cols: int | None = None,
-        buff: float | None = None,
-        h_buff: float | None = None,
-        v_buff: float | None = None,
-        buff_ratio: float | None = None,
-        h_buff_ratio: float = 0.5,
-        v_buff_ratio: float = 0.5,
-        aligned_edge: Vect3 = ORIGIN,
-        fill_rows_first: bool = True
-    ) -> Self:
-        submobs = self.submobjects
-        n_submobs = len(submobs)
-        if n_rows is None:
-            n_rows = int(np.sqrt(n_submobs)) if n_cols is None else n_submobs // n_cols
-        if n_cols is None:
-            n_cols = n_submobs // n_rows
-
-        if buff is not None:
-            h_buff = buff
-            v_buff = buff
-        else:
-            if buff_ratio is not None:
-                v_buff_ratio = buff_ratio
-                h_buff_ratio = buff_ratio
-            if h_buff is None:
-                h_buff = h_buff_ratio * self[0].get_width()
-            if v_buff is None:
-                v_buff = v_buff_ratio * self[0].get_height()
-
-        x_unit = h_buff + max([sm.get_width() for sm in submobs])
-        y_unit = v_buff + max([sm.get_height() for sm in submobs])
-
-        for index, sm in enumerate(submobs):
-            if fill_rows_first:
-                x, y = index % n_cols, index // n_cols
-            else:
-                x, y = index // n_rows, index % n_rows
-            sm.move_to(ORIGIN, aligned_edge)
-            sm.shift(x * x_unit * RIGHT + y * y_unit * DOWN)
+def arrange(
+    self,
+    direction: Vect3 = RIGHT,
+    center: bool = True,** kwargs
+) -> Self:
+    # 遍历子对象列表，将每个对象排列在前一个对象的指定方向
+    for m1, m2 in zip(self.submobjects, self.submobjects[1:]):
+        m2.next_to(m1, direction, **kwargs)
+    # 如果需要居中，将整个组居中
+    if center:
         self.center()
-        return self
+    # 返回自身以支持链式调用
+    return self
+
+def arrange_in_grid(
+    self,
+    n_rows: int | None = None,
+    n_cols: int | None = None,
+    buff: float | None = None,
+    h_buff: float | None = None,
+    v_buff: float | None = None,
+    buff_ratio: float | None = None,
+    h_buff_ratio: float = 0.5,
+    v_buff_ratio: float = 0.5,
+    aligned_edge: Vect3 = ORIGIN,
+    fill_rows_first: bool = True
+) -> Self:
+    # 获取子对象列表
+    submobs = self.submobjects
+    # 子对象数量
+    n_submobs = len(submobs)
+    # 如果未指定行数，则根据列数或平方根计算行数
+    if n_rows is None:
+        n_rows = int(np.sqrt(n_submobs)) if n_cols is None else n_submobs // n_cols
+    # 如果未指定列数，则根据行数计算列数
+    if n_cols is None:
+        n_cols = n_submobs // n_rows
+
+    # 处理缓冲参数
+    if buff is not None:
+        h_buff = buff
+        v_buff = buff
+    else:
+        if buff_ratio is not None:
+            v_buff_ratio = buff_ratio
+            h_buff_ratio = buff_ratio
+        # 如果未指定水平缓冲，则使用第一个子对象宽度的比例
+        if h_buff is None:
+            h_buff = h_buff_ratio * self[0].get_width()
+        # 如果未指定垂直缓冲，则使用第一个子对象高度的比例
+        if v_buff is None:
+            v_buff = v_buff_ratio * self[0].get_height()
+
+    # 计算网格中每个单元格的宽度和高度（包含缓冲）
+    x_unit = h_buff + max([sm.get_width() for sm in submobs])
+    y_unit = v_buff + max([sm.get_height() for sm in submobs])
+
+    # 遍历每个子对象并放置在网格中
+    for index, sm in enumerate(submobs):
+        # 根据填充顺序计算x和y坐标
+        if fill_rows_first:
+            # 先填充行，再填充列
+            x, y = index % n_cols, index // n_cols
+        else:
+            # 先填充列，再填充行
+            x, y = index // n_rows, index % n_rows
+        # 将子对象移动到原点并对齐到指定边缘
+        sm.move_to(ORIGIN, aligned_edge)
+        # 根据计算的坐标偏移子对象
+        sm.shift(x * x_unit * RIGHT + y * y_unit * DOWN)
+    # 将整个网格居中
+    self.center()
+    # 返回自身以支持链式调用
+    return self
 
     def arrange_to_fit_dim(self, length: float, dim: int, about_edge=ORIGIN) -> Self:
         ref_point = self.get_bounding_box_point(about_edge)
