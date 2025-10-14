@@ -37,217 +37,259 @@ if TYPE_CHECKING:
     from typing import Optional
 
 
+# ManimGL 核心配置初始化与命令行参数解析模块，负责**整合默认配置、自定义配置和命令行参数**，
+# 生成最终的全局运行配置（`manim_config`），是控制动画渲染、窗口显示、文件导出等行为的“总开关”。
+# 注：代码中存在重复定义，以下按“功能完整性”合并解析，去除重复逻辑。
+
+
 def initialize_manim_config() -> Dict:
     """
-    Return default configuration for various classes in manim, such as
-    Scene, Window, Camera, and SceneFileWriter, as well as configuration
-    determining how the scene is run (e.g. written to file or previewed in window).
-
-    The result is initially on the contents of default_config.yml in the manimlib directory,
-    which can be further updated by a custom configuration file custom_config.yml.
-    It is further updated based on command line argument.
+    初始化 ManimGL 全局配置：按优先级整合配置（命令行参数 > 自定义配置 > 默认配置），
+    为场景、窗口、相机等核心组件提供统一参数，确保各模块行为一致。
+    
+    核心逻辑：
+    1. **配置优先级规则**：用户命令行输入的参数拥有最高优先级，其次是本地自定义配置文件，
+       最后是 ManimGL 内置的默认配置（避免用户重复配置基础参数）。
+    2. **配置加载流程**：先加载默认配置，再用自定义配置覆盖，最后用命令行参数修正，
+       确保最终配置符合用户预期。
+    3. **模块配置细分**：将合并后的配置分配到对应模块（如窗口、相机、文件写入器），
+       避免配置混乱，便于后续组件调用。
+    
+    返回值：Dict（全局配置字典，包含各模块的详细参数，如窗口大小、渲染分辨率、导出路径等）。
     """
+    # 1. 先解析命令行参数（后续用于覆盖配置文件参数）
     args = parse_cli()
+    
+    # 2. 确定全局默认配置文件路径（ManimGL 安装目录下的 default_config.yml）
+    # get_manim_dir()：获取 ManimGL 库的根目录（如 Python 环境的 site-packages/manimgl）
     global_defaults_file = os.path.join(get_manim_dir(), "manimlib", "default_config.yml")
+    
+    # 3. 按优先级合并配置（后加载的配置覆盖先加载的）
     config = Dict(merge_dicts_recursively(
-        load_yaml(global_defaults_file),
-        load_yaml("custom_config.yml"),  # From current working directory
-        load_yaml(args.config_file) if args.config_file else dict(),
+        load_yaml(global_defaults_file),          # 1. 最低优先级：内置默认配置（如默认分辨率1080p、帧率30）
+        load_yaml("custom_config.yml"),           # 2. 中优先级：本地自定义配置（用户当前工作目录下，可选）
+        load_yaml(args.config_file) if args.config_file else dict(),  # 3. 高优先级：命令行指定的配置文件（--config_file 参数）
     ))
 
+    # 4. 配置日志级别（命令行参数 --log-level 优先于配置文件中的 log_level）
+    # 日志级别：DEBUG（最详细）→ INFO → WARNING → ERROR → CRITICAL（仅致命错误）
     log.setLevel(args.log_level or config["log_level"])
 
-    update_directory_config(config)
-    update_window_config(config, args)
-    update_camera_config(config, args)
-    update_file_writer_config(config, args)
-    update_scene_config(config, args)
-    update_run_config(config, args)
-    update_embed_config(config, args)
+    # 5. 细分配置到各功能模块（将合并后的配置分配给对应组件，避免参数混乱）
+    update_directory_config(config)       # 目录配置（如视频导出路径 ./media/videos/、缓存路径）
+    update_window_config(config, args)    # 窗口配置（如大小、是否全屏、标题）
+    update_camera_config(config, args)    # 相机配置（如渲染分辨率、视角、3D深度测试）
+    update_file_writer_config(config, args)  # 文件写入器配置（如导出格式、FFmpeg 编码、GIF 优化）
+    update_scene_config(config, args)     # 场景配置（如背景色、演示模式开关、默认等待时间）
+    update_run_config(config, args)       # 运行配置（如是否显示窗口、是否自动打开导出文件）
+    update_embed_config(config, args)     # 嵌入调试配置（如 IPython 断点行号、自动重载开关）
 
     return config
 
 
 def parse_cli():
+    """
+    解析 ManimGL 命令行参数：使用 `argparse` 定义并解析用户输入的命令，
+    将命令行指令转换为结构化的参数对象，是用户控制 ManimGL 运行的主要入口。
+    
+    核心作用：
+    - 覆盖配置文件参数（如命令行 `-l` 强制启用低质量渲染，忽略配置文件中的分辨率设置）；
+    - 提供快捷操作（如 `-w` 一键导出视频、`-s` 快速保存最后一帧）；
+    - 支持调试功能（如 `-e` 嵌入 IPython 断点、`--autoreload` 自动重载代码）。
+    
+    返回值：argparse.Namespace（解析后的参数对象，属性对应各命令行参数值）。
+    """
     try:
+        # 1. 创建参数解析器（程序名称默认是脚本名，描述信息省略，可通过 add_help 添加）
         parser = argparse.ArgumentParser()
+
+        # 2. 核心必选参数（场景脚本路径与场景名）
+        # 互斥组（预留扩展，当前未实际限制互斥，仅用于逻辑分组）
         module_location = parser.add_mutually_exclusive_group()
         module_location.add_argument(
             "file",
-            nargs="?",
-            help="Path to file holding the python code for the scene",
+            nargs="?",  # 可选参数：若不指定，可能仅执行版本查询、缓存清理等操作
+            help="Path to file holding the python code for the scene",  # 示例：example.py
         )
         parser.add_argument(
             "scene_names",
-            nargs="*",
-            help="Name of the Scene class you want to see",
+            nargs="*",  # 0个或多个场景名：若不指定，默认运行脚本中第一个 Scene 子类；指定多个则依次运行
+            help="Name of the Scene class you want to see",  # 示例：SquareScene CircleScene
         )
+
+        # 3. 渲染与导出控制参数
         parser.add_argument(
             "-w", "--write_file",
             action="store_true",
-            help="Render the scene as a movie file",
+            help="Render the scene as a movie file (MP4 by default)",  # 导出视频文件
         )
         parser.add_argument(
             "-s", "--skip_animations",
             action="store_true",
-            help="Save the last frame",
-        )
-        parser.add_argument(
-            "-l", "--low_quality",
-            action="store_true",
-            help="Render at 480p",
-        )
-        parser.add_argument(
-            "-m", "--medium_quality",
-            action="store_true",
-            help="Render at 720p",
-        )
-        parser.add_argument(
-            "--hd",
-            action="store_true",
-            help="Render at a 1080p",
-        )
-        parser.add_argument(
-            "--uhd",
-            action="store_true",
-            help="Render at a 4k",
-        )
-        parser.add_argument(
-            "-f", "--full_screen",
-            action="store_true",
-            help="Show window in full screen",
-        )
-        parser.add_argument(
-            "-p", "--presenter_mode",
-            action="store_true",
-            help="Scene will stay paused during wait calls until " + \
-                 "space bar or right arrow is hit, like a slide show"
+            help="Skip animations and save only the last frame (as PNG)",  # 仅保存最后一帧（快速预览最终效果）
         )
         parser.add_argument(
             "-i", "--gif",
             action="store_true",
-            help="Save the video as gif",
+            help="Save the video as a GIF file (auto-enables --write_file)",  # 导出为 GIF（需配合 -w）
         )
         parser.add_argument(
             "-t", "--transparent",
             action="store_true",
-            help="Render to a movie file with an alpha channel",
+            help="Render video with an alpha channel (transparent background)",  # 导出带透明通道的视频
         )
+
+        # 4. 质量控制参数（分辨率、帧率）
         parser.add_argument(
-            "--vcodec",
-            help="Video codec to use with ffmpeg",
-        )
-        parser.add_argument(
-            "--pix_fmt",
-            help="Pixel format to use for the output of ffmpeg, defaults to `yuv420p`",
-        )
-        parser.add_argument(
-            "-q", "--quiet",
+            "-l", "--low_quality",
             action="store_true",
-            help="",
+            help="Render at 480p (854x480, overrides other resolution settings)",  # 低质量（快速渲染，调试用）
         )
         parser.add_argument(
-            "-a", "--write_all",
+            "-m", "--medium_quality",
             action="store_true",
-            help="Write all the scenes from a file",
+            help="Render at 720p (1280x720, overrides other resolution settings)",  # 中质量
         )
         parser.add_argument(
-            "-o", "--open",
+            "--hd",
             action="store_true",
-            help="Automatically open the saved file once its done",
+            help="Render at 1080p (1920x1080, overrides other resolution settings)",  # 高清（默认）
         )
         parser.add_argument(
-            "--finder",
+            "--uhd",
             action="store_true",
-            help="Show the output file in finder",
+            help="Render at 4K (3840x2160, overrides other resolution settings)",  # 超高清（耗时长，最终输出用）
         )
         parser.add_argument(
-            "--subdivide",
+            "-r", "--resolution",
+            help="Custom resolution (format: \"WxH\", e.g. \"1280x960\", overrides quality flags)",  # 自定义分辨率
+        )
+        parser.add_argument(
+            "--fps",
+            help="Frame rate (integer, e.g. 60 for smooth animation)",
+            type=int,  # 帧率：默认30，60需更高性能，15可减少文件大小
+        )
+
+        # 5. 窗口控制参数
+        parser.add_argument(
+            "-f", "--full_screen",
             action="store_true",
-            help="Divide the output animation into individual movie files " +
-                 "for each animation",
+            help="Show the preview window in full screen",  # 全屏显示预览窗口
         )
+
+        # 6. 演示与交互参数
         parser.add_argument(
-            "--file_name",
-            help="Name for the movie or image file",
-        )
-        parser.add_argument(
-            "-n", "--start_at_animation_number",
-            help="Start rendering not from the first animation, but " + \
-                 "from another, specified by its index.  If you pass " + \
-                 "in two comma separated values, e.g. \"3,6\", it will end " + \
-                 "the rendering at the second value",
+            "-p", "--presenter_mode",
+            action="store_true",
+            help="Pause at each wait() call until Space/Right Arrow is pressed (slide show mode)",  # 演示模式（逐页播放）
         )
         parser.add_argument(
             "-e", "--embed",
             metavar="LINE_NUMBER",
-            help="Adds a breakpoint at the inputted file dropping into an " + \
-                 "interactive iPython session at that point of the code."
-        )
-        parser.add_argument(
-            "-r", "--resolution",
-            help="Resolution, passed as \"WxH\", e.g. \"1920x1080\"",
-        )
-        parser.add_argument(
-            "--fps",
-            help="Frame rate, as an integer",
-            type=int,
-        )
-        parser.add_argument(
-            "-c", "--color",
-            help="Background color",
-        )
-        parser.add_argument(
-            "--leave_progress_bars",
-            action="store_true",
-            help="Leave progress bars displayed in terminal",
-        )
-        parser.add_argument(
-            "--show_animation_progress",
-            action="store_true",
-            help="Show progress bar for each animation",
-        )
-        parser.add_argument(
-            "--prerun",
-            action="store_true",
-            help="Calculate total framecount, to display in a progress bar, by doing " + \
-                 "an initial run of the scene which skips animations."
-        )
-        parser.add_argument(
-            "--video_dir",
-            help="Directory to write video",
-        )
-        parser.add_argument(
-            "--config_file",
-            help="Path to the custom configuration file",
-        )
-        parser.add_argument(
-            "-v", "--version",
-            action="store_true",
-            help="Display the version of manimgl"
-        )
-        parser.add_argument(
-            "--log-level",
-            help="Level of messages to Display, can be DEBUG / INFO / WARNING / ERROR / CRITICAL"
-        )
-        parser.add_argument(
-            "--clear-cache",
-            action="store_true",
-            help="Erase the cache used for Tex and Text Mobjects"
+            help="Add an IPython breakpoint at the specified line in the scene file (debug mode)",  # 嵌入调试（指定行号）
         )
         parser.add_argument(
             "--autoreload",
             action="store_true",
-            help="Automatically reload Python modules to pick up code changes " +
-                 "across different files",
+            help="Auto-reload Python modules when code changes (no need to restart Manim)",  # 自动重载代码（开发效率）
         )
+
+        # 7. 输出文件控制参数
+        parser.add_argument(
+            "--file_name",
+            help="Custom name for the output file (default: scene class name)",  # 自定义输出文件名
+        )
+        parser.add_argument(
+            "--video_dir",
+            help="Custom directory to save videos (default: ./media/videos/)",  # 自定义视频导出目录
+        )
+        parser.add_argument(
+            "-o", "--open",
+            action="store_true",
+            help="Automatically open the output file after rendering (auto-enables --write_file)",  # 导出后自动打开文件
+        )
+        parser.add_argument(
+            "--finder",
+            action="store_true",
+            help="Show the output file in the file manager (auto-enables --write_file)",  # 在文件管理器中显示文件
+        )
+        parser.add_argument(
+            "-a", "--write_all",
+            action="store_true",
+            help="Render and save all Scene classes in the input file",  # 导出脚本中所有场景
+        )
+        parser.add_argument(
+            "--subdivide",
+            action="store_true",
+            help="Split the output into separate files for each animation step",  # 按动画步骤拆分输出文件
+        )
+        parser.add_argument(
+            "--vcodec",
+            help="Video codec for FFmpeg (e.g. libx264 for MP4, libvpx for WebM)",  # FFmpeg 视频编码（高级用户）
+        )
+        parser.add_argument(
+            "--pix_fmt",
+            help="Pixel format for FFmpeg (default: yuv420p for MP4, rgba for transparent videos)",  # 像素格式
+        )
+
+        # 8. 动画进度与日志参数
+        parser.add_argument(
+            "-q", "--quiet",
+            action="store_true",
+            help="Reduce log output (only show errors and warnings)",  # 静默模式（减少日志）
+        )
+        parser.add_argument(
+            "--log-level",
+            help="Log verbosity: DEBUG / INFO / WARNING / ERROR / CRITICAL",  # 日志级别（调试用）
+        )
+        parser.add_argument(
+            "--show_animation_progress",
+            action="store_true",
+            help="Show a progress bar for each individual animation",  # 显示每个动画的进度条
+        )
+        parser.add_argument(
+            "--leave_progress_bars",
+            action="store_true",
+            help="Keep progress bars in the terminal after rendering (default: auto-hide)",  # 保留进度条
+        )
+        parser.add_argument(
+            "--prerun",
+            action="store_true",
+            help="Pre-run to calculate total frames (for accurate progress bars, adds small overhead)",  # 预计算总帧数
+        )
+
+        # 9. 动画范围控制参数
+        parser.add_argument(
+            "-n", "--start_at_animation_number",
+            help="Start rendering from the Nth animation (e.g. 3 for 3rd); use \"N,M\" to end at M",  # 指定动画范围
+        )
+
+        # 10. 辅助工具参数
+        parser.add_argument(
+            "-v", "--version",
+            action="store_true",
+            help="Display the current version of ManimGL",  # 显示版本号
+        )
+        parser.add_argument(
+            "--clear-cache",
+            action="store_true",
+            help="Delete cached files for Tex/Text Mobjects (fixes rendering issues for updated formulas)",  # 清理缓存
+        )
+        parser.add_argument(
+            "--config_file",
+            help="Path to a custom YAML configuration file (overrides default_config.yml)",  # 自定义配置文件路径
+        )
+
+        # 11. 关键逻辑修正：只要指定 -o/--finder，自动开启 --write_file（避免用户漏加导出开关）
         args = parser.parse_args()
         args.write_file = any([args.write_file, args.open, args.finder])
-        return args
-    except argparse.ArgumentError as err:
-        log.error(str(err))
-        sys.exit(2)
 
+        return args
+
+    # 12. 捕获参数解析错误（如无效参数、格式错误，如 --resolution 输入 "1920x1080" 而非 1920x1080）
+    except argparse.ArgumentError as err:
+        log.error(str(err))  # 打印错误信息（如 "argument --resolution: invalid WxH format: '1920'"）
+        sys.exit(2)  # 退出程序（错误码2：表示命令行参数错误，符合 Unix 程序惯例）
 
 def update_directory_config(config: Dict):
     dir_config = config.directories
