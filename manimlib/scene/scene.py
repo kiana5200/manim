@@ -1205,277 +1205,549 @@ def play(
     self.finish_animations(animations)# 播放后收尾
     self.post_play()                 # 最终收尾
 
-    def wait(
-        self,
-        duration: Optional[float] = None,
-        stop_condition: Callable[[], bool] = None,
-        note: str = None,
-        ignore_presenter_mode: bool = False
-    ):
-        if duration is None:
-            duration = self.default_wait_time
-        self.pre_play()
-        self.update_mobjects(dt=0)  # Any problems with this?
-        if self.presenter_mode and not self.skip_animations and not ignore_presenter_mode:
-            if note:
-                log.info(note)
-            self.hold_loop()
-        else:
-            time_progression = self.get_wait_time_progression(duration, stop_condition)
-            last_t = 0
-            for t in time_progression:
-                dt = t - last_t
-                last_t = t
-                self.update_frame(dt)
-                self.emit_frame()
-                if stop_condition is not None and stop_condition():
-                    break
-        self.post_play()
+    # 以下方法继续补充 Scene 类功能，涵盖**等待逻辑、状态管理、临时配置、事件处理**等，
+# 是场景交互（如鼠标操作）、开发辅助（如 undo/redo）、动画流程控制（如临时跳过）的关键接口。
 
-    def hold_loop(self):
-        while self.hold_on_wait:
-            self.update_frame(dt=1 / self.camera.fps)
-        self.hold_on_wait = True
 
-    def wait_until(
-        self,
-        stop_condition: Callable[[], bool],
-        max_time: float = 60
-    ):
-        self.wait(max_time, stop_condition=stop_condition)
+def wait(
+    self,
+    duration: Optional[float] = None,
+    stop_condition: Callable[[], bool] = None,
+    note: str = None,
+    ignore_presenter_mode: bool = False
+):
+    """
+    场景“等待”功能：暂停动画播放，保持当前画面指定时长，或等待自定义停止条件触发（如鼠标点击）。
+    常用于动画片段间的过渡、用户交互等待（如演示模式下等待操作）。
+    
+    参数说明：
+        duration : 可选，等待时长（秒），默认使用场景的 `default_wait_time`（通常1秒）；
+        stop_condition : 可选，无参数布尔函数，返回 `True` 时提前结束等待（如检测鼠标点击）；
+        note : 可选，演示模式下显示的提示文本（如“点击继续”）；
+        ignore_presenter_mode : 布尔值，是否忽略演示模式（强制按时长等待），默认 False。
+    
+    核心逻辑：
+    1. 时长默认值处理：若未指定 duration，使用场景默认等待时长；
+    2. 播放前准备：调用 `pre_play()`（处理跳过状态、文件写入初始化）；
+    3. 更新 Mobject 状态（dt=0，确保画面正确渲染）；
+    4. 演示模式处理（未忽略且不跳过动画）：
+        - 打印 note（若有）；
+        - 进入 `hold_loop()`（无限等待，直到用户触发继续操作）；
+    5. 普通等待逻辑：
+        - 生成等待时间进度序列（`get_wait_time_progression()`）；
+        - 逐帧更新画面（`update_frame()`）、写入帧（`emit_frame()`）；
+        - 若触发 stop_condition，提前跳出循环；
+    6. 播放后收尾：调用 `post_play()`（更新播放次数、结束文件写入）。
+    """
+    if duration is None:
+        duration = self.default_wait_time  # 使用默认等待时长
+    self.pre_play()
+    self.update_mobjects(dt=0)  # 确保Mobject状态同步（无时间差）
 
-    def force_skipping(self):
-        self.original_skipping_status = self.skip_animations
-        self.skip_animations = True
-        return self
+    # 演示模式：等待用户操作（如点击）
+    if self.presenter_mode and not self.skip_animations and not ignore_presenter_mode:
+        if note:
+            log.info(note)  # 显示提示文本
+        self.hold_loop()
+    else:
+        # 生成等待时间进度序列
+        time_progression = self.get_wait_time_progression(duration, stop_condition)
+        last_t = 0
+        # 逐帧处理等待逻辑
+        for t in time_progression:
+            dt = t - last_t
+            last_t = t
+            self.update_frame(dt)  # 渲染当前帧
+            self.emit_frame()      # 写入帧（若不跳过）
+            # 检查停止条件，提前结束
+            if stop_condition is not None and stop_condition():
+                break
+    self.post_play()  # 等待结束后的收尾
 
-    def revert_to_original_skipping_status(self):
-        if hasattr(self, "original_skipping_status"):
-            self.skip_animations = self.original_skipping_status
-        return self
 
-    def add_sound(
-        self,
-        sound_file: str,
-        time_offset: float = 0,
-        gain: float | None = None,
-        gain_to_background: float | None = None
-    ):
-        if self.skip_animations:
-            return
-        time = self.get_time() + time_offset
-        self.file_writer.add_sound(sound_file, time, gain, gain_to_background)
+def hold_loop(self):
+    """
+    演示模式下的“无限等待循环”：持续渲染画面，直到 `hold_on_wait` 被设为 False（用户触发继续）。
+    常用于演示时“暂停等待用户操作”（如按空格键继续）。
+    
+    逻辑：循环调用 `update_frame()`（dt=1/帧率，确保画面响应事件），直到 `hold_on_wait` 变为 False。
+    """
+    while self.hold_on_wait:
+        # 按帧率更新画面（处理窗口事件，如键盘输入）
+        self.update_frame(dt=1 / self.camera.fps)
+    # 重置 hold_on_wait，供下次等待使用
+    self.hold_on_wait = True
 
-    # Helpers for interactive development
 
-    def get_state(self) -> SceneState:
-        return SceneState(self)
+def wait_until(
+    self,
+    stop_condition: Callable[[], bool],
+    max_time: float = 60
+):
+    """
+    “条件等待”的简化接口：等待自定义停止条件触发，最多等待 `max_time` 秒（避免无限阻塞）。
+    本质是调用 `wait()` 并固定参数，提升开发便捷性。
+    
+    参数：
+        stop_condition : 无参数布尔函数，触发后结束等待；
+        max_time : 最大等待时长（秒），默认60秒。
+    """
+    self.wait(max_time, stop_condition=stop_condition)
 
-    @affects_mobject_list
-    def restore_state(self, scene_state: SceneState):
-        scene_state.restore_scene(self)
 
-    def save_state(self) -> None:
-        state = self.get_state()
-        if self.undo_stack and state.mobjects_match(self.undo_stack[-1]):
-            return
-        self.redo_stack = []
-        self.undo_stack.append(state)
-        if len(self.undo_stack) > self.max_num_saved_states:
-            self.undo_stack.pop(0)
+def force_skipping(self):
+    """
+    强制开启“跳过动画”模式，并保存原始跳过状态（供后续恢复）。
+    适用于调试时快速跳过无需查看的动画片段（如重复的过渡动画）。
+    
+    返回：当前 Scene 对象，支持链式调用。
+    """
+    self.original_skipping_status = self.skip_animations  # 保存原始状态
+    self.skip_animations = True  # 强制开启跳过
+    return self
 
-    def undo(self):
-        if self.undo_stack:
-            self.redo_stack.append(self.get_state())
-            self.restore_state(self.undo_stack.pop())
 
-    def redo(self):
-        if self.redo_stack:
-            self.undo_stack.append(self.get_state())
-            self.restore_state(self.redo_stack.pop())
+def revert_to_original_skipping_status(self):
+    """
+    恢复到 `force_skipping()` 前的原始跳过状态（取消强制跳过）。
+    
+    返回：当前 Scene 对象，支持链式调用。
+    """
+    if hasattr(self, "original_skipping_status"):
+        self.skip_animations = self.original_skipping_status  # 恢复原始状态
+    return self
 
-    @contextmanager
-    def temp_skip(self):
-        prev_status = self.skip_animations
-        self.skip_animations = True
-        try:
-            yield
-        finally:
-            if not prev_status:
-                self.stop_skipping()
 
-    @contextmanager
-    def temp_progress_bar(self):
-        prev_progress = self.show_animation_progress
-        self.show_animation_progress = True
-        try:
-            yield
-        finally:
-            self.show_animation_progress = prev_progress
+def add_sound(
+    self,
+    sound_file: str,
+    time_offset: float = 0,
+    gain: float | None = None,
+    gain_to_background: float | None = None
+):
+    """
+    为场景添加音效：在指定时间点播放音频文件（仅在不跳过动画时生效）。
+    适用于动画关键节点添加音效（如点击、完成提示音）。
+    
+    参数说明：
+        sound_file : 音频文件路径（如 "sounds/click.wav"）；
+        time_offset : 音效延迟播放时间（秒），默认0（立即播放）；
+        gain : 音效音量增益（相对于原音量），默认None（使用文件写入器默认值）；
+        gain_to_background : 背景音量增益，默认None（控制背景音与音效的比例）。
+    """
+    if self.skip_animations:
+        return  # 跳过动画时不添加音效
+    # 计算音效实际播放时间（当前场景时间 + 延迟）
+    play_time = self.get_time() + time_offset
+    # 通知文件写入器添加音效（关联到对应帧时间）
+    self.file_writer.add_sound(sound_file, play_time, gain, gain_to_background)
 
-    @contextmanager
-    def temp_record(self):
-        self.camera.use_window_fbo(False)
-        self.file_writer.begin_insert()
-        try:
-            yield
-        finally:
-            self.file_writer.end_insert()
-            self.camera.use_window_fbo(True)
 
-    def temp_config_change(self, skip=False, record=False, progress_bar=False):
-        stack = ExitStack()
-        if skip:
-            stack.enter_context(self.temp_skip())
-        if record:
-            stack.enter_context(self.temp_record())
-        if progress_bar:
-            stack.enter_context(self.temp_progress_bar())
-        return stack
+# ------------------------------ 开发辅助：状态管理（Undo/Redo） ------------------------------
+def get_state(self) -> SceneState:
+    """
+    获取当前场景的“状态快照”（包含 Mobject 列表、时间、跳过状态等），用于后续恢复。
+    返回的 `SceneState` 对象是场景当前状态的序列化存储。
+    
+    返回：SceneState 对象，包含场景当前状态数据。
+    """
+    return SceneState(self)
 
-    def is_window_closing(self):
-        return self.window and (self.window.is_closing or self.quit_interaction)
 
-    # Event handling
-    def set_floor_plane(self, plane: str = "xy"):
-        if plane == "xy":
-            self.frame.set_euler_axes("zxz")
-        elif plane == "xz":
-            self.frame.set_euler_axes("zxy")
-        else:
-            raise Exception("Only `xz` and `xy` are valid floor planes")
+@affects_mobject_list
+def restore_state(self, scene_state: SceneState):
+    """
+    从 `SceneState` 对象恢复场景状态（如 Mobject 位置、数量、时间），是 `undo/redo` 的核心。
+    
+    参数：scene_state - 之前通过 `get_state()` 获取的场景状态快照。
+    """
+    scene_state.restore_scene(self)  # 调用 SceneState 的恢复方法
 
-    def on_mouse_motion(
-        self,
-        point: Vect3,
-        d_point: Vect3
-    ) -> None:
-        assert self.window is not None
-        self.mouse_point.move_to(point)
 
-        event_data = {"point": point, "d_point": d_point}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseMotionEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
+def save_state(self) -> None:
+    """
+    保存当前场景状态到“撤销栈（undo_stack）”，支持后续 `undo` 操作。
+    优化逻辑：若当前状态与栈顶状态的 Mobject 列表一致，不重复保存（节省内存）。
+    """
+    current_state = self.get_state()
+    # 避免重复保存（当前状态与栈顶一致时跳过）
+    if self.undo_stack and current_state.mobjects_match(self.undo_stack[-1]):
+        return
+    self.redo_stack = []  # 保存新状态时，清空重做栈（无法对新状态之前的操作重做）
+    self.undo_stack.append(current_state)  # 加入撤销栈
+    # 限制撤销栈最大长度（避免内存溢出）
+    if len(self.undo_stack) > self.max_num_saved_states:
+        self.undo_stack.pop(0)  # 移除最早的状态
 
-        frame = self.camera.frame
-        # Handle perspective changes
-        if self.window.is_key_pressed(ord(manim_config.key_bindings.pan_3d)):
-            ff_d_point = frame.to_fixed_frame_point(d_point, relative=True)
-            ff_d_point *= self.pan_sensitivity
-            frame.increment_theta(-ff_d_point[0])
-            frame.increment_phi(ff_d_point[1])
-        # Handle frame movements
-        elif self.window.is_key_pressed(ord(manim_config.key_bindings.pan)):
-            frame.shift(-d_point)
 
-    def on_mouse_drag(
-        self,
-        point: Vect3,
-        d_point: Vect3,
-        buttons: int,
-        modifiers: int
-    ) -> None:
-        self.mouse_drag_point.move_to(point)
-        if self.drag_to_pan:
-            self.frame.shift(-d_point)
+def undo(self):
+    """
+    撤销上一次 `save_state()` 后的操作：从撤销栈弹出最近状态并恢复，同时将当前状态加入重做栈。
+    适用于调试时回退到之前的场景状态（如误操作后恢复）。
+    """
+    if self.undo_stack:
+        # 将当前状态加入重做栈（供后续redo）
+        self.redo_stack.append(self.get_state())
+        # 恢复到撤销栈的最近状态
+        self.restore_state(self.undo_stack.pop())
 
-        event_data = {"point": point, "d_point": d_point, "buttons": buttons, "modifiers": modifiers}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseDragEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
 
-    def on_mouse_press(
-        self,
-        point: Vect3,
-        button: int,
-        mods: int
-    ) -> None:
-        self.mouse_drag_point.move_to(point)
-        event_data = {"point": point, "button": button, "mods": mods}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.MousePressEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
+def redo(self):
+    """
+    重做上一次 `undo` 操作：从重做栈弹出最近状态并恢复，同时将当前状态加入撤销栈。
+    适用于撤销后想恢复之前的操作。
+    """
+    if self.redo_stack:
+        # 将当前状态加入撤销栈
+        self.undo_stack.append(self.get_state())
+        # 恢复到重做栈的最近状态
+        self.restore_state(self.redo_stack.pop())
 
-    def on_mouse_release(
-        self,
-        point: Vect3,
-        button: int,
-        mods: int
-    ) -> None:
-        event_data = {"point": point, "button": button, "mods": mods}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseReleaseEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
 
-    def on_mouse_scroll(
-        self,
-        point: Vect3,
-        offset: Vect3,
-        x_pixel_offset: float,
-        y_pixel_offset: float
-    ) -> None:
-        event_data = {"point": point, "offset": offset}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseScrollEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
+# ------------------------------ 开发辅助：临时配置（上下文管理器） ------------------------------
+@contextmanager
+def temp_skip(self):
+    """
+    临时开启“跳过动画”模式的上下文管理器：进入上下文时开启跳过，退出时恢复原始状态。
+    适用于代码块级别的临时跳过（如循环中跳过重复动画），避免手动保存/恢复状态。
+    
+    使用示例：
+        >>> with self.temp_skip():
+        ...     self.play(Create(Circle()))  # 此动画会被跳过
+    """
+    prev_status = self.skip_animations  # 保存原始状态
+    self.skip_animations = True         # 临时开启跳过
+    try:
+        yield  # 执行上下文内的代码
+    finally:
+        # 退出时恢复原始状态（若之前未开启跳过，需调用 stop_skipping() 同步时间）
+        if not prev_status:
+            self.stop_skipping()
+        self.skip_animations = prev_status
 
-        rel_offset = y_pixel_offset / self.camera.get_pixel_height()
-        self.frame.scale(
-            1 - self.scroll_sensitivity * rel_offset,
-            about_point=point
-        )
 
-    def on_key_release(
-        self,
-        symbol: int,
-        modifiers: int
-    ) -> None:
-        event_data = {"symbol": symbol, "modifiers": modifiers}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.KeyReleaseEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
+@contextmanager
+def temp_progress_bar(self):
+    """
+    临时开启“动画进度条”的上下文管理器：进入时开启进度条，退出时恢复原始设置。
+    适用于需要临时查看进度的代码块（如长动画调试）。
+    """
+    prev_progress = self.show_animation_progress  # 保存原始设置
+    self.show_animation_progress = True           # 临时开启进度条
+    try:
+        yield
+    finally:
+        self.show_animation_progress = prev_progress  # 恢复原始设置
 
-    def on_key_press(
-        self,
-        symbol: int,
-        modifiers: int
-    ) -> None:
-        try:
-            char = chr(symbol)
-        except OverflowError:
-            log.warning("The value of the pressed key is too large.")
-            return
 
-        event_data = {"symbol": symbol, "modifiers": modifiers}
-        propagate_event = EVENT_DISPATCHER.dispatch(EventType.KeyPressEvent, **event_data)
-        if propagate_event is not None and propagate_event is False:
-            return
+@contextmanager
+def temp_record(self):
+    """
+    临时开启“帧录制”的上下文管理器：进入时切换到离线帧缓冲，退出时结束录制并恢复窗口渲染。
+    适用于临时录制部分动画（如插入额外帧），不影响窗口实时渲染。
+    """
+    self.camera.use_window_fbo(False)  # 禁用窗口FBO，切换到离线缓冲
+    self.file_writer.begin_insert()    # 开始插入录制帧
+    try:
+        yield
+    finally:
+        self.file_writer.end_insert()  # 结束录制，写入帧
+        self.camera.use_window_fbo(True)  # 恢复窗口FBO
 
-        if char == manim_config.key_bindings.reset:
-            self.play(self.camera.frame.animate.to_default_state())
-        elif char == "z" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.undo()
-        elif char == "z" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL | PygletWindowKeys.MOD_SHIFT)):
-            self.redo()
-        # command + q
-        elif char == manim_config.key_bindings.quit and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
-            self.quit_interaction = True
-        # Space or right arrow
-        elif char == " " or symbol == PygletWindowKeys.RIGHT:
-            self.hold_on_wait = False
 
-    def on_resize(self, width: int, height: int) -> None:
-        pass
+def temp_config_change(self, skip=False, record=False, progress_bar=False):
+    """
+    批量临时配置的上下文管理器：同时控制“跳过、录制、进度条”的临时开关，通过 `ExitStack` 管理多个上下文。
+    适用于需要组合临时配置的场景（如“跳过+显示进度条”）。
+    
+    参数：
+        skip : 是否临时跳过动画；
+        record : 是否临时录制；
+        progress_bar : 是否临时显示进度条。
+    
+    使用示例：
+        >>> with self.temp_config_change(skip=True, progress_bar=True):
+        ...     self.play(MoveAlongPath(circle, square))  # 跳过动画但显示进度条
+    """
+    stack = ExitStack()  # 管理多个上下文的栈
+    if skip:
+        stack.enter_context(self.temp_skip())
+    if record:
+        stack.enter_context(self.temp_record())
+    if progress_bar:
+        stack.enter_context(self.temp_progress_bar())
+    return stack
 
-    def on_show(self) -> None:
-        pass
 
-    def on_hide(self) -> None:
-        pass
+# ------------------------------ 窗口与事件处理 ------------------------------
+def is_window_closing(self):
+    """
+    判断窗口是否正在关闭（用户点击关闭按钮或触发退出交互）。
+    
+    返回：布尔值，True 表示窗口正在关闭。
+    """
+    return self.window and (self.window.is_closing or self.quit_interaction)
 
-    def on_close(self) -> None:
-        pass
+
+def set_floor_plane(self, plane: str = "xy"):
+    """
+    设置场景的“地面平面”（3D场景中相机的欧拉轴配置），控制3D视角的基准平面。
+    
+    参数：
+        plane : 平面类型，可选 "xy"（默认，XY平面为地面）或 "xz"（XZ平面为地面）；
+    异常：若输入非支持平面类型，抛出 Exception。
+    """
+    if plane == "xy":
+        self.frame.set_euler_axes("zxz")  # XY平面为地面的欧拉轴配置
+    elif plane == "xz":
+        self.frame.set_euler_axes("zxy")  # XZ平面为地面的欧拉轴配置
+    else:
+        raise Exception("Only `xz` and `xy` are valid floor planes")
+
+
+def on_mouse_motion(
+    self,
+    point: Vect3,
+    d_point: Vect3
+) -> None:
+    """
+    鼠标移动事件的回调函数：处理鼠标移动时的场景响应（如更新鼠标位置、3D视角拖动）。
+    
+    参数：
+        point : 鼠标当前的3D坐标；
+        d_point : 鼠标相对于上一帧的位移向量。
+    """
+    assert self.window is not None  # 确保窗口存在
+    self.mouse_point.move_to(point)  # 更新场景的鼠标位置标记
+
+    # 分发鼠标移动事件（供外部监听）
+    event_data = {"point": point, "d_point": d_point}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseMotionEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return  # 若外部阻止事件传播，直接返回
+
+    frame = self.camera.frame
+    # 3D视角拖动（按住指定按键时，拖动鼠标旋转视角）
+    if self.window.is_key_pressed(ord(manim_config.key_bindings.pan_3d)):
+        # 将位移转换为相机固定帧的坐标
+        ff_d_point = frame.to_fixed_frame_point(d_point, relative=True)
+        ff_d_point *= self.pan_sensitivity  # 应用拖动灵敏度
+        frame.increment_theta(-ff_d_point[0])  # 绕θ轴旋转（水平方向）
+        frame.increment_phi(ff_d_point[1])     # 绕φ轴旋转（垂直方向）
+    # 2D画面平移（按住指定按键时，拖动鼠标平移画面）
+    elif self.window.is_key_pressed(ord(manim_config.key_bindings.pan)):
+        frame.shift(-d_point)  # 反向平移（鼠标向右拖，画面向左移，符合直觉）
+
+
+def on_mouse_drag(
+    self,
+    point: Vect3,
+    d_point: Vect3,
+    buttons: int,
+    modifiers: int
+) -> None:
+    """
+    鼠标拖动事件的回调函数：处理鼠标按下并拖动时的场景响应（如拖动平移画面）。
+    
+    参数：
+        point : 鼠标当前的3D坐标；
+        d_point : 鼠标相对于上一帧的位移向量；
+        buttons : 按下的鼠标按键（如左键、右键）；
+        modifiers : 按下的修饰键（如 Shift、Ctrl）。
+    """
+    self.mouse_drag_point.move_to(point)  # 更新拖动点标记
+    # 拖动平移画面（若开启 drag_to_pan）
+    if self.drag_to_pan:
+        self.frame.shift(-d_point)
+
+    # 分发鼠标拖动事件（供外部监听）
+    event_data = {"point": point, "d_point": d_point, "buttons": buttons, "modifiers": modifiers}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseDragEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return  # 若外部阻止事件传播，直接返回
+    # 以下方法是 **Scene 类** 中“用户交互事件处理”的核心实现，涵盖鼠标按键、滚轮、键盘输入等事件的响应逻辑，
+# 是场景与用户交互（如点击、缩放、快捷键操作）的关键接口，支撑交互式动画调试与演示。
+
+
+def on_mouse_press(
+    self,
+    point: Vect3,
+    button: int,
+    mods: int
+) -> None:
+    """
+    鼠标“按下”事件的回调函数：处理鼠标按键按下时的逻辑（如记录拖动起点、分发事件）。
+    
+    参数说明：
+        point : 鼠标按下位置的3D坐标；
+        button : 按下的鼠标按键标识（如左键=1、右键=2）；
+        mods : 按下的修饰键（如 Shift=1、Ctrl=2，通过位运算组合）。
+    
+    核心逻辑：
+    1. 更新“鼠标拖动点”（mouse_drag_point）到按下位置（为后续拖动事件做准备）；
+    2. 构造事件数据并通过事件分发器（EVENT_DISPATCHER）分发事件，供外部代码监听；
+    3. 若外部监听者返回 `False`（阻止事件传播），则直接返回，不执行后续逻辑。
+    """
+    self.mouse_drag_point.move_to(point)  # 记录拖动起点
+    # 构造事件数据
+    event_data = {"point": point, "button": button, "mods": mods}
+    # 分发事件，获取外部是否阻止传播的信号
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.MousePressEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return  # 外部阻止传播，终止处理
+
+
+def on_mouse_release(
+    self,
+    point: Vect3,
+    button: int,
+    mods: int
+) -> None:
+    """
+    鼠标“释放”事件的回调函数：处理鼠标按键松开时的逻辑（如分发事件，无默认业务逻辑）。
+    
+    参数与 `on_mouse_press` 一致，核心逻辑仅包含“事件分发”，无默认场景操作（需外部监听实现自定义逻辑，
+    如“松开鼠标时停止拖动”“点击释放时触发动画”）。
+    """
+    event_data = {"point": point, "button": button, "mods": mods}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseReleaseEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return
+
+
+def on_mouse_scroll(
+    self,
+    point: Vect3,
+    offset: Vect3,
+    x_pixel_offset: float,
+    y_pixel_offset: float
+) -> None:
+    """
+    鼠标“滚轮滚动”事件的回调函数：处理滚轮滚动时的场景缩放（默认以鼠标位置为中心缩放画面）。
+    
+    参数说明：
+        point : 鼠标当前位置的3D坐标（缩放中心）；
+        offset : 滚轮滚动偏移量（通常y轴为垂直滚动，正为上滚，负为下滚）；
+        x_pixel_offset / y_pixel_offset : 滚轮滚动的像素偏移量（用于计算缩放比例）。
+    
+    核心逻辑：
+    1. 分发滚轮事件，供外部监听；
+    2. 若外部未阻止传播，计算缩放比例并以鼠标位置为中心缩放相机帧（画面）：
+        - 缩放比例 = 1 - 滚动灵敏度 × 相对偏移量（相对偏移量=像素偏移/相机高度，确保不同分辨率下缩放一致）；
+        - 调用 `frame.scale()` 实现缩放，`about_point=point` 确保以鼠标位置为中心。
+    """
+    # 分发滚轮事件
+    event_data = {"point": point, "offset": offset}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.MouseScrollEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return
+
+    # 计算相对缩放偏移量（基于相机像素高度，确保缩放灵敏度一致）
+    rel_offset = y_pixel_offset / self.camera.get_pixel_height()
+    # 缩放相机帧（画面）：上滚放大，下滚缩小，以鼠标位置为中心
+    self.frame.scale(
+        1 - self.scroll_sensitivity * rel_offset,
+        about_point=point
+    )
+
+
+def on_key_release(
+    self,
+    symbol: int,
+    modifiers: int
+) -> None:
+    """
+    键盘“释放”事件的回调函数：仅分发事件，无默认业务逻辑（需外部监听实现自定义操作，
+    如“释放Ctrl键时停止多选”）。
+    
+    参数说明：
+        symbol : 按键的ASCII码（如 'a'=97、ESC=27）；
+        modifiers : 按下的修饰键（同 mouse_press 的 mods）。
+    """
+    event_data = {"symbol": symbol, "modifiers": modifiers}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.KeyReleaseEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return
+
+
+def on_key_press(
+    self,
+    symbol: int,
+    modifiers: int
+) -> None:
+    """
+    键盘“按下”事件的回调函数：处理核心快捷键逻辑（如重置视角、撤销/重做、退出、继续演示），
+    是交互式调试的核心功能。
+    
+    参数与 `on_key_release` 一致，核心逻辑为“快捷键判断与执行”：
+    1. 尝试将按键符号转换为字符（处理可打印字符，如 'z'、空格）；
+    2. 分发键盘事件，供外部监听；
+    3. 若外部未阻止传播，执行内置快捷键逻辑：
+        - 重置视角：按配置的“reset”键（默认可能为 'r'），播放相机帧回归默认状态的动画；
+        - 撤销（Undo）：Ctrl+Z 或 Cmd+Z，调用 `self.undo()` 恢复上一状态；
+        - 重做（Redo）：Shift+Ctrl+Z 或 Shift+Cmd+Z，调用 `self.redo()` 恢复撤销的状态；
+        - 退出交互：Ctrl+Q 或 Cmd+Q，设置 `quit_interaction=True` 终止场景；
+        - 继续演示：空格或右箭头键，设置 `hold_on_wait=False` 退出演示模式的等待循环。
+    """
+    try:
+        char = chr(symbol)  # 将按键符号转换为字符（如 97 → 'a'）
+    except OverflowError:
+        log.warning("The value of the pressed key is too large.")  # 处理超出ASCII范围的按键
+        return
+
+    # 分发键盘事件
+    event_data = {"symbol": symbol, "modifiers": modifiers}
+    propagate_event = EVENT_DISPATCHER.dispatch(EventType.KeyPressEvent, **event_data)
+    if propagate_event is not None and propagate_event is False:
+        return
+
+    # 内置快捷键逻辑
+    # 1. 重置视角（按配置的 reset 键）
+    if char == manim_config.key_bindings.reset:
+        self.play(self.camera.frame.animate.to_default_state())
+    # 2. 撤销（Ctrl+Z 或 Cmd+Z）
+    elif char == "z" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.undo()
+    # 3. 重做（Shift+Ctrl+Z 或 Shift+Cmd+Z）
+    elif char == "z" and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL | PygletWindowKeys.MOD_SHIFT)):
+        self.redo()
+    # 4. 退出交互（Ctrl+Q 或 Cmd+Q）
+    elif char == manim_config.key_bindings.quit and (modifiers & (PygletWindowKeys.MOD_COMMAND | PygletWindowKeys.MOD_CTRL)):
+        self.quit_interaction = True
+    # 5. 继续演示（空格或右箭头键，退出 hold_loop 等待）
+    elif char == " " or symbol == PygletWindowKeys.RIGHT:
+        self.hold_on_wait = False
+
+
+# ------------------------------ 空实现的事件回调（供子类重写） ------------------------------
+def on_resize(self, width: int, height: int) -> None:
+    """
+    窗口“调整大小”事件的回调函数：默认空实现，子类可重写以处理窗口大小变化时的逻辑（如适配分辨率、调整UI）。
+    
+    参数：width/height - 调整后的窗口宽/高（像素）。
+    """
+    pass
+
+
+def on_show(self) -> None:
+    """
+    窗口“显示”事件的回调函数：默认空实现，子类可重写以处理窗口显示时的初始化逻辑（如加载资源、显示提示）。
+    """
+    pass
+
+
+def on_hide(self) -> None:
+    """
+    窗口“隐藏”事件的回调函数：默认空实现，子类可重写以处理窗口隐藏时的逻辑（如暂停动画、释放临时资源）。
+    """
+    pass
+
+
+def on_close(self) -> None:
+    """
+    窗口“关闭”事件的回调函数：默认空实现，子类可重写以处理窗口关闭时的清理逻辑（如保存数据、释放内存）。
+    """
+    pass
 
     def focus(self) -> None:
         """
