@@ -955,87 +955,105 @@ def deepcopy(self) -> Self:
     # 创建当前对象的深拷贝
     return copy.deepcopy(self)
 
-    def copy(self, deep: bool = False) -> Self:
-        if deep:
-            return self.deepcopy()
+def copy(self, deep: bool = False) -> Self:
+    # 如果需要深拷贝，调用deepcopy方法
+    if deep:
+        return self.deepcopy()
 
-        result = copy.copy(self)
+    # 否则进行浅拷贝
+    result = copy.copy(self)
 
-        result.parents = []
-        result.target = None
-        result.saved_state = None
+    # 重置父对象、目标和保存状态
+    result.parents = []
+    result.target = None
+    result.saved_state = None
 
-        # copy.copy is only a shallow copy, so the internal
-        # data which are numpy arrays or other mobjects still
-        # need to be further copied.
-        result.uniforms = {
-            key: value.copy() if isinstance(value, np.ndarray) else value
-            for key, value in self.uniforms.items()
-        }
+    # 对uniforms中的numpy数组进行拷贝，其他值保持引用
+    result.uniforms = {
+        key: value.copy() if isinstance(value, np.ndarray) else value
+        for key, value in self.uniforms.items()
+    }
 
-        # Instead of adding using result.add, which does some checks for updating
-        # updater statues and bounding box, just directly modify the family-related
-        # lists
-        result.submobjects = [sm.copy() for sm in self.submobjects]
-        for sm in result.submobjects:
-            sm.parents = [result]
-        result.family = [result, *it.chain(*(sm.get_family() for sm in result.submobjects))]
+    # 直接复制子对象列表（不使用add方法以避免额外检查）
+    result.submobjects = [sm.copy() for sm in self.submobjects]
+    # 更新子对象的父指针为当前复制出的对象
+    for sm in result.submobjects:
+        sm.parents = [result]
+    # 构建家族成员列表
+    result.family = [result, *it.chain(*(sm.get_family() for sm in result.submobjects))]
 
-        # Similarly, instead of calling match_updaters, since we know the status
-        # won't have changed, just directly match.
-        result.updaters = list(self.updaters)
-        result._data_has_changed = True
-        result.shader_wrapper = None
+    # 复制更新器列表
+    result.updaters = list(self.updaters)
+    # 标记数据已更改
+    result._data_has_changed = True
+    # 重置着色器包装器
+    result.shader_wrapper = None
 
-        family = self.get_family()
-        for attr, value in self.__dict__.items():
-            if isinstance(value, Mobject) and value is not self:
-                if value in family:
-                    setattr(result, attr, result.family[family.index(value)])
-            elif isinstance(value, np.ndarray):
-                setattr(result, attr, value.copy())
-        return result
+    # 处理其他属性的拷贝
+    family = self.get_family()
+    for attr, value in self.__dict__.items():
+        # 如果属性是家族中的Mobject，替换为对应拷贝对象
+        if isinstance(value, Mobject) and value is not self:
+            if value in family:
+                setattr(result, attr, result.family[family.index(value)])
+        # 如果属性是numpy数组，进行拷贝
+        elif isinstance(value, np.ndarray):
+            setattr(result, attr, value.copy())
+    return result
 
-    def generate_target(self, use_deepcopy: bool = False) -> Self:
-        self.target = self.copy(deep=use_deepcopy)
-        self.target.saved_state = self.saved_state
-        return self.target
+def generate_target(self, use_deepcopy: bool = False) -> Self:
+    # 生成当前对象的目标对象（用于动画过渡等场景）
+    # 使用指定的复制方式（深拷贝或浅拷贝）创建副本作为目标对象
+    self.target = self.copy(deep=use_deepcopy)
+    # 将当前对象的保存状态同步到目标对象
+    self.target.saved_state = self.saved_state
+    return self.target
 
-    def save_state(self, use_deepcopy: bool = False) -> Self:
-        self.saved_state = self.copy(deep=use_deepcopy)
-        self.saved_state.target = self.target
-        return self
+def save_state(self, use_deepcopy: bool = False) -> Self:
+    # 保存当前对象的状态，用于后续恢复
+    # 使用指定的复制方式创建当前状态的副本
+    self.saved_state = self.copy(deep=use_deepcopy)
+    # 将当前的目标对象引用同步到保存的状态中
+    self.saved_state.target = self.target
+    return self
 
-    def restore(self) -> Self:
-        if not hasattr(self, "saved_state") or self.saved_state is None:
-            raise Exception("Trying to restore without having saved")
-        self.become(self.saved_state)
-        return self
+def restore(self) -> Self:
+    # 从之前保存的状态恢复对象
+    # 检查是否有保存的状态，没有则抛出异常
+    if not hasattr(self, "saved_state") or self.saved_state is None:
+        raise Exception("Trying to restore without having saved")
+    # 使当前对象变成保存状态的副本
+    self.become(self.saved_state)
+    return self
 
-    def become(self, mobject: Mobject, match_updaters=False) -> Self:
-        """
-        Edit all data and submobjects to be idential
-        to another mobject
-        """
-        self.align_family(mobject)
-        family1 = self.get_family()
-        family2 = mobject.get_family()
-        for sm1, sm2 in zip(family1, family2):
-            sm1.set_data(sm2.data)
-            sm1.set_uniforms(sm2.uniforms)
-            sm1.bounding_box[:] = sm2.bounding_box
-            sm1.shader_folder = sm2.shader_folder
-            sm1.texture_paths = sm2.texture_paths
-            sm1.depth_test = sm2.depth_test
-            sm1.render_primitive = sm2.render_primitive
-            sm1._needs_new_bounding_box = sm2._needs_new_bounding_box
-        # Make sure named family members carry over
-        for attr, value in list(mobject.__dict__.items()):
-            if isinstance(value, Mobject) and value in family2:
-                setattr(self, attr, family1[family2.index(value)])
-        if match_updaters:
-            self.match_updaters(mobject)
-        return self
+def become(self, mobject: Mobject, match_updaters=False) -> Self:
+    """
+    编辑所有数据和子对象，使其与另一个mobject完全相同
+    """
+    # 对齐两个对象的家族结构（确保子对象层级一致）
+    self.align_family(mobject)
+    # 获取两个对象的家族成员列表
+    family1 = self.get_family()
+    family2 = mobject.get_family()
+    # 逐个同步家族成员的属性
+    for sm1, sm2 in zip(family1, family2):
+        sm1.set_data(sm2.data)               # 同步数据
+        sm1.set_uniforms(sm2.uniforms)       # 同步 uniforms
+        sm1.bounding_box[:] = sm2.bounding_box  # 同步边界框
+        sm1.shader_folder = sm2.shader_folder  # 同步着色器文件夹
+        sm1.texture_paths = sm2.texture_paths  # 同步纹理路径
+        sm1.depth_test = sm2.depth_test      # 同步深度测试设置
+        sm1.render_primitive = sm2.render_primitive  # 同步渲染图元
+        sm1._needs_new_bounding_box = sm2._needs_new_bounding_box  # 同步边界框更新标记
+    # 确保命名的家族成员引用正确传递
+    for attr, value in list(mobject.__dict__.items()):
+        if isinstance(value, Mobject) and value in family2:
+            # 将属性引用映射到当前对象家族中对应的成员
+            setattr(self, attr, family1[family2.index(value)])
+    # 如果需要，同步更新器
+    if match_updaters:
+        self.match_updaters(mobject)
+    return self
 
     def looks_identical(self, mobject: Mobject) -> bool:
         fam1 = self.family_members_with_points()
