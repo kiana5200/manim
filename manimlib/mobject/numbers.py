@@ -1,34 +1,52 @@
+# 从__future__导入annotations，用于支持延迟类型注解评估（Python 3.7+特性）
 from __future__ import annotations
+# 从functools导入lru_cache，用于函数结果的缓存（记忆化）
 from functools import lru_cache
 
+# 导入numpy库并简写为np，用于数值计算
 import numpy as np
 
+# 从manimlib.constants导入方向常量：下、左、右、上
 from manimlib.constants import DOWN, LEFT, RIGHT, UP
+# 从manimlib.constants导入默认的Mobject颜色常量
 from manimlib.constants import DEFAULT_MOBJECT_COLOR
+# 从manimlib.mobject.svg.tex_mobject导入Tex类，用于创建LaTeX文本对象
 from manimlib.mobject.svg.tex_mobject import Tex
+# 从manimlib.mobject.svg.text_mobject导入Text类，用于创建普通文本对象
 from manimlib.mobject.svg.text_mobject import Text
+# 从manimlib.mobject.types.vectorized_mobject导入VMobject类，矢量图形基类
 from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从manimlib.utils.paths导入straight_path函数，用于生成直线路径
 from manimlib.utils.paths import straight_path
+# 从manimlib.utils.bezier导入interpolate函数，用于贝塞尔插值计算
 from manimlib.utils.bezier import interpolate
 
+# 从typing模块导入TYPE_CHECKING常量，用于条件性导入类型提示
 from typing import TYPE_CHECKING
 
+# 如果处于类型检查阶段（非运行时）
 if TYPE_CHECKING:
+    # 从typing模块导入需要的类型提示：TypeVar（类型变量）、Callable（可调用对象）
     from typing import TypeVar, Callable
+    # 从manimlib.mobject.mobject导入Mobject类，所有Manim对象的基类
     from manimlib.mobject.mobject import Mobject
+    # 从manimlib.typing导入特定的类型提示：Manim颜色类型、三维向量、Self类型
     from manimlib.typing import ManimColor, Vect3, Self
 
+    # 定义类型变量T，约束为VMobject的子类
     T = TypeVar("T", bound=VMobject)
 
 
+# 使用lru_cache装饰器缓存函数结果，避免重复计算相同输入的结果
 @lru_cache()
-def char_to_cahced_mob(char: str, **text_config):
+def char_to_cahced_mob(char: str,** text_config):
+    # 如果字符中包含反斜杠（通常是LaTeX命令）
     if "\\" in char:
-        # This is for when the "character" is a LaTeX command
-        # like ^\circ or \dots
-        return Tex(char, **text_config)
+        # 返回使用Tex创建的LaTeX文本对象，传入配置参数
+        return Tex(char,** text_config)
     else:
-        return Text(char, **text_config)
+        # 否则返回使用Text创建的普通文本对象，传入配置参数
+        return Text(char,** text_config)
 
 
 class DecimalNumber(VMobject):
