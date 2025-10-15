@@ -2903,10 +2903,18 @@ class _AnimationBuilder:
         self.can_pass_args = True
 
     def __getattr__(self, method_name: str):
+        """
+        当访问不存在的属性时调用，
+        用于获取Mobject目标状态上的方法
+        """
+        # 从目标状态获取对应的方法
         method = getattr(self.mobject.target, method_name)
+        # 将方法添加到方法列表中
         self.methods.append(method)
+        # 检查该方法是否有覆盖的动画实现
         has_overridden_animation = hasattr(method, "_override_animate")
 
+        # 如果正在链式调用且有覆盖的动画，或者已有覆盖的动画，抛出异常
         if (self.is_chaining and has_overridden_animation) or self.overridden_animation:
             raise NotImplementedError(
                 "Method chaining is currently not supported for " + \
@@ -2914,67 +2922,88 @@ class _AnimationBuilder:
             )
 
         def update_target(*method_args, **method_kwargs):
+            """更新目标状态的函数，用于执行方法并传递参数"""
             if has_overridden_animation:
+                # 如果有覆盖的动画，使用覆盖的动画实现
                 self.overridden_animation = method._override_animate(
                     self.mobject, *method_args, **method_kwargs
                 )
             else:
+                # 否则直接调用目标方法更新状态
                 method(*method_args, **method_kwargs)
+            # 返回自身，支持链式调用
             return self
 
+        # 标记为正在链式调用
         self.is_chaining = True
         return update_target
 
     def __call__(self, **kwargs):
-        return self.set_anim_args(**kwargs)
+        """允许通过()语法传递动画参数"""
+        return self.set_anim_args(** kwargs)
 
     def __dir__(self) -> list[str]:
         """
-        Extend attribute list of _AnimationBuilder object to include mobject attributes
-        for better autocompletion in the IPython terminal when using interactive mode.
+        扩展_AnimationBuilder对象的属性列表，包含Mobject的属性，
+        以便在IPython终端的交互模式中获得更好的自动补全功能
         """
+        # 获取父类的属性列表
         methods = super().__dir__()
+        # 获取Mobject的非私有属性列表
         mobject_methods = [
             attr for attr in dir(self.mobject)
             if not attr.startswith('_')
         ]
-        return sorted(set(methods+mobject_methods))
+        # 合并并排序属性列表
+        return sorted(set(methods + mobject_methods))
 
     def set_anim_args(self, **kwargs):
         '''
-        You can change the args of :class:`~manimlib.animation.transform.Transform`, such as
+        设置动画参数，可用于修改Transform类的参数，例如：
 
-        - ``run_time``
-        - ``time_span``
-        - ``rate_func``
-        - ``lag_ratio``
-        - ``path_arc``
-        - ``path_func``
+        - ``run_time``：动画运行时间
+        - ``time_span``：时间跨度
+        - ``rate_func``：速率函数
+        - ``lag_ratio``：延迟比例
+        - ``path_arc``：路径弧度
+        - ``path_func``：路径函数
 
-        and so on.
+        等等。
         '''
 
+        # 如果已经传递过参数，抛出异常
         if not self.can_pass_args:
             raise ValueError(
                 "Animation arguments can only be passed by calling ``animate`` " + \
                 "or ``set_anim_args`` and can only be passed once",
             )
 
+        # 存储动画参数
         self.anim_args = kwargs
+        # 标记为已传递参数，防止重复传递
         self.can_pass_args = False
+        # 返回自身，支持链式调用
         return self
 
     def build(self):
+        """构建并返回动画对象"""
+        # 导入需要的动画类
         from manimlib.animation.transform import _MethodAnimation
 
+        # 如果有覆盖的动画，返回覆盖的动画
         if self.overridden_animation:
             return self.overridden_animation
 
+        # 否则创建并返回方法动画
         return _MethodAnimation(self.mobject, self.methods, **self.anim_args)
 
 
 def override_animate(method):
+    """
+    装饰器，用于为方法覆盖默认的动画实现
+    """
     def decorator(animation_method):
+        # 为原方法添加_override_animate属性，指向覆盖的动画方法
         method._override_animate = animation_method
         return animation_method
 
@@ -2982,32 +3011,54 @@ def override_animate(method):
 
 
 class _UpdaterBuilder:
+    """更新器构建器类，用于为Mobject添加更新器"""
+    
     def __init__(self, mobject: Mobject):
+        # 存储要添加更新器的Mobject对象
         self.mobject = mobject
 
     def __getattr__(self, method_name: str):
+        """
+        当访问不存在的属性时调用，
+        用于为指定方法创建更新器
+        """
         def add_updater(*method_args, **method_kwargs):
+            """添加更新器的函数"""
             self.mobject.add_updater(
+                # 创建lambda函数作为更新器，调用指定方法并传递参数
                 lambda m: getattr(m, method_name)(*method_args, **method_kwargs)
             )
+            # 返回自身，支持链式调用
             return self
         return add_updater
 
 
 class _FunctionalUpdaterBuilder:
+    """函数式更新器构建器类，用于为Mobject添加函数式更新器"""
+    
     def __init__(self, mobject: Mobject):
+        # 存储要添加更新器的Mobject对象
         self.mobject = mobject
 
     def __getattr__(self, method_name: str):
+        """
+        当访问不存在的属性时调用，
+        用于为指定方法创建函数式更新器
+        """
         def add_updater(*method_args, **method_kwargs):
+            """添加函数式更新器的函数"""
             self.mobject.add_updater(
-                lambda m: getattr(m, method_name)(
+                # 创建lambda函数作为更新器
+                lambda m: getattr(m, method_name)(  
+                    # 对位置参数进行函数调用获取值
                     *(arg() for arg in method_args),
+                    # 对关键字参数进行函数调用获取值
                     **{
                         key: value()
                         for key, value in method_kwargs.items()
                     }
                 )
             )
+            # 返回自身，支持链式调用
             return self
         return add_updater
