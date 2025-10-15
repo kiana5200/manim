@@ -2797,132 +2797,109 @@ def clear_event_listners(self, recurse: bool = True):
     # 返回自身以便链式调用
     return self
 
-    def get_event_listners(self):
-        return self.event_listners
-
-    def get_family_event_listners(self):
-        return list(it.chain(*[sm.get_event_listners() for sm in self.get_family()]))
-
-    def get_has_event_listner(self):
-        return any(
-            mob.get_event_listners()
-            for mob in self.get_family()
-        )
-
-    def add_mouse_motion_listner(self, callback):
-        self.add_event_listner(EventType.MouseMotionEvent, callback)
-
-    def remove_mouse_motion_listner(self, callback):
-        self.remove_event_listner(EventType.MouseMotionEvent, callback)
-
-    def add_mouse_press_listner(self, callback):
-        self.add_event_listner(EventType.MousePressEvent, callback)
-
-    def remove_mouse_press_listner(self, callback):
-        self.remove_event_listner(EventType.MousePressEvent, callback)
-
-    def add_mouse_release_listner(self, callback):
-        self.add_event_listner(EventType.MouseReleaseEvent, callback)
-
-    def remove_mouse_release_listner(self, callback):
-        self.remove_event_listner(EventType.MouseReleaseEvent, callback)
-
-    def add_mouse_drag_listner(self, callback):
-        self.add_event_listner(EventType.MouseDragEvent, callback)
-
-    def remove_mouse_drag_listner(self, callback):
-        self.remove_event_listner(EventType.MouseDragEvent, callback)
-
-    def add_mouse_scroll_listner(self, callback):
-        self.add_event_listner(EventType.MouseScrollEvent, callback)
-
-    def remove_mouse_scroll_listner(self, callback):
-        self.remove_event_listner(EventType.MouseScrollEvent, callback)
-
-    def add_key_press_listner(self, callback):
-        self.add_event_listner(EventType.KeyPressEvent, callback)
-
-    def remove_key_press_listner(self, callback):
-        self.remove_event_listner(EventType.KeyPressEvent, callback)
-
-    def add_key_release_listner(self, callback):
-        self.add_event_listner(EventType.KeyReleaseEvent, callback)
-
-    def remove_key_release_listner(self, callback):
-        self.remove_event_listner(EventType.KeyReleaseEvent, callback)
-
-    # Errors
-
-    def throw_error_if_no_points(self):
-        if not self.has_points():
-            message = "Cannot call Mobject.{} " +\
-                      "for a Mobject with no points"
-            caller_name = sys._getframe(1).f_code.co_name
-            raise Exception(message.format(caller_name))
+def throw_error_if_no_points(self):
+    # 检查当前对象是否有任何点数据
+    if not self.has_points():
+        # 构建错误消息模板，提示无法调用需要点数据的方法
+        message = "Cannot call Mobject.{} " +\
+                  "for a Mobject with no points"
+        # 获取调用当前方法的函数名
+        caller_name = sys._getframe(1).f_code.co_name
+        # 抛出异常，包含具体的错误信息
+        raise Exception(message.format(caller_name))
 
 
 class Group(Mobject, Generic[SubmobjectType]):
+    # 初始化Group对象，接收多个Mobject或可迭代的Mobject集合
     def __init__(self, *mobjects: SubmobjectType | Iterable[SubmobjectType], **kwargs):
+        # 调用父类Mobject的初始化方法
         super().__init__(**kwargs)
+        # 处理传入的参数，将Mobject添加到组中
         self._ingest_args(*mobjects)
 
     def _ingest_args(self, *args: Mobject | Iterable[Mobject]):
+        # 如果没有传入参数，则直接返回
         if len(args) == 0:
             return
+        # 如果所有参数都是Mobject实例，则将它们添加到组中
         if all(isinstance(mob, Mobject) for mob in args):
             self.add(*args)
+        # 如果第一个参数是可迭代对象，则将其包含的Mobject添加到组中
         elif isinstance(args[0], Iterable):
             self.add(*args[0])
+        # 否则抛出异常，提示参数类型无效
         else:
             raise Exception(f"Invalid argument to Group of type {type(args[0])}")
 
     def __add__(self, other: Mobject | Group) -> Self:
+        # 确保要添加的对象是Mobject实例
         assert isinstance(other, Mobject)
+        # 将对象添加到组中并返回自身以便链式操作
         return self.add(other)
 
-    # This is just here to make linters happy with references to things like Group(...)[0]
+    # 此方法仅为了让代码检查工具在引用类似Group(...)[0]时不报错
     def __getitem__(self, index) -> SubmobjectType:
+        # 调用父类的__getitem__方法获取指定索引的子对象
         return super().__getitem__(index)
 
 
 class Point(Mobject):
+    # 初始化Point对象，设置位置和人工宽度、高度
     def __init__(
         self,
-        location: Vect3 = ORIGIN,
-        artificial_width: float = 1e-6,
-        artificial_height: float = 1e-6,
+        location: Vect3 = ORIGIN,  # 点的位置，默认为原点
+        artificial_width: float = 1e-6,  # 人工设置的宽度，用于碰撞检测等
+        artificial_height: float = 1e-6,  # 人工设置的高度，用于碰撞检测等
         **kwargs
     ):
+        # 保存人工宽度和高度
         self.artificial_width = artificial_width
         self.artificial_height = artificial_height
+        # 调用父类Mobject的初始化方法
         super().__init__(**kwargs)
+        # 设置点的位置
         self.set_location(location)
 
     def get_width(self) -> float:
+        # 返回人工设置的宽度
         return self.artificial_width
 
     def get_height(self) -> float:
+        # 返回人工设置的高度
         return self.artificial_height
 
     def get_location(self) -> Vect3:
+        # 返回点的位置（复制第一个点的坐标）
         return self.get_points()[0].copy()
 
     def get_bounding_box_point(self, *args, **kwargs) -> Vect3:
+        # 返回点的位置作为边界框点
         return self.get_location()
 
     def set_location(self, new_loc: npt.ArrayLike) -> Self:
+        # 将新位置转换为数组并设置为点的数据
         self.set_points(np.array(new_loc, ndmin=2, dtype=float))
+        # 返回自身以便链式调用
         return self
 
 
 class _AnimationBuilder:
+    """动画构建器类，用于创建Mobject对象的动画效果"""
+    
     def __init__(self, mobject: Mobject):
+        # 存储要创建动画的Mobject对象
         self.mobject = mobject
+        # 存储被覆盖的动画（如果有）
         self.overridden_animation = None
+        # 为Mobject生成目标状态（用于动画过渡）
         self.mobject.generate_target()
+        # 标记是否正在进行方法链式调用
         self.is_chaining = False
+        # 存储要执行的目标方法列表
         self.methods: list[Callable] = []
+        # 存储动画参数
         self.anim_args = {}
+        # 标记是否可以传递动画参数
         self.can_pass_args = True
 
     def __getattr__(self, method_name: str):
