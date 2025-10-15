@@ -1,22 +1,38 @@
+# 从__future__导入annotations，用于支持 postponed evaluation of annotations（延迟类型注解评估）
 from __future__ import annotations
 
+# 导入numpy库，并简写为np，用于数值计算
 import numpy as np
 
+# 从manimlib.constants模块导入常用方向常量：下、左、右、上
 from manimlib.constants import DOWN, LEFT, RIGHT, UP
+# 从manimlib.constants模块导入默认的光源颜色常量
 from manimlib.constants import DEFAULT_LIGHT_COLOR
+# 从manimlib.constants模块导入中等偏小的缓冲距离常量
 from manimlib.constants import MED_SMALL_BUFF
+# 从manimlib.mobject.geometry模块导入Line类，用于创建线对象
 from manimlib.mobject.geometry import Line
+# 从manimlib.mobject.numbers模块导入DecimalNumber类，用于创建十进制数字对象
 from manimlib.mobject.numbers import DecimalNumber
+# 从manimlib.mobject.types.vectorized_mobject模块导入VGroup类，用于创建矢量对象组
 from manimlib.mobject.types.vectorized_mobject import VGroup
+# 从manimlib.utils.bezier模块导入interpolate函数，用于贝塞尔插值计算
 from manimlib.utils.bezier import interpolate
+# 从manimlib.utils.bezier模块导入outer_interpolate函数，用于外部贝塞尔插值计算
 from manimlib.utils.bezier import outer_interpolate
+# 从manimlib.utils.dict_ops模块导入merge_dicts_recursively函数，用于递归合并字典
 from manimlib.utils.dict_ops import merge_dicts_recursively
+# 从manimlib.utils.simple_functions模块导入fdiv函数，用于浮点数除法
 from manimlib.utils.simple_functions import fdiv
 
+# 从typing模块导入TYPE_CHECKING常量，用于条件性导入类型提示
 from typing import TYPE_CHECKING
 
+# 如果处于类型检查阶段（非运行时）
 if TYPE_CHECKING:
+    # 从typing模块导入需要的类型提示：可迭代对象、可选类型
     from typing import Iterable, Optional
+    # 从manimlib.typing模块导入特定的类型提示：Manim颜色类型、三维向量、三维向量数组、N维向量、范围说明符
     from manimlib.typing import ManimColor, Vect3, Vect3Array, VectN, RangeSpecifier
 
 
