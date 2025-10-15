@@ -207,58 +207,83 @@ class MoveToTarget(Transform):
             )
 
 
+# 定义_MethodAnimation类，继承自MoveToTarget
+# 这是一个内部使用的动画类（类名前的下划线通常表示内部使用）
 class _MethodAnimation(MoveToTarget):
+    # 初始化方法，接收一个物体和一个方法列表
     def __init__(self, mobject: Mobject, methods: list[Callable], **kwargs):
+        # 存储方法列表，这些方法将用于修改目标状态
         self.methods = methods
+        # 调用父类MoveToTarget的初始化方法，传入物体和其他参数
         super().__init__(mobject, **kwargs)
 
 
+# 定义ApplyMethod类，继承自Transform，用于将方法应用于物体的动画
 class ApplyMethod(Transform):
     def __init__(self, method: Callable, *args, **kwargs):
         """
-        method is a method of Mobject, *args are arguments for
-        that method.  Key word arguments should be passed in
-        as the last arg, as a dict, since **kwargs is for
-        configuration of the transform itself
-
-        Relies on the fact that mobject methods return the mobject
+        method是Mobject的一个方法，*args是该方法的参数。
+        关键字参数应作为最后一个参数以字典形式传入，
+        因为**kwargs用于配置变换本身
+        依赖于mobject方法返回mobject这一特性
         """
+        # 检查输入的方法是否有效
         self.check_validity_of_input(method)
+        # 存储要应用的方法
         self.method = method
+        # 存储方法的参数
         self.method_args = args
+        # 调用父类Transform的初始化方法，传入方法所属的物体和其他参数
+        # method.__self__指的是调用该方法的Mobject实例
         super().__init__(method.__self__, **kwargs)
 
+    # 检查输入的方法是否有效的辅助方法
     def check_validity_of_input(self, method: Callable) -> None:
+        # 检查是否为方法（而非函数或已调用的方法结果）
         if not inspect.ismethod(method):
             raise Exception(
                 "Whoops, looks like you accidentally invoked "
                 "the method you want to animate"
             )
+        # 确保方法的所有者是Mobject实例
         assert isinstance(method.__self__, Mobject)
 
+    # 创建目标物体的方法，重写父类方法
     def create_target(self) -> Mobject:
+        # 获取要应用的方法
         method = self.method
-        # Make sure it's a list so that args.pop() works
+        # 将参数转为列表，以便使用pop()方法
         args = list(self.method_args)
 
+        # 如果最后一个参数是字典，则视为方法的关键字参数
         if len(args) > 0 and isinstance(args[-1], dict):
             method_kwargs = args.pop()
         else:
             method_kwargs = {}
+        # 创建方法所属物体的副本作为目标物体的基础
         target = method.__self__.copy()
+        # 对目标物体应用该方法（使用函数形式调用，传入目标作为第一个参数）
+        # 这样原物体不变，而目标物体成为应用方法后的状态
         method.__func__(target, *args, **method_kwargs)
+        # 返回处理后的目标物体
         return target
 
 
+# 定义ApplyPointwiseFunction类，继承自ApplyMethod
+# 用于对物体的每个点应用指定函数的动画
 class ApplyPointwiseFunction(ApplyMethod):
+    # 初始化方法
     def __init__(
         self,
-        function: Callable[[np.ndarray], np.ndarray],
-        mobject: Mobject,
-        run_time: float = 3.0,
-        **kwargs
+        function: Callable[[np.ndarray], np.ndarray],  # 点变换函数，接收并返回numpy数组
+        mobject: Mobject,  # 要应用函数的物体
+        run_time: float = 3.0,  # 动画运行时间，默认3秒
+        **kwargs  # 其他传递给父类的参数
     ):
-        super().__init__(mobject.apply_function, function, run_time=run_time, **kwargs)
+        # 调用父类ApplyMethod的初始化方法
+        # 将mobject的apply_function方法作为要执行的方法
+        # 传入的参数为自定义的function，同时指定运行时间和其他参数
+        super().__init__(mobject.apply_function, function, run_time=run_time,** kwargs)
 
 
 class ApplyPointwiseFunctionToCenter(Transform):
