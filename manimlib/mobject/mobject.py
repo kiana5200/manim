@@ -2168,113 +2168,134 @@ def get_start_and_end(self) -> tuple[Vect3, Vect3]:
     # 返回起始点和终止点的副本
     return (points[0].copy(), points[-1].copy())
 
-    def point_from_proportion(self, alpha: float) -> Vect3:
-        points = self.get_points()
-        i, subalpha = integer_interpolate(0, len(points) - 1, alpha)
-        return interpolate(points[i], points[i + 1], subalpha)
+def point_from_proportion(self, alpha: float) -> Vect3:
+    # 根据比例alpha获取点（alpha∈[0,1]，0对应起点，1对应终点）
+    points = self.get_points()
+    # 计算整数索引和小数比例（如alpha=0.3，n=5 → i=1，subalpha=0.5）
+    i, subalpha = integer_interpolate(0, len(points) - 1, alpha)
+    # 在第i个点和第i+1个点之间插值
+    return interpolate(points[i], points[i + 1], subalpha)
 
-    def pfp(self, alpha):
-        """Abbreviation for point_from_proportion"""
-        return self.point_from_proportion(alpha)
+def pfp(self, alpha):
+    """point_from_proportion的缩写，快速调用"""
+    return self.point_from_proportion(alpha)
 
-    def get_pieces(self, n_pieces: int) -> Group:
-        template = self.copy()
-        template.set_submobjects([])
-        alphas = np.linspace(0, 1, n_pieces + 1)
-        return Group(*[
-            template.copy().pointwise_become_partial(
-                self, a1, a2
-            )
-            for a1, a2 in zip(alphas[:-1], alphas[1:])
-        ])
-
-    def get_z_index_reference_point(self) -> Vect3:
-        # TODO, better place to define default z_index_group?
-        z_index_group = getattr(self, "z_index_group", self)
-        return z_index_group.get_center()
-
-    # Match other mobject properties
-
-    def match_color(self, mobject: Mobject) -> Self:
-        return self.set_color(mobject.get_color())
-
-    def match_style(self, mobject: Mobject) -> Self:
-        self.set_color(mobject.get_color())
-        self.set_opacity(mobject.get_opacity())
-        self.set_shading(*mobject.get_shading())
-        return self
-
-    def match_dim_size(self, mobject: Mobject, dim: int, **kwargs) -> Self:
-        return self.rescale_to_fit(
-            mobject.length_over_dim(dim), dim,
-            **kwargs
+def get_pieces(self, n_pieces: int) -> Group:
+    # 将对象分割为n_pieces个连续部分，返回包含这些部分的组
+    # 创建空副本作为模板（清除子对象，保留基础属性）
+    template = self.copy()
+    template.set_submobjects([])
+    # 生成分割比例（0到1之间的n_pieces+1个均匀点）
+    alphas = np.linspace(0, 1, n_pieces + 1)
+    # 逐个创建分割部分，拼接成组
+    return Group(*[
+        template.copy().pointwise_become_partial(
+            self, a1, a2  # 每个部分对应原对象的[a1,a2]比例区间
         )
+        for a1, a2 in zip(alphas[:-1], alphas[1:])
+    ])
 
-    def match_width(self, mobject: Mobject, **kwargs) -> Self:
-        return self.match_dim_size(mobject, 0, **kwargs)
+def get_z_index_reference_point(self) -> Vect3:
+    # TODO：z_index_group的默认定义位置可优化
+    # 获取Z索引参考点（用于确定渲染层级，默认使用自身或z_index_group的中心）
+    z_index_group = getattr(self, "z_index_group", self)
+    return z_index_group.get_center()
 
-    def match_height(self, mobject: Mobject, **kwargs) -> Self:
-        return self.match_dim_size(mobject, 1, **kwargs)
+# 匹配其他对象属性的方法
 
-    def match_depth(self, mobject: Mobject, **kwargs) -> Self:
-        return self.match_dim_size(mobject, 2, **kwargs)
+def match_color(self, mobject: Mobject) -> Self:
+    # 匹配目标对象的颜色
+    return self.set_color(mobject.get_color())
 
-    def match_coord(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        dim: int,
-        direction: Vect3 = ORIGIN
-    ) -> Self:
-        if isinstance(mobject_or_point, Mobject):
-            coord = mobject_or_point.get_coord(dim, direction)
-        else:
-            coord = mobject_or_point[dim]
-        return self.set_coord(coord, dim=dim, direction=direction)
+def match_style(self, mobject: Mobject) -> Self:
+    # 匹配目标对象的整体样式（颜色、透明度、着色参数）
+    self.set_color(mobject.get_color())          # 匹配颜色
+    self.set_opacity(mobject.get_opacity())      # 匹配透明度
+    self.set_shading(*mobject.get_shading())     # 匹配着色参数（反射度、光泽度、阴影度）
+    return self
 
-    def match_x(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        direction: Vect3 = ORIGIN
-    ) -> Self:
-        return self.match_coord(mobject_or_point, 0, direction)
+def match_dim_size(self, mobject: Mobject, dim: int,** kwargs) -> Self:
+    # 匹配目标对象在指定维度上的尺寸
+    return self.rescale_to_fit(
+        mobject.length_over_dim(dim),  # 目标对象指定维度的长度
+        dim,                           # 待匹配的维度
+        **kwargs                       # 传递额外参数（如缩放中心点）
+    )
 
-    def match_y(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        direction: Vect3 = ORIGIN
-    ) -> Self:
-        return self.match_coord(mobject_or_point, 1, direction)
+def match_width(self, mobject: Mobject, **kwargs) -> Self:
+    # 匹配目标对象的宽度（X轴维度，dim=0），复用match_dim_size方法
+    # **kwargs传递额外参数（如缩放中心点、是否拉伸等）
+    return self.match_dim_size(mobject, 0,** kwargs)
 
-    def match_z(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        direction: Vect3 = ORIGIN
-    ) -> Self:
-        return self.match_coord(mobject_or_point, 2, direction)
+def match_height(self, mobject: Mobject, **kwargs) -> Self:
+    # 匹配目标对象的高度（Y轴维度，dim=1），复用match_dim_size方法
+    return self.match_dim_size(mobject, 1, **kwargs)
 
-    def align_to(
-        self,
-        mobject_or_point: Mobject | Vect3,
-        direction: Vect3 = ORIGIN
-    ) -> Self:
-        """
-        Examples:
-        mob1.align_to(mob2, UP) moves mob1 vertically so that its
-        top edge lines ups with mob2's top edge.
+def match_depth(self, mobject: Mobject, **kwargs) -> Self:
+    # 匹配目标对象的深度（Z轴维度，dim=2），复用match_dim_size方法
+    return self.match_dim_size(mobject, 2,** kwargs)
 
-        mob1.align_to(mob2, alignment_vect = RIGHT) moves mob1
-        horizontally so that it's center is directly above/below
-        the center of mob2
-        """
-        if isinstance(mobject_or_point, Mobject):
-            point = mobject_or_point.get_bounding_box_point(direction)
-        else:
-            point = mobject_or_point
+def match_coord(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    dim: int,
+    direction: Vect3 = ORIGIN
+) -> Self:
+    # 处理目标为Mobject的情况：获取目标对象在指定维度和方向上的坐标
+    if isinstance(mobject_or_point, Mobject):
+        coord = mobject_or_point.get_coord(dim, direction)
+    # 处理目标为点的情况：直接提取点在指定维度上的坐标值
+    else:
+        coord = mobject_or_point[dim]
+    # 将当前对象在指定维度和方向上的坐标设置为目标坐标
+    return self.set_coord(coord, dim=dim, direction=direction)
 
-        for dim in range(self.dim):
-            if direction[dim] != 0:
-                self.set_coord(point[dim], dim, direction)
-        return self
+def match_x(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    direction: Vect3 = ORIGIN
+) -> Self:
+    # 匹配目标对象/X轴坐标（dim=0），复用match_coord方法
+    return self.match_coord(mobject_or_point, 0, direction)
+
+def match_y(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    direction: Vect3 = ORIGIN
+) -> Self:
+    # 匹配目标对象/Y轴坐标（dim=1），复用match_coord方法
+    return self.match_coord(mobject_or_point, 1, direction)
+
+def match_z(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    direction: Vect3 = ORIGIN
+) -> Self:
+    # 匹配目标对象/Z轴坐标（dim=2），复用match_coord方法
+    return self.match_coord(mobject_or_point, 2, direction)
+
+def align_to(
+    self,
+    mobject_or_point: Mobject | Vect3,
+    direction: Vect3 = ORIGIN
+) -> Self:
+    """
+    示例：
+    1. mob1.align_to(mob2, UP) → 垂直移动mob1，使其顶部边缘与mob2的顶部边缘对齐
+    2. mob1.align_to(mob2, RIGHT) → 水平移动mob1，使其中心与mob2的中心在垂直方向对齐
+    """
+    # 处理目标为Mobject的情况：获取目标对象在指定方向上的边界框点
+    if isinstance(mobject_or_point, Mobject):
+        point = mobject_or_point.get_bounding_box_point(direction)
+    # 处理目标为点的情况：直接使用该点作为对齐目标点
+    else:
+        point = mobject_or_point
+
+    # 遍历所有维度，仅对方向向量非零的维度执行对齐（即仅在目标方向上调整）
+    for dim in range(self.dim):
+        if direction[dim] != 0:
+            self.set_coord(point[dim], dim, direction)
+    return self
 
     def get_group_class(self):
         return Group
