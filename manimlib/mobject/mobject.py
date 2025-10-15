@@ -2709,69 +2709,93 @@ def get_shader_wrapper_list(self, ctx: Context) -> list[ShaderWrapper]:
         result.append(shader_wrapper)
     return result
 
-    def get_shader_data(self) -> np.ndarray:
-        indices = self.get_shader_vert_indices()
-        if indices is not None:
-            return self.data[indices]
-        else:
-            return self.data
+def get_shader_data(self) -> np.ndarray:
+    # 获取用于Shader渲染的顶点数据
+    # 先获取Shader顶点索引（子类可重写该方法筛选特定顶点）
+    indices = self.get_shader_vert_indices()
+    if indices is not None:
+        return self.data[indices]  # 返回筛选后的顶点数据
+    else:
+        return self.data  # 返回全部顶点数据
 
-    def get_uniforms(self):
-        return self.uniforms
+def get_uniforms(self):
+    # 获取当前对象的Shader Uniform变量字典
+    return self.uniforms
 
-    def get_shader_vert_indices(self) -> Optional[np.ndarray]:
-        return None
+def get_shader_vert_indices(self) -> Optional[np.ndarray]:
+    # 获取Shader渲染的顶点索引（默认返回None，即使用全部顶点）
+    # 子类可重写该方法实现顶点筛选（如只渲染部分顶点）
+    return None
 
-    def render(self, ctx: Context, camera_uniforms: dict):
-        if self._data_has_changed:
-            self.shader_wrappers = self.get_shader_wrapper_list(ctx)
-            self._data_has_changed = False
-        for shader_wrapper in self.shader_wrappers:
-            shader_wrapper.update_program_uniforms(camera_uniforms)
-            shader_wrapper.pre_render()
-            shader_wrapper.render()
+def render(self, ctx: Context, camera_uniforms: dict):
+    # 渲染对象（将数据通过Shader绘制到屏幕）
+    # 若数据已变更，重新获取Shader包装器列表（确保使用最新数据）
+    if self._data_has_changed:
+        self.shader_wrappers = self.get_shader_wrapper_list(ctx)
+        self._data_has_changed = False  # 重置数据变更标记
+    # 逐个渲染Shader包装器管理的对象
+    for shader_wrapper in self.shader_wrappers:
+        # 更新相机相关的Uniform（如视角、投影矩阵）
+        shader_wrapper.update_program_uniforms(camera_uniforms)
+        # 渲染前准备（如绑定纹理、设置顶点缓冲区）
+        shader_wrapper.pre_render()
+        # 执行渲染（调用GPU绘制）
+        shader_wrapper.render()
 
-    # Event Handlers
-    """
-        Event handling follows the Event Bubbling model of DOM in javascript.
-        Return false to stop the event bubbling.
-        To learn more visit https://www.quirksmode.org/js/events_order.html
+# 事件处理器相关方法
+"""
+    事件处理遵循JavaScript DOM的“事件冒泡”模型（Event Bubbling）
+    - 返回false可阻止事件继续冒泡（父对象不再接收该事件）
+    - 更多细节参考：https://www.quirksmode.org/js/events_order.html
 
-        Event Callback Argument is a callable function taking two arguments:
-            1. Mobject
-            2. EventData
-    """
+    事件回调函数需接收两个参数：
+        1. Mobject：触发事件的对象
+        2. EventData：事件数据（如鼠标位置、按键信息）
+"""
 
-    def init_event_listners(self):
-        self.event_listners: list[EventListener] = []
+def init_event_listners(self):
+    # 初始化事件监听器列表（存储当前对象的所有事件监听）
+    self.event_listners: list[EventListener] = []
 
-    def add_event_listner(
-        self,
-        event_type: EventType,
-        event_callback: Callable[[Mobject, dict[str]]]
-    ):
-        event_listner = EventListener(self, event_type, event_callback)
-        self.event_listners.append(event_listner)
-        EVENT_DISPATCHER.add_listner(event_listner)
-        return self
+def add_event_listner(
+    self,
+    event_type: EventType,
+    event_callback: Callable[[Mobject, dict[str]]]
+):
+    # 为当前对象添加事件监听器
+    # 创建事件监听器实例（绑定对象、事件类型、回调函数）
+    event_listner = EventListener(self, event_type, event_callback)
+    # 将监听器添加到对象的监听器列表
+    self.event_listners.append(event_listner)
+    # 将监听器注册到全局事件分发器（由分发器统一管理事件触发）
+    EVENT_DISPATCHER.add_listner(event_listner)
+    return self
 
-    def remove_event_listner(
-        self,
-        event_type: EventType,
-        event_callback: Callable[[Mobject, dict[str]]]
-    ):
-        event_listner = EventListener(self, event_type, event_callback)
-        while event_listner in self.event_listners:
-            self.event_listners.remove(event_listner)
-        EVENT_DISPATCHER.remove_listner(event_listner)
-        return self
+def remove_event_listner(
+    self,
+    event_type: EventType,
+    event_callback: Callable[[Mobject, dict[str]]]
+):
+    # 从当前对象移除指定的事件监听器
+    # 创建与待移除监听器匹配的实例（用于查找）
+    event_listner = EventListener(self, event_type, event_callback)
+    # 循环移除所有匹配的监听器（避免重复注册导致的残留）
+    while event_listner in self.event_listners:
+        self.event_listners.remove(event_listner)
+    # 从全局事件分发器中移除该监听器
+    EVENT_DISPATCHER.remove_listner(event_listner)
+    return self
 
-    def clear_event_listners(self, recurse: bool = True):
-        self.event_listners = []
-        if recurse:
-            for submob in self.submobjects:
-                submob.clear_event_listners(recurse=recurse)
-        return self
+def clear_event_listners(self, recurse: bool = True):
+    # 清空当前对象的事件监听器列表
+    self.event_listners = []
+    # 如果需要递归处理子对象
+    if recurse:
+        # 遍历所有子对象并递归清空它们的事件监听器
+        for submob in self.submobjects:
+            submob.clear_event_listners(recurse=recurse)
+    # 返回自身以便链式调用
+    return self
 
     def get_event_listners(self):
         return self.event_listners
