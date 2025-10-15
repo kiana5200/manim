@@ -2297,87 +2297,118 @@ def align_to(
             self.set_coord(point[dim], dim, direction)
     return self
 
-    def get_group_class(self):
-        return Group
+def get_group_class(self):
+    # 返回当前对象对应的组类（默认是Group，用于创建包含自身的组）
+    return Group
 
-    # Alignment
+# 对齐相关方法（Alignment）
 
-    def is_aligned_with(self, mobject: Mobject) -> bool:
-        if len(self.data) != len(mobject.data):
-            return False
-        if len(self.submobjects) != len(mobject.submobjects):
-            return False
-        return all(
-            sm1.is_aligned_with(sm2)
-            for sm1, sm2 in zip(self.submobjects, mobject.submobjects)
-        )
+def is_aligned_with(self, mobject: Mobject) -> bool:
+    # 检查当前对象是否与目标对象对齐（需满足数据长度和子对象数量一致）
+    # 1. 检查数据长度是否相同（点数据数量一致）
+    if len(self.data) != len(mobject.data):
+        return False
+    # 2. 检查子对象数量是否相同
+    if len(self.submobjects) != len(mobject.submobjects):
+        return False
+    # 3. 递归检查所有子对象是否对齐
+    return all(
+        sm1.is_aligned_with(sm2)
+        for sm1, sm2 in zip(self.submobjects, mobject.submobjects)
+    )
 
-    def align_data_and_family(self, mobject: Mobject) -> Self:
-        self.align_family(mobject)
-        self.align_data(mobject)
+def align_data_and_family(self, mobject: Mobject) -> Self:
+    # 同时对齐家族结构和数据（先对齐家族，再对齐数据）
+    self.align_family(mobject)  # 对齐子对象数量和层级
+    self.align_data(mobject)    # 对齐点数据长度
+    return self
+
+def align_data(self, mobject: Mobject) -> Self:
+    # 对齐当前对象与目标对象的家族成员数据（点数量匹配）
+    # 遍历双方家族成员，逐个对齐点数据
+    for mob1, mob2 in zip(self.get_family(), mobject.get_family()):
+        mob1.align_points(mob2)
+    return self
+
+def align_points(self, mobject: Mobject) -> Self:
+    # 对齐两个对象的点数据长度（统一调整为两者中的最大长度）
+    # 计算双方点数量的最大值
+    max_len = max(self.get_num_points(), mobject.get_num_points())
+    # 对两个对象分别调整点数量，使用保序插值确保形状不变
+    for mob in (self, mobject):
+        mob.resize_points(max_len, resize_func=resize_preserving_order)
+    return self
+
+def align_family(self, mobject: Mobject) -> Self:
+    # 对齐当前对象与目标对象的家族结构（子对象数量匹配）
+    mob1 = self       # 当前对象
+    mob2 = mobject    # 目标对象
+    n1 = len(mob1)    # 当前对象的子对象数量
+    n2 = len(mob2)    # 目标对象的子对象数量
+
+    # 若子对象数量不同，为较少的一方添加空的子对象以补全数量
+    if n1 != n2:
+        mob1.add_n_more_submobjects(max(0, n2 - n1))  # 给mob1补全子对象
+        mob2.add_n_more_submobjects(max(0, n1 - n2))  # 给mob2补全子对象
+
+    # 递归对齐双方的子对象（确保层级结构一致）
+    for sm1, sm2 in zip(mob1.submobjects, mob2.submobjects):
+        sm1.align_family(sm2)
+    return self
+
+def push_self_into_submobjects(self) -> Self:
+    # 将当前对象自身转为子对象（原对象变为空容器，包含自身副本）
+    # 1. 创建当前对象的副本（保留原属性和数据）
+    copy = self.copy()
+    # 2. 清空副本的子对象（避免循环引用）
+    copy.set_submobjects([])
+    # 3. 清空当前对象的点数据（变为空容器）
+    self.resize_points(0)
+    # 4. 将副本添加为当前对象的子对象
+    self.add(copy)
+    return self
+
+def add_n_more_submobjects(self, n: int) -> Self:
+    # 如果不需要添加子对象（n=0），直接返回
+    if n == 0:
         return self
 
-    def align_data(self, mobject: Mobject) -> Self:
-        for mob1, mob2 in zip(self.get_family(), mobject.get_family()):
-            mob1.align_points(mob2)
+    # 获取当前子对象的数量
+    curr = len(self.submobjects)
+    # 如果当前没有子对象，创建n个空点对象作为子对象
+    if curr == 0:
+        # 创建一个空的参考对象，点数据设为当前对象的中心点
+        null_mob = self.copy()
+        null_mob.set_points([self.get_center()])
+        # 设置n个空对象副本作为子对象
+        self.set_submobjects([
+            null_mob.copy() for k in range(n)
+        ])
         return self
 
-    def align_points(self, mobject: Mobject) -> Self:
-        max_len = max(self.get_num_points(), mobject.get_num_points())
-        for mob in (self, mobject):
-            mob.resize_points(max_len, resize_func=resize_preserving_order)
-        return self
+    # 计算目标子对象总数（当前数量 + 需添加数量）
+    target = curr + n
+    # 计算每个现有子对象需要重复的次数（均匀分配新增数量）
+    repeat_indices = (np.arange(target) * curr) // target
+    split_factors = [
+        (repeat_indices == i).sum() for i in range(curr)
+    ]
 
-    def align_family(self, mobject: Mobject) -> Self:
-        mob1 = self
-        mob2 = mobject
-        n1 = len(mob1)
-        n2 = len(mob2)
-        if n1 != n2:
-            mob1.add_n_more_submobjects(max(0, n2 - n1))
-            mob2.add_n_more_submobjects(max(0, n1 - n2))
-        # Recurse
-        for sm1, sm2 in zip(mob1.submobjects, mob2.submobjects):
-            sm1.align_family(sm2)
-        return self
+    # 生成新的子对象列表
+    new_submobs = []
+    for submob, sf in zip(self.submobjects, split_factors):
+        # 添加原有的子对象
+        new_submobs.append(submob)
+        # 添加sf-1个不可见的副本（补全数量）
+        for k in range(1, sf):
+            new_submobs.append(submob.invisible_copy())
+    # 更新子对象列表
+    self.set_submobjects(new_submobs)
+    return self
 
-    def push_self_into_submobjects(self) -> Self:
-        copy = self.copy()
-        copy.set_submobjects([])
-        self.resize_points(0)
-        self.add(copy)
-        return self
-
-    def add_n_more_submobjects(self, n: int) -> Self:
-        if n == 0:
-            return self
-
-        curr = len(self.submobjects)
-        if curr == 0:
-            # If empty, simply add n point mobjects
-            null_mob = self.copy()
-            null_mob.set_points([self.get_center()])
-            self.set_submobjects([
-                null_mob.copy()
-                for k in range(n)
-            ])
-            return self
-        target = curr + n
-        repeat_indices = (np.arange(target) * curr) // target
-        split_factors = [
-            (repeat_indices == i).sum()
-            for i in range(curr)
-        ]
-        new_submobs = []
-        for submob, sf in zip(self.submobjects, split_factors):
-            new_submobs.append(submob)
-            for k in range(1, sf):
-                new_submobs.append(submob.invisible_copy())
-        self.set_submobjects(new_submobs)
-        return self
-
-    def invisible_copy(self) -> Self:
-        return self.copy().set_opacity(0)
+def invisible_copy(self) -> Self:
+    # 创建当前对象的不可见副本（透明度设为0）
+    return self.copy().set_opacity(0)
 
     # Interpolate
 
