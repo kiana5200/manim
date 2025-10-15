@@ -48,131 +48,159 @@ if TYPE_CHECKING:
     from manimlib.typing import ManimColor
 
 
+# 定义Transform类，继承自Animation类，用于实现动画中物体的变换效果
 class Transform(Animation):
+    # 布尔值属性，指示是否在场景中用目标物体替换原物体
     replace_mobject_with_target_in_scene: bool = False
 
+    # 初始化方法，设置变换动画的各种参数
     def __init__(
         self,
-        mobject: Mobject,
-        target_mobject: Mobject | None = None,
-        path_arc: float = 0.0,
-        path_arc_axis: np.ndarray = OUT,
-        path_func: Callable | None = None,
-        **kwargs
+        mobject: Mobject,          # 要进行变换的物体
+        target_mobject: Mobject | None = None,  # 变换的目标物体，可为None
+        path_arc: float = 0.0,     # 路径弧度，控制物体移动的弧线程度
+        path_arc_axis: np.ndarray = OUT,  # 路径弧线的旋转轴，默认为OUT方向
+        path_func: Callable | None = None,  # 自定义路径函数，控制物体移动路径
+        **kwargs                   # 其他传递给父类的参数
     ):
-        self.target_mobject = target_mobject
-        self.path_arc = path_arc
-        self.path_arc_axis = path_arc_axis
-        self.path_func = path_func
-        super().__init__(mobject, **kwargs)
-        self.init_path_func()
+        self.target_mobject = target_mobject  # 保存目标物体
+        self.path_arc = path_arc              # 保存路径弧度
+        self.path_arc_axis = path_arc_axis    # 保存路径弧线轴
+        self.path_func = path_func            # 保存路径函数
+        super().__init__(mobject,** kwargs)   # 调用父类的初始化方法
+        self.init_path_func()                 # 初始化路径函数
 
+    # 初始化路径函数的方法
     def init_path_func(self) -> None:
-        if self.path_func is not None:
+        if self.path_func is not None:        # 如果已设置自定义路径函数，直接返回
             return
-        elif self.path_arc == 0:
+        elif self.path_arc == 0:              # 如果路径弧度为0，使用直线路径
             self.path_func = straight_path
-        else:
+        else:                                 # 否则，使用弧线路径
             self.path_func = path_along_arc(
                 self.path_arc,
                 self.path_arc_axis,
             )
 
+    # 动画开始时执行的方法
     def begin(self) -> None:
-        self.target_mobject = self.create_target()
-        self.check_target_mobject_validity()
+        self.target_mobject = self.create_target()  # 创建目标物体（子类可重写）
+        self.check_target_mobject_validity()        # 检查目标物体是否有效
 
+        # 检查原物体与目标物体是否对齐
         if self.mobject.is_aligned_with(self.target_mobject):
-            self.target_copy = self.target_mobject
+            self.target_copy = self.target_mobject  # 对齐则直接使用目标物体
         else:
-            # Use a copy of target_mobject for the align_data_and_family
-            # call so that the actual target_mobject stays
-            # preserved, since calling align_data will potentially
-            # change the structure of both arguments
+            # 不对齐则创建目标物体的副本，用于数据对齐（不修改原始目标物体）
             self.target_copy = self.target_mobject.copy()
+        # 对齐原物体与目标副本的数据结构，确保能正确插值
         self.mobject.align_data_and_family(self.target_copy)
-        super().begin()
+        super().begin()  # 调用父类的begin方法
+        # 如果原物体没有更新器，则锁定其与起始状态和目标副本的数据匹配
         if not self.mobject.has_updaters():
             self.mobject.lock_matching_data(
                 self.starting_mobject,
                 self.target_copy,
             )
 
+    # 动画结束时执行的方法
     def finish(self) -> None:
-        super().finish()
-        self.mobject.unlock_data()
+        super().finish()  # 调用父类的finish方法
+        self.mobject.unlock_data()  # 解锁物体的数据锁定
 
+    # 创建目标物体的方法，子类可重写以实现自定义目标
     def create_target(self) -> Mobject:
-        # Has no meaningful effect here, but may be useful
-        # in subclasses
+        # 这里直接返回已设置的目标物体，在子类中可能有更复杂的实现
         return self.target_mobject
 
+    # 检查目标物体是否有效的方法
     def check_target_mobject_validity(self) -> None:
-        if self.target_mobject is None:
+        if self.target_mobject is None:  # 如果目标物体为None，抛出异常
             raise Exception(
                 f"{self.__class__.__name__}.create_target not properly implemented"
             )
 
+    # 从场景中清理动画资源的方法
     def clean_up_from_scene(self, scene: Scene) -> None:
-        super().clean_up_from_scene(scene)
+        super().clean_up_from_scene(scene)  # 调用父类的清理方法
+        # 如果需要替换原物体，则从场景中移除原物体并添加目标物体
         if self.replace_mobject_with_target_in_scene:
             scene.remove(self.mobject)
             scene.add(self.target_mobject)
 
+    # 更新配置参数的方法
     def update_config(self, **kwargs) -> None:
-        Animation.update_config(self, **kwargs)
+        Animation.update_config(self,** kwargs)  # 调用父类的更新配置方法
+        # 如果更新了路径弧度，则重新设置路径函数
         if "path_arc" in kwargs:
             self.path_func = path_along_arc(
                 kwargs["path_arc"],
                 kwargs.get("path_arc_axis", OUT)
             )
 
+    # 获取所有相关物体的方法
     def get_all_mobjects(self) -> list[Mobject]:
         return [
-            self.mobject,
-            self.starting_mobject,
-            self.target_mobject,
-            self.target_copy,
+            self.mobject,            # 原物体
+            self.starting_mobject,   # 起始状态的物体
+            self.target_mobject,     # 目标物体
+            self.target_copy,        # 目标物体的副本
         ]
 
+    # 获取所有相关物体家族并打包的方法，用于插值计算
     def get_all_families_zipped(self) -> zip[tuple[Mobject]]:
         return zip(*[
-            mob.get_family()
+            mob.get_family()  # 获取每个物体的家族（包括子物体）
             for mob in [
-                self.mobject,
-                self.starting_mobject,
-                self.target_copy,
+                self.mobject,          # 原物体
+                self.starting_mobject, # 起始状态的物体
+                self.target_copy,      # 目标物体的副本
             ]
         ])
 
+    # 插值计算子物体的方法，控制每个子物体如何从起始状态过渡到目标状态
     def interpolate_submobject(
         self,
-        submob: Mobject,
-        start: Mobject,
-        target_copy: Mobject,
-        alpha: float
+        submob: Mobject,        # 要插值的子物体
+        start: Mobject,         # 起始状态的子物体
+        target_copy: Mobject,   # 目标状态的子物体副本
+        alpha: float            # 插值系数，0表示起始状态，1表示目标状态
     ):
+        # 调用子物体的插值方法，应用路径函数
         submob.interpolate(start, target_copy, alpha, self.path_func)
-        return self
+        return self  # 返回自身，支持链式调用
 
 
+# 定义ReplacementTransform类，继承自Transform
 class ReplacementTransform(Transform):
+    # 重写父类属性，设置为True表示动画结束后用目标物体替换原物体
     replace_mobject_with_target_in_scene: bool = True
 
 
+# 定义TransformFromCopy类，继承自Transform
 class TransformFromCopy(Transform):
+    # 动画结束后用目标物体替换原物体
     replace_mobject_with_target_in_scene: bool = True
 
+    # 初始化方法，接收原物体和目标物体
     def __init__(self, mobject: Mobject, target_mobject: Mobject, **kwargs):
-        super().__init__(mobject.copy(), target_mobject, **kwargs)
+        # 调用父类初始化方法，但使用原物体的副本作为动画起始物体
+        # 这样原物体会保持不动，由其副本执行变换动画到目标物体
+        super().__init__(mobject.copy(), target_mobject,** kwargs)
 
 
+# 定义MoveToTarget类，继承自Transform
 class MoveToTarget(Transform):
+    # 初始化方法，只需要传入要移动的物体
     def __init__(self, mobject: Mobject, **kwargs):
+        # 检查输入的有效性
         self.check_validity_of_input(mobject)
-        super().__init__(mobject, mobject.target, **kwargs)
+        # 调用父类初始化方法，目标物体是该物体自身的target属性
+        super().__init__(mobject, mobject.target,** kwargs)
 
+    # 检查输入物体是否有效
     def check_validity_of_input(self, mobject: Mobject) -> None:
+        # 如果物体没有target属性，抛出异常
         if not hasattr(mobject, "target"):
             raise Exception(
                 "MoveToTarget called on mobject without attribute 'target'"
