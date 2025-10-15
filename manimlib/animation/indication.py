@@ -181,115 +181,139 @@ class Flash(AnimationGroup):
         ]
 
 
+# 定义CircleIndicate类，继承自Transform
+# 用于实现“圆形指示器”动画，通过圆形缩放高亮目标物体
 class CircleIndicate(Transform):
     def __init__(
         self,
-        mobject: Mobject,
-        scale_factor: float = 1.2,
-        rate_func: Callable[[float], float] = there_and_back,
-        stroke_color: ManimColor = YELLOW,
-        stroke_width: float = 3.0,
-        remover: bool = True,
-        **kwargs
+        mobject: Mobject,               # 要被高亮的目标物体
+        scale_factor: float = 1.2,      # 圆形的缩放倍数（相对于目标物体）
+        rate_func: Callable[[float], float] = there_and_back,  # 动画速率函数（默认“去而复返”）
+        stroke_color: ManimColor = YELLOW,  # 圆形边框颜色（默认黄色）
+        stroke_width: float = 3.0,      # 圆形边框宽度（默认3.0）
+        remover: bool = True,           # 动画结束后是否移除圆形（默认移除）
+        **kwargs                        # 其他传递给父类的参数
     ):
+        # 创建高亮用的圆形：设置边框颜色和宽度，无填充
         circle = Circle(stroke_color=stroke_color, stroke_width=stroke_width)
-        circle.surround(mobject)
+        circle.surround(mobject)  # 让圆形包围目标物体
+        
+        # 创建动画起始状态的圆形：复制最终圆形，将边框宽度设为0（初始不可见）
         pre_circle = circle.copy().set_stroke(width=0)
-        pre_circle.scale(1 / scale_factor)
+        pre_circle.scale(1 / scale_factor)  # 起始圆形缩小（为后续缩放做准备）
+        
+        # 调用父类Transform的初始化：从pre_circle变换到circle
         super().__init__(
             pre_circle, circle,
             rate_func=rate_func,
-            remover=remover,
-            **kwargs
+            remover=remover,** kwargs
         )
 
 
+# 定义ShowPassingFlash类，继承自ShowPartial
+# 用于实现“滚动闪现”动画，让物体按区域逐步显示（类似扫描效果）
 class ShowPassingFlash(ShowPartial):
     def __init__(
         self,
-        mobject: Mobject,
-        time_width: float = 0.1,
-        remover: bool = True,
-        **kwargs
+        mobject: Mobject,               # 要添加闪现效果的物体
+        time_width: float = 0.1,        # 闪现区域的宽度（占物体总长的比例，默认0.1）
+        remover: bool = True,           # 动画结束后是否移除物体（默认移除）
+        **kwargs                        # 其他传递给父类的参数
     ):
-        self.time_width = time_width
+        self.time_width = time_width    # 存储闪现区域宽度
+        # 调用父类ShowPartial的初始化：基于区域显示实现闪现
         super().__init__(
             mobject,
-            remover=remover,
-            **kwargs
+            remover=remover,** kwargs
         )
 
+    # 计算不同动画进度（alpha）下，闪现区域的上下边界
     def get_bounds(self, alpha: float) -> tuple[float, float]:
-        tw = self.time_width
+        tw = self.time_width  # 闪现区域宽度
+        # 上边界：随alpha从0逐步移动到1+tw（超出物体范围，确保完全闪过）
         upper = interpolate(0, 1 + tw, alpha)
-        lower = upper - tw
+        lower = upper - tw  # 下边界：上边界减去闪现宽度，形成移动的“窗口”
+        
+        # 边界裁剪：确保上下边界不超出0-1范围（避免显示异常）
         upper = min(upper, 1)
         lower = max(lower, 0)
-        return (lower, upper)
+        return (lower, upper)  # 返回（下边界，上边界）
 
+    # 动画结束时的收尾处理
     def finish(self) -> None:
-        super().finish()
+        super().finish()  # 调用父类收尾方法
+        # 让所有子物体完全显示（避免动画结束后物体处于部分显示状态）
         for submob, start in self.get_all_families_zipped():
             submob.pointwise_become_partial(start, 0, 1)
 
 
+# 定义VShowPassingFlash类，继承自Animation
+# 用于实现“垂直滚动闪光”动画，通过边框宽度变化模拟闪光扫描效果（针对VMobject）
 class VShowPassingFlash(Animation):
     def __init__(
         self,
-        vmobject: VMobject,
-        time_width: float = 0.3,
-        taper_width: float = 0.05,
-        remover: bool = True,
-        **kwargs
+        vmobject: VMobject,             # 要添加闪光效果的矢量物体（VMobject）
+        time_width: float = 0.3,        # 闪光区域的时间宽度（控制闪光范围，默认0.3）
+        taper_width: float = 0.05,      # 闪光边缘的渐变宽度（避免生硬边界，默认0.05）
+        remover: bool = True,           # 动画结束后是否移除物体（默认移除）
+        **kwargs                        # 其他传递给父类的参数
     ):
-        self.time_width = time_width
-        self.taper_width = taper_width
+        self.time_width = time_width    # 存储闪光区域宽度
+        self.taper_width = taper_width  # 存储边缘渐变宽度
+        # 调用父类Animation的初始化：指定动画物体为vmobject
         super().__init__(vmobject, remover=remover, **kwargs)
-        self.mobject = vmobject
+        self.mobject = vmobject  # 显式存储物体（确保后续方法可调用）
 
+    # 计算闪光边缘的渐变系数（让闪光两端逐渐变细）
     def taper_kernel(self, x):
-        if x < self.taper_width:
+        if x < self.taper_width:  # 左侧边缘：随x线性增加（从0到1）
             return x
-        elif x > 1 - self.taper_width:
+        elif x > 1 - self.taper_width:  # 右侧边缘：随x线性减少（从1到0）
             return 1.0 - x
-        return 1.0
+        return 1.0  # 中间区域：保持最大系数1.0
 
+    # 动画开始前的初始化操作
     def begin(self) -> None:
-        # Compute an array of stroke widths for each submobject
-        # which tapers out at either end
+        # 为每个子物体计算“带渐变的边框宽度”（存储哈希与宽度数组的映射）
         self.submob_to_widths = dict()
-        for sm in self.mobject.get_family():
-            widths = sm.get_stroke_widths()
+        for sm in self.mobject.get_family():  # 遍历物体的所有子部分
+            widths = sm.get_stroke_widths()  # 获取子物体原始的边框宽度数组
+            # 计算每个位置的渐变后宽度：原始宽度 × 渐变系数
             self.submob_to_widths[hash(sm)] = np.array([
                 width * self.taper_kernel(x)
                 for width, x in zip(widths, np.linspace(0, 1, len(widths)))
             ])
-        super().begin()
+        super().begin()  # 调用父类begin方法（初始化起始状态）
 
+    # 子物体的插值逻辑（核心：控制闪光的移动）
     def interpolate_submobject(
         self,
-        submobject: VMobject,
-        starting_sumobject: None,
-        alpha: float
+        submobject: VMobject,           # 当前要插值的子物体
+        starting_sumobject: None,       # 起始状态（此处未使用，设为None）
+        alpha: float                    # 动画进度（0→1）
     ) -> None:
+        # 获取当前子物体的“带渐变边框宽度”数组
         widths = self.submob_to_widths[hash(submobject)]
 
-        # Create a gaussian such that 3 sigmas out on either side
-        # will equals time_width
+        # 计算高斯分布参数（模拟闪光的“亮斑”效果）
         tw = self.time_width
-        sigma = tw / 6
+        sigma = tw / 6  # 标准差：确保3倍标准差覆盖闪光宽度（99.7%的能量集中在闪光区）
+        # 高斯分布的均值（随alpha移动：从-tw/2到1+tw/2，确保闪光完全扫过物体）
         mu = interpolate(-tw / 2, 1 + tw / 2, alpha)
-        xs = np.linspace(0, 1, len(widths))
-        zs = (xs - mu) / sigma
-        gaussian = np.exp(-0.5 * zs * zs)
+        xs = np.linspace(0, 1, len(widths))  # 生成0→1的均匀坐标（对应子物体的每个点）
+        zs = (xs - mu) / sigma  # 计算每个点到均值的“标准化距离”
+        gaussian = np.exp(-0.5 * zs * zs)  # 高斯分布值（模拟闪光亮度）
+        # 裁剪高斯值：距离均值超过3倍标准差的位置设为0（消除微弱尾迹）
         gaussian[abs(xs - mu) > 3 * sigma] = 0
 
-        if len(widths * gaussian) !=0:
+        # 避免空数组报错：当计算出的宽度数组非空时，设置子物体边框宽度
+        if len(widths * gaussian) != 0:
             submobject.set_stroke(width=widths * gaussian)
 
-
+    # 动画结束时的收尾处理
     def finish(self) -> None:
-        super().finish()
+        super().finish()  # 调用父类收尾方法
+        # 让所有子物体恢复原始样式（避免残留闪光效果）
         for submob, start in self.get_all_families_zipped():
             submob.match_style(start)
 
