@@ -233,14 +233,20 @@ class DecimalNumber(VMobject):
         self.set_value(self.get_value() + delta_t)  # 设置为当前值加增量后的值
         return self  # 返回自身
 
+# 定义 Integer 类，继承自 DecimalNumber 类
 class Integer(DecimalNumber):
+    # 定义类的初始化方法
     def __init__(
         self,
-        number: int = 0,
-        num_decimal_places: int = 0,
-        **kwargs,
+        number: int = 0,  # 要表示的整数，默认为 0
+        num_decimal_places: int = 0,  # 小数位数，固定为 0，因为是整数
+        **kwargs,  # 接收其他关键字参数，用于传递给父类 DecimalNumber
     ):
+        # 调用父类 DecimalNumber 的初始化方法，传入当前类的参数
         super().__init__(number, num_decimal_places=num_decimal_places, **kwargs)
 
+    # 定义获取值的方法，返回整数
     def get_value(self) -> int:
+        # 先调用父类 DecimalNumber 的 get_value 方法获取数值，
+        # 再使用 np.round 进行四舍五入，最后转换为 int 类型返回
         return int(np.round(super().get_value()))
