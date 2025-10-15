@@ -263,44 +263,60 @@ class NumberLine(Line):
 
     def add_numbers(
         self,
-        x_values: Iterable[float] | None = None,
-        excluding: Iterable[float] | None = None,
-        font_size: int = 24,
-        **kwargs
+        x_values: Iterable[float] | None = None,  # 要添加数字的位置列表，默认为None
+        excluding: Iterable[float] | None = None,  # 要排除的数字位置，默认为None
+        font_size: int = 24,  # 数字的字体大小，默认为24
+        **kwargs  # 传递给数字对象的其他配置参数
     ) -> VGroup:
+        """
+        向数轴添加数字标记，返回包含所有数字的VGroup对象
+        """
+        # 如果未指定x_values，则使用刻度范围作为默认值
         if x_values is None:
             x_values = self.get_tick_range()
 
+        # 将字体大小添加到配置参数中
         kwargs["font_size"] = font_size
 
+        # 如果未指定排除的数字，则使用类中预定义的numbers_to_exclude
         if excluding is None:
             excluding = self.numbers_to_exclude
 
+        # 创建一个VGroup来存储所有数字对象
         numbers = VGroup()
+        # 遍历每个要添加数字的位置
         for x in x_values:
+            # 跳过需要排除的数字
             if excluding is not None and x in excluding:
                 continue
-            numbers.add(self.get_number_mobject(x, **kwargs))
+            # 为当前位置创建数字对象并添加到组中
+            numbers.add(self.get_number_mobject(x,** kwargs))
+        # 将数字组添加到数轴
         self.add(numbers)
+        # 保存数字组的引用
         self.numbers = numbers
+        # 返回数字组
         return numbers
 
 
 class UnitInterval(NumberLine):
+    """
+    单位区间类，继承自NumberLine，专门用于表示[0,1]区间的数轴
+    """
     def __init__(
         self,
-        x_range: RangeSpecifier = (0, 1, 0.1),
-        unit_size: float = 10,
-        big_tick_numbers: list[float] = [0, 1],
+        x_range: RangeSpecifier = (0, 1, 0.1),  # 区间范围，默认0到1，步长0.1
+        unit_size: float = 10,  # 单位大小，默认10
+        big_tick_numbers: list[float] = [0, 1],  # 大刻度位置，默认0和1处
         decimal_number_config: dict = dict(
-            num_decimal_places=1,
+            num_decimal_places=1,  # 小数位数，默认1位
         ),
-        **kwargs
+        **kwargs  # 传递给父类的其他参数
     ):
+        # 调用父类的初始化方法，设置单位区间的特定参数
         super().__init__(
             x_range=x_range,
             unit_size=unit_size,
             big_tick_numbers=big_tick_numbers,
-            decimal_number_config=decimal_number_config,
-            **kwargs
+            decimal_number_config=decimal_number_config,** kwargs
         )
