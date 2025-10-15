@@ -814,74 +814,116 @@ class ThreeDAxes(Axes):
         opacity=0.9,
         **kwargs
     ) -> ParametricSurface:
+        # 创建参数化曲面对象，传入函数、颜色、透明度及其他参数
         surface = ParametricSurface(func, color=color, opacity=opacity, **kwargs)
+        # 获取三个坐标轴的列表（x轴、y轴、z轴）
         axes = [self.x_axis, self.y_axis, self.z_axis]
+        # 对曲面的每个维度（x=0, y=1, z=2）进行拉伸，使其适配对应轴的单位尺寸
         for dim, axis in zip(range(3), axes):
+            # 沿dim维度（0=x,1=y,2=z）拉伸曲面，拉伸因子为对应轴的单位尺寸
+            # 以原点为拉伸中心，确保曲面与坐标系原点对齐
             surface.stretch(axis.get_unit_size(), dim, about_point=ORIGIN)
+        # 将拉伸后的曲面平移到坐标系的原点位置，完成与坐标系的对齐
         surface.shift(self.get_origin())
+        # 返回配置好的参数化曲面
         return surface
 
 
 class NumberPlane(Axes):
+    """
+    数值平面类，继承自Axes，用于创建带网格线的坐标系，
+    适用于2D数学图形展示，如函数图像、几何图形等。
+    """
+    # x轴和y轴的默认配置（基础样式）
     default_axis_config: dict = dict(
-        stroke_color=DEFAULT_MOBJECT_COLOR,
-        stroke_width=2,
-        include_ticks=False,
-        include_tip=False,
-        line_to_number_buff=SMALL_BUFF,
-        line_to_number_direction=DL,
+        stroke_color=DEFAULT_mobject_color,  # 轴线颜色（默认为默认物体颜色）
+        stroke_width=2,                      # 轴线宽度
+        include_ticks=False,                 # 不包含刻度线
+        include_tip=False,                   # 不包含轴端点箭头
+        line_to_number_buff=SMALL_BUFF,      # 轴线到数字标签的间距
+        line_to_number_direction=DL,         # 数字标签相对于轴线的方向（左下）
     )
+    # y轴的额外默认配置（覆盖default_axis_config中的同名参数）
     default_y_axis_config: dict = dict(
-        line_to_number_direction=DL,
+        line_to_number_direction=DL,         # y轴数字标签的方向（左下）
     )
 
     def __init__(
         self,
-        x_range: RangeSpecifier = (-8.0, 8.0, 1.0),
-        y_range: RangeSpecifier = (-4.0, 4.0, 1.0),
+        x_range: RangeSpecifier = (-8.0, 8.0, 1.0),  # x轴范围：(起始值, 结束值, 步长)
+        y_range: RangeSpecifier = (-4.0, 4.0, 1.0),  # y轴范围：(起始值, 结束值, 步长)
         background_line_style: dict = dict(
-            stroke_color=BLUE_D,
-            stroke_width=2,
-            stroke_opacity=1,
+            stroke_color=BLUE_D,    # 背景网格线颜色（深蓝色）
+            stroke_width=2,         # 网格线宽度
+            stroke_opacity=1,       # 网格线不透明度
         ),
-        # Defaults to a faded version of line_config
+        # 淡化网格线的样式（默认基于background_line_style淡化处理）
         faded_line_style: dict = dict(),
-        faded_line_ratio: int = 4,
-        make_smooth_after_applying_functions: bool = True,
+        faded_line_ratio: int = 4,  # 淡化网格线的间隔比例（每隔4条主网格线显示一条淡化线）
+        make_smooth_after_applying_functions: bool = True,  # 应用函数后是否平滑处理图形
         **kwargs
     ):
+        # 调用父类Axes的初始化方法，传入x轴、y轴范围及其他参数
         super().__init__(x_range, y_range, **kwargs)
+        
+        # 存储背景网格线样式配置（转为字典确保可修改）
         self.background_line_style = dict(background_line_style)
+        # 存储淡化网格线样式配置（默认空字典，后续可能基于主样式生成）
         self.faded_line_style = dict(faded_line_style)
+        # 存储淡化网格线的间隔比例
         self.faded_line_ratio = faded_line_ratio
+        # 存储是否平滑处理图形的开关
         self.make_smooth_after_applying_functions = make_smooth_after_applying_functions
+        
+        # 初始化背景网格线（在构造方法中完成网格线的创建）
         self.init_background_lines()
 
     def init_background_lines(self) -> None:
+        """
+        初始化背景网格线，包括主网格线和淡化网格线。
+        若未指定淡化网格线样式，则自动基于主网格线样式生成（数值属性减半）。
+        最后将网格线添加到背景层。
+        """
+        # 若未提供淡化网格线样式，则基于主网格线样式自动生成
         if not self.faded_line_style:
             style = dict(self.background_line_style)
             # For anything numerical, like stroke_width
             # and stroke_opacity, chop it in half
+            # 对所有数值类型的样式属性（如线宽、透明度）减半，实现"淡化"效果
             for key in style:
                 if isinstance(style[key], numbers.Number):
                     style[key] *= 0.5
+            # 保存生成的淡化样式
             self.faded_line_style = style
 
+        # 获取主网格线和淡化网格线
         self.background_lines, self.faded_lines = self.get_lines()
+        # 应用主网格线样式
         self.background_lines.set_style(**self.background_line_style)
+        # 应用淡化网格线样式
         self.faded_lines.set_style(**self.faded_line_style)
+        # 将网格线添加到背景（先添加淡化线，再添加主线，确保主线在上）
         self.add_to_back(
             self.faded_lines,
             self.background_lines,
         )
 
     def get_lines(self) -> tuple[VGroup, VGroup]:
+        """
+        生成与坐标轴平行的网格线，分为主网格线和淡化网格线两组。
+        先获取x轴和y轴对象，再分别生成平行于两轴的网格线，最后合并返回。
+        """
+        # 获取x轴和y轴对象
         x_axis = self.get_x_axis()
         y_axis = self.get_y_axis()
 
+        # 生成平行于x轴的网格线（分主网格线和淡化网格线）
         x_lines1, x_lines2 = self.get_lines_parallel_to_axis(x_axis, y_axis)
+        # 生成平行于y轴的网格线（分主网格线和淡化网格线）
         y_lines1, y_lines2 = self.get_lines_parallel_to_axis(y_axis, x_axis)
+        # 合并主网格线（x方向主网格线 + y方向主网格线）
         lines1 = VGroup(*x_lines1, *y_lines1)
+        # 合并淡化网格线（x方向淡化网格线 + y方向淡化网格线）
         lines2 = VGroup(*x_lines2, *y_lines2)
         return lines1, lines2
 
@@ -890,20 +932,42 @@ class NumberPlane(Axes):
         axis1: NumberLine,
         axis2: NumberLine
     ) -> tuple[VGroup, VGroup]:
+        """
+        生成平行于指定轴（axis1）的网格线，分为主网格线和淡化网格线。
+        网格线的位置由另一轴（axis2）的刻度决定，按比例区分主/淡化线。
+    
+        参数:
+            axis1 (NumberLine): 网格线平行的目标轴
+            axis2 (NumberLine): 用于确定网格线位置的参考轴
+        
+        返回:
+            tuple[VGroup, VGroup]: 主网格线组和淡化网格线组
+        """
+        # 获取参考轴（axis2）的刻度间隔
         freq = axis2.x_step
+        # 淡化线与主线的比例（用于间隔区分）
         ratio = self.faded_line_ratio
+        # 创建基础线段：从axis1的起点到终点（长度与axis1一致）
         line = Line(axis1.get_start(), axis1.get_end())
+        # 计算密集网格的频率（主线+淡化线的总密度）
         dense_freq = (1 + ratio)
+        # 计算每条网格线的间隔步长
         step = (1 / dense_freq) * freq
 
-        lines1 = VGroup()
-        lines2 = VGroup()
+        # 初始化主网格线组和淡化网格线组
+        lines1 = VGroup()  # 主网格线
+        lines2 = VGroup()  # 淡化网格线
+        # 生成参考轴（axis2）上的所有网格线位置
         inputs = np.arange(axis2.x_min, axis2.x_max + step, step)
         for i, x in enumerate(inputs):
+            # 跳过原点位置（避免与坐标轴重叠）
             if abs(x) < 1e-8:
                 continue
             new_line = line.copy()
+            # 将新网格线平移到参考轴上x对应的位置
             new_line.shift(axis2.n2p(x) - axis2.n2p(0))
+            # 按比例区分主网格线和淡化网格线
+            # 每(1+ratio)条线中，第0条为主线，其余为淡化线
             if i % (1 + ratio) == 0:
                 lines1.add(new_line)
             else:
@@ -911,21 +975,30 @@ class NumberPlane(Axes):
         return lines1, lines2
 
     def get_x_unit_size(self) -> float:
+        """获取x轴上单位数值对应的实际长度（单位尺寸）"""
         return self.get_x_axis().get_unit_size()
 
     def get_y_unit_size(self) -> list:
+        """获取y轴上单位数值对应的实际长度（单位尺寸）"""
         return self.get_x_axis().get_unit_size()
 
     def get_axes(self) -> VGroup:
+        """获取包含所有坐标轴的组（VGroup）。"""
         return self.axes
 
     def get_vector(self, coords: Iterable[float], **kwargs) -> Arrow:
+        """根据坐标创建从原点出发的向量箭头。"""
+         # 确保箭头与坐标轴无间隙（buff=0）
         kwargs["buff"] = 0
+        # 创建箭头：起点为原点（c2p(0,0)），终点为坐标对应的点（c2p(*coords)）
         return Arrow(self.c2p(0, 0), self.c2p(*coords), **kwargs)
 
     def prepare_for_nonlinear_transform(self, num_inserted_curves: int = 50) -> Self:
+        """为非线性变换准备坐标系，通过插入额外曲线段使变换后的图形更平滑。"""
+        # 遍历所有包含点的子对象（如坐标轴、网格线等）
         for mob in self.family_members_with_points():
             num_curves = mob.get_num_curves()
+            # 若需要插入的曲线段比现有多，则补充插入
             if num_inserted_curves > num_curves:
                 mob.insert_n_curves(num_inserted_curves - num_curves)
             mob.make_smooth_after_applying_functions = True
@@ -933,27 +1006,43 @@ class NumberPlane(Axes):
 
 
 class ComplexPlane(NumberPlane):
+    """
+    复平面类，继承自NumberPlane，专门用于处理复数运算和可视化，
+    将复数的实部映射到x轴，虚部映射到y轴。
+    """
     def number_to_point(self, number: complex | float) -> Vect3:
+        """
+        将复数（或实数）转换为复平面上的点坐标。
+        """
+        # 确保输入被转换为复数（实数会被转为实部为该数、虚部为0的复数）
         number = complex(number)
+        # 将复数的实部和虚部分别作为x和y坐标，转换为平面点
         return self.coords_to_point(number.real, number.imag)
 
     def n2p(self, number: complex | float) -> Vect3:
+        """number_to_point的简写形式，将复数转换为点坐标"""
         return self.number_to_point(number)
 
     def point_to_number(self, point: Vect3) -> complex:
+        """将复平面上的点坐标转换为对应的复数。"""
+        # 将点坐标转换为x和y坐标
         x, y = self.point_to_coords(point)
+        # 以x为实部、y为虚部创建复数
         return complex(x, y)
 
     def p2n(self, point: Vect3) -> complex:
+        """point_to_number的简写形式，将点坐标转换为复数"""
         return self.point_to_number(point)
 
     def get_default_coordinate_values(
         self,
         skip_first: bool = True
     ) -> list[complex]:
+        """获取复平面上默认的坐标值（复数形式），包括x轴实数值和y轴虚数值。"""
         x_numbers = self.get_x_axis().get_tick_range()[1:]
         y_numbers = self.get_y_axis().get_tick_range()[1:]
         y_numbers = [complex(0, y) for y in y_numbers if y != 0]
+        # 合并x轴实数值和y轴虚数值，返回完整坐标值列表
         return [*x_numbers, *y_numbers]
 
     def add_coordinate_labels(
@@ -963,20 +1052,29 @@ class ComplexPlane(NumberPlane):
         font_size: int = 36,
         **kwargs
     ) -> Self:
+        """为复平面添加坐标标签，实轴显示实数，虚轴显示虚数（带i单位）。"""
+        # 若未指定numbers，则使用默认坐标值
         if numbers is None:
             numbers = self.get_default_coordinate_values(skip_first)
 
         self.coordinate_labels = VGroup()
+        # 遍历每个要添加标签的复数
         for number in numbers:
             z = complex(number)
+            # 判断复数更接近虚轴还是实轴（通过比较虚部和实部的绝对值）
             if abs(z.imag) > abs(z.real):
+                # 更接近虚轴：使用y轴，值为虚部，单位为"i"
                 axis = self.get_y_axis()
                 value = z.imag
                 kwargs["unit_tex"] = "i"
             else:
+                # 更接近实轴：使用x轴，值为实部
                 axis = self.get_x_axis()
                 value = z.real
+            # 生成坐标标签对象（复用轴的get_number_mobject方法）
             number_mob = axis.get_number_mobject(value, font_size=font_size, **kwargs)
+            # 将标签添加到标签组
             self.coordinate_labels.add(number_mob)
+        # 将标签组添加到复平面
         self.add(self.coordinate_labels)
         return self
