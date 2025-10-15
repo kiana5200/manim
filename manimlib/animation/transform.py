@@ -286,126 +286,175 @@ class ApplyPointwiseFunction(ApplyMethod):
         super().__init__(mobject.apply_function, function, run_time=run_time,** kwargs)
 
 
+# 定义ApplyPointwiseFunctionToCenter类，继承自Transform
+# 用于对物体中心点应用指定函数的变换动画
 class ApplyPointwiseFunctionToCenter(Transform):
+    # 初始化方法
     def __init__(
         self,
-        function: Callable[[np.ndarray], np.ndarray],
-        mobject: Mobject,
-        **kwargs
+        function: Callable[[np.ndarray], np.ndarray],  # 作用于中心点的函数，接收并返回numpy数组（坐标）
+        mobject: Mobject,  # 要变换的物体
+        **kwargs  # 其他传递给父类的参数
     ):
-        self.function = function
-        super().__init__(mobject, **kwargs)
+        self.function = function  # 存储作用于中心点的函数
+        super().__init__(mobject, **kwargs)  # 调用父类Transform的初始化方法
 
+    # 重写创建目标物体的方法
     def create_target(self) -> Mobject:
+        # 1. 创建原物体的副本
+        # 2. 将副本移动到新位置：原物体中心点经过function变换后的坐标
+        # 最终返回这个经过位置变换的副本作为目标状态
         return self.mobject.copy().move_to(self.function(self.mobject.get_center()))
 
 
+# 定义FadeToColor类，继承自ApplyMethod
+# 用于实现物体渐变为指定颜色的动画
 class FadeToColor(ApplyMethod):
     def __init__(
         self,
-        mobject: Mobject,
-        color: ManimColor,
-        **kwargs
+        mobject: Mobject,       # 要改变颜色的物体
+        color: ManimColor,      # 目标颜色
+        **kwargs                # 其他动画参数（如运行时间等）
     ):
+        # 调用父类ApplyMethod的初始化方法
+        # 使用mobject的set_color方法作为要执行的方法，传入目标颜色
         super().__init__(mobject.set_color, color, **kwargs)
 
 
+# 定义ScaleInPlace类，继承自ApplyMethod
+# 用于实现物体原地缩放的动画
 class ScaleInPlace(ApplyMethod):
     def __init__(
         self,
-        mobject: Mobject,
-        scale_factor: npt.ArrayLike,
-        **kwargs
+        mobject: Mobject,           # 要缩放的物体
+        scale_factor: npt.ArrayLike, # 缩放因子（可以是单个数值或数组）
+        **kwargs                    # 其他动画参数
     ):
+        # 调用父类初始化方法，使用mobject的scale方法实现缩放
         super().__init__(mobject.scale, scale_factor, **kwargs)
 
 
+# 定义ShrinkToCenter类，继承自ScaleInPlace
+# 用于实现物体缩小到中心消失的动画
 class ShrinkToCenter(ScaleInPlace):
     def __init__(self, mobject: Mobject, **kwargs):
+        # 调用父类ScaleInPlace的初始化方法，缩放因子设为0
+        # 当缩放因子为0时，物体将缩小到中心点
         super().__init__(mobject, 0, **kwargs)
 
 
+# 定义Restore类，继承自Transform
+# 用于实现物体从当前状态恢复到之前保存状态的动画
 class Restore(Transform):
     def __init__(self, mobject: Mobject, **kwargs):
+        # 检查物体是否有已保存的状态
         if not hasattr(mobject, "saved_state") or mobject.saved_state is None:
             raise Exception("Trying to restore without having saved")
+        # 调用父类Transform的初始化方法，目标状态为保存的状态
         super().__init__(mobject, mobject.saved_state, **kwargs)
 
 
+# 定义ApplyFunction类，继承自Transform
+# 用于将自定义函数应用于物体的动画
 class ApplyFunction(Transform):
     def __init__(
         self,
-        function: Callable[[Mobject], Mobject],
-        mobject: Mobject,
-        **kwargs
+        function: Callable[[Mobject], Mobject],  # 作用于物体的函数，输入输出都是Mobject
+        mobject: Mobject,                        # 要处理的物体
+        **kwargs                                  # 其他动画参数
     ):
-        self.function = function
-        super().__init__(mobject, **kwargs)
+        self.function = function  # 存储自定义函数
+        super().__init__(mobject, **kwargs)  # 调用父类初始化方法
 
+    # 重写创建目标物体的方法
     def create_target(self) -> Mobject:
+        # 对物体的副本应用自定义函数，生成目标状态
         target = self.function(self.mobject.copy())
+        # 检查函数返回值是否为Mobject类型
         if not isinstance(target, Mobject):
             raise Exception("Functions passed to ApplyFunction must return object of type Mobject")
         return target
 
 
+# 定义ApplyMatrix类，继承自ApplyPointwiseFunction
+# 用于对物体应用矩阵变换的动画（如旋转、缩放、剪切等线性变换）
 class ApplyMatrix(ApplyPointwiseFunction):
     def __init__(
         self,
-        matrix: npt.ArrayLike,
-        mobject: Mobject,
-        **kwargs
+        matrix: npt.ArrayLike,  # 变换矩阵，可以是2x2或3x3矩阵
+        mobject: Mobject,       # 要应用矩阵变换的物体
+        **kwargs                # 其他动画参数
     ):
+        # 初始化矩阵，确保格式正确
         matrix = self.initialize_matrix(matrix)
 
+        # 定义对点应用矩阵变换的函数
         def func(p):
+            # 对每个点p应用矩阵变换（通过点积实现）
             return np.dot(p, matrix.T)
 
+        # 调用父类构造方法，传入变换函数和物体
         super().__init__(func, mobject, **kwargs)
 
+    # 初始化矩阵，确保其为3x3矩阵（适合3D空间变换）
     def initialize_matrix(self, matrix: npt.ArrayLike) -> np.ndarray:
         matrix = np.array(matrix)
+        # 如果是2x2矩阵，扩展为3x3矩阵（保持z坐标不变）
         if matrix.shape == (2, 2):
-            new_matrix = np.identity(3)
-            new_matrix[:2, :2] = matrix
+            new_matrix = np.identity(3)  # 创建3x3单位矩阵
+            new_matrix[:2, :2] = matrix  # 将2x2矩阵放入左上角
             matrix = new_matrix
+        # 检查矩阵是否为3x3，否则抛出异常
         elif matrix.shape != (3, 3):
             raise Exception("Matrix has bad dimensions")
         return matrix
 
 
+# 定义ApplyComplexFunction类，继承自ApplyMethod
+# 用于对物体应用复变函数变换的动画（适合2D平面变换）
 class ApplyComplexFunction(ApplyMethod):
     def __init__(
         self,
-        function: Callable[[complex], complex],
-        mobject: Mobject,
-        **kwargs
+        function: Callable[[complex], complex],  # 复变函数，输入输出均为复数
+        mobject: Mobject,                        # 要变换的物体
+        **kwargs                                  # 其他动画参数
     ):
-        self.function = function
+        self.function = function  # 存储复变函数
+        # 使用物体的apply_complex_function方法
         method = mobject.apply_complex_function
         super().__init__(method, function, **kwargs)
 
+    # 初始化路径函数，计算变换的旋转角度
     def init_path_func(self) -> None:
+        # 计算函数在z=1处的取值，用于确定旋转角度
         func1 = self.function(complex(1))
+        # 计算复数的辐角（虚部的对数），作为路径弧度
         self.path_arc = np.log(func1).imag
+        # 调用父类的路径初始化方法
         super().init_path_func()
 
-###
 
-
+# 定义CyclicReplace类，继承自Transform
+# 用于实现多个物体循环替换位置的动画
 class CyclicReplace(Transform):
     def __init__(self, *mobjects: Mobject, path_arc=90 * DEG, **kwargs):
+        # 将所有物体组合成一个组，作为变换的对象
         super().__init__(Group(*mobjects), path_arc=path_arc, **kwargs)
 
+    # 创建目标状态
     def create_target(self) -> Mobject:
-        group = self.mobject
-        target = group.copy()
+        group = self.mobject  # 获取包含所有物体的组
+        target = group.copy()  # 创建组的副本作为目标基础
+        # 循环移位：最后一个物体移到第一个位置，其余依次后移
         cycled_targets = [target[-1], *target[:-1]]
+        # 每个目标物体移动到下一个物体的原始位置
         for m1, m2 in zip(cycled_targets, group):
             m1.move_to(m2)
         return target
 
 
+# 定义Swap类，继承自CyclicReplace
+# 作为CyclicReplace的别名，特别适合两个物体交换位置的场景
 class Swap(CyclicReplace):
     """Alternate name for CyclicReplace"""
     pass
