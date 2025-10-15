@@ -650,27 +650,38 @@ class Axes(VGroup, CoordinateSystem):
         axis_config: dict,
         length: float | None
     ) -> NumberLine:
-        axis = NumberLine(range_terms, width=length, **axis_config)
-        axis.shift(-axis.n2p(0))
+        # 创建数轴对象，参数包括范围、长度和其他轴配置
+        axis = NumberLine(range_terms, width=length,** axis_config)
+        # 将数轴平移，使数轴上的0点与原点对齐（消除初始偏移）
+        axis.shift(-axis.n2p(0))  # n2p(0)表示0对应的点坐标，取反后平移实现对齐
         return axis
 
     def coords_to_point(self, *coords: float | VectN) -> Vect3 | Vect3Array:
+        # 获取x轴上0点对应的坐标作为原点基准
         origin = self.x_axis.number_to_point(0)
+        # 计算坐标对应的空间点：
+        # 1. 遍历每个轴和对应的坐标
+        # 2. 将每个轴上的坐标转换为点坐标
+        # 3. 减去原点后累加，最后加上原点得到最终点
         return origin + sum(
             axis.number_to_point(coord) - origin
             for axis, coord in zip(self.get_axes(), coords)
         )
 
     def point_to_coords(self, point: Vect3 | Vect3Array) -> tuple[float | VectN, ...]:
+        # 将空间点转换为各轴对应的坐标：
+        # 对每个轴调用point_to_number方法，得到点在该轴上的坐标值
         return tuple([
             axis.point_to_number(point)
             for axis in self.get_axes()
         ])
 
     def get_axes(self) -> VGroup:
+        # 返回包含所有轴的组（VGroup），作为获取轴的统一接口
         return self.axes
 
     def get_all_ranges(self) -> list[Sequence[float]]:
+        # 返回包含x轴和y轴范围的列表，用于快速获取所有轴的取值范围
         return [self.x_range, self.y_range]
 
     def add_coordinate_labels(
@@ -680,16 +691,26 @@ class Axes(VGroup, CoordinateSystem):
         excluding: Iterable[float] = [0],
         **kwargs
     ) -> VGroup:
+        # 获取所有轴对象（如x轴、y轴）
         axes = self.get_axes()
+        # 创建用于存储坐标标签的组
         self.coordinate_labels = VGroup()
+        # 遍历每个轴和对应的坐标值列表（x_values对应x轴，y_values对应y轴）
         for axis, values in zip(axes, [x_values, y_values]):
-            labels = axis.add_numbers(values, excluding=excluding, **kwargs)
+            # 为当前轴添加数字标签：
+            # - values指定要显示的坐标值，None则使用轴默认值
+            # - excluding指定不显示标签的坐标（默认排除0点，避免与原点标记冲突）
+            # - **kwargs传递额外的标签样式配置（如字体、颜色等）
+            labels = axis.add_numbers(values, excluding=excluding,** kwargs)
+            # 将生成的标签添加到坐标标签组中
             self.coordinate_labels.add(labels)
         return self.coordinate_labels
 
 
 class ThreeDAxes(Axes):
+    # 三维坐标系的维度标识为3
     dimension: int = 3
+    # 三维坐标系中z轴的默认配置字典（可包含长度、颜色、刻度等参数）
     default_z_axis_config: dict = dict()
 
     def __init__(
@@ -702,40 +723,59 @@ class ThreeDAxes(Axes):
         depth: float | None = None,
         **kwargs
     ):
+        # 调用父类Axes的初始化方法，传入x轴和y轴范围及其他参数
         Axes.__init__(self, x_range, y_range, **kwargs)
 
+        # 处理z轴范围，确保其格式符合RangeSpecifier规范（起始值、结束值、步长）
         self.z_range = full_range_specifier(z_range)
+        # 创建z轴：
+        # 1. 合并轴配置（默认配置→z轴默认配置→全局轴配置→z轴专用配置，后者覆盖前者）
+        # 2. 使用create_axis方法生成数轴，长度由depth参数指定
         self.z_axis = self.create_axis(
             self.z_range,
             axis_config=merge_dicts_recursively(
-                self.default_axis_config,
-                self.default_z_axis_config,
-                kwargs.get("axis_config", {}),
-                z_axis_config
+                self.default_axis_config,          # 基础默认配置
+                self.default_z_axis_config,        # z轴默认配置
+                kwargs.get("axis_config", {}),     # 全局轴配置（如果有）
+                z_axis_config                      # z轴专用配置（优先级最高）
             ),
             length=depth,
         )
+        # 旋转z轴：
+        # 1. 绕UP方向旋转-90度（PI/2弧度），以调整初始朝向
+        # 2. 绕OUT方向旋转，角度由z_normal向量决定，使z轴与指定法向量对齐
         self.z_axis.rotate(-PI / 2, UP, about_point=ORIGIN)
         self.z_axis.rotate(
             angle_of_vector(z_normal), OUT,
             about_point=ORIGIN
         )
+        # 将z轴平移到x轴的0点位置，确保三轴在原点交汇
         self.z_axis.shift(self.x_axis.n2p(0))
+    
+        # 将z轴添加到轴组和当前三维坐标系中
         self.axes.add(self.z_axis)
         self.add(self.z_axis)
 
     def get_all_ranges(self) -> list[Sequence[float]]:
+        # 重写父类方法，返回包含x、y、z三轴范围的列表（适配三维坐标系）
         return [self.x_range, self.y_range, self.z_range]
 
     def add_axis_labels(self, x_tex="x", y_tex="y", z_tex="z", font_size=24, buff=0.2):
+        # 生成x、y、z轴的标签文本（默认显示"x"、"y"、"z"），并组合成VGroup
+        # 用Tex创建公式文本对象，统一设置字体大小
         x_label, y_label, z_label = labels = VGroup(*(
             Tex(tex, font_size=font_size)
             for tex in [x_tex, y_tex, z_tex]
         ))
+        # 旋转z轴标签：绕RIGHT方向旋转90度（PI/2弧度），使其与z轴朝向匹配
         z_label.rotate(PI / 2, RIGHT)
+        # 遍历每个标签与对应的轴，完成标签定位与绑定
         for label, axis in zip(labels, self):
+            # 将标签放在轴的对应方向旁，设置间距为buff
             label.next_to(axis, normalize(np.round(axis.get_vector()), 2), buff=buff)
+            # 将标签添加到对应轴上，确保标签随轴移动
             axis.add(label)
+        # 存储轴标签组，便于后续管理
         self.axis_labels = labels
 
     def get_graph(
@@ -747,19 +787,24 @@ class ThreeDAxes(Axes):
         v_range=None,
         **kwargs
     ) -> ParametricSurface:
+        # 获取三个轴的单位尺寸（每个单位对应的实际长度）
         xu = self.x_axis.get_unit_size()
         yu = self.y_axis.get_unit_size()
         zu = self.z_axis.get_unit_size()
+        # 获取坐标系原点的三维坐标（x0, y0, z0）
         x0, y0, z0 = self.get_origin()
+        # 确定参数u、v的范围：默认使用x轴、y轴的起始-结束范围（忽略步长）
         u_range = u_range or self.x_range[:2]
         v_range = v_range or self.y_range[:2]
+        # 创建并返回参数化曲面（即函数func对应的三维图形）
         return ParametricSurface(
+            # 曲面参数方程：将(u, v)映射为三维点，结合轴单位尺寸和原点偏移
             lambda u, v: [xu * u + x0, yu * v + y0, zu * func(u, v) + z0],
-            u_range=u_range,
-            v_range=v_range,
-            color=color,
-            opacity=opacity,
-            **kwargs
+            u_range=u_range,    # u参数范围（对应x轴方向）
+            v_range=v_range,    # v参数范围（对应y轴方向）
+            color=color,        # 曲面颜色（默认蓝绿色BLUE_E）
+            opacity=opacity,    # 曲面透明度（默认0.9）
+            **kwargs            # 传递额外参数（如分辨率、边框等）
         )
 
     def get_parametric_surface(
