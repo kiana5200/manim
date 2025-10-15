@@ -2518,159 +2518,196 @@ def lock_matching_data(self, mobject1: Mobject, mobject2: Mobject) -> Self:
         )
     return self
 
-    def unlock_data(self) -> Self:
-        for mob in self.get_family():
-            mob.locked_data_keys = set()
-            mob.const_data_keys = set()
-            mob.locked_uniform_keys = set()
-        return self
+def unlock_data(self) -> Self:
+    # 递归解锁当前对象家族中所有成员的数据锁定状态
+    for mob in self.get_family():
+        mob.locked_data_keys = set()       # 清空锁定的数据字段集合（解锁数据）
+        mob.const_data_keys = set()        # 清空常量数据字段集合（取消常量标记）
+        mob.locked_uniform_keys = set()    # 清空锁定的Uniform字段集合（解锁Uniform）
+    return self
 
-    # Operations touching shader uniforms
+# 涉及Shader Uniform（着色器统一变量）的操作方法
 
-    @staticmethod
-    def affects_shader_info_id(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            result = func(self, *args, **kwargs)
-            self.refresh_shader_wrapper_id()
-            return result
-        return wrapper
-
-    @affects_shader_info_id
-    def set_uniform(self, recurse: bool = True, **new_uniforms) -> Self:
-        for mob in self.get_family(recurse):
-            mob.uniforms.update(new_uniforms)
-        return self
-
-    @affects_shader_info_id
-    def fix_in_frame(self, recurse: bool = True) -> Self:
-        self.set_uniform(recurse, is_fixed_in_frame=1.0)
-        return self
-
-    @affects_shader_info_id
-    def unfix_from_frame(self, recurse: bool = True) -> Self:
-        self.set_uniform(recurse, is_fixed_in_frame=0.0)
-        return self
-
-    def is_fixed_in_frame(self) -> bool:
-        return bool(self.uniforms["is_fixed_in_frame"])
-
-    @affects_shader_info_id
-    def apply_depth_test(self, recurse: bool = True) -> Self:
-        for mob in self.get_family(recurse):
-            mob.depth_test = True
-        return self
-
-    @affects_shader_info_id
-    def deactivate_depth_test(self, recurse: bool = True) -> Self:
-        for mob in self.get_family(recurse):
-            mob.depth_test = False
-        return self
-
-    def set_clip_plane(
-        self,
-        vect: Vect3 | None = None,
-        threshold: float | None = None,
-        recurse=True
-    ) -> Self:
-        for submob in self.get_family(recurse):
-            if vect is not None:
-                submob.uniforms["clip_plane"][:3] = vect
-            if threshold is not None:
-                submob.uniforms["clip_plane"][3] = threshold
-        return self
-
-    def deactivate_clip_plane(self) -> Self:
-        self.uniforms["clip_plane"][:] = 0
-        return self
-
-    # Shader code manipulation
-
-    @affects_data
-    def replace_shader_code(self, old: str, new: str) -> Self:
-        for mob in self.get_family():
-            mob.shader_code_replacements[old] = new
-            mob.shader_wrapper = None
-        return self
-
-    def set_color_by_code(self, glsl_code: str) -> Self:
-        """
-        Takes a snippet of code and inserts it into a
-        context which has the following variables:
-        vec4 color, vec3 point, vec3 unit_normal.
-        The code should change the color variable
-        """
-        self.replace_shader_code(
-            "///// INSERT COLOR FUNCTION HERE /////",
-            glsl_code
-        )
-        return self
-
-    def set_color_by_xyz_func(
-        self,
-        glsl_snippet: str,
-        min_value: float = -5.0,
-        max_value: float = 5.0,
-        colormap: str = "viridis"
-    ) -> Self:
-        """
-        Pass in a glsl expression in terms of x, y and z which returns
-        a float.
-        """
-        # TODO, add a version of this which changes the point data instead
-        # of the shader code
-        for char in "xyz":
-            glsl_snippet = glsl_snippet.replace(char, "point." + char)
-        rgb_list = get_colormap_list(colormap)
-        self.set_color_by_code(
-            "color.rgb = float_to_color({}, {}, {}, {});".format(
-                glsl_snippet,
-                float(min_value),
-                float(max_value),
-                get_colormap_code(rgb_list)
-            )
-        )
-        return self
-
-    # For shader data
-
-    def init_shader_wrapper(self, ctx: Context):
-        self.shader_wrapper = ShaderWrapper(
-            ctx=ctx,
-            vert_data=self.data,
-            shader_folder=self.shader_folder,
-            mobject_uniforms=self.uniforms,
-            texture_paths=self.texture_paths,
-            depth_test=self.depth_test,
-            render_primitive=self.render_primitive,
-            code_replacements=self.shader_code_replacements,
-        )
-
-    def refresh_shader_wrapper_id(self):
-        for submob in self.get_family():
-            if submob.shader_wrapper is not None:
-                submob.shader_wrapper.depth_test = submob.depth_test
-                submob.shader_wrapper.refresh_id()
-        for mob in (self, *self.get_ancestors()):
-            mob._data_has_changed = True
-        return self
-
-    def get_shader_wrapper(self, ctx: Context) -> ShaderWrapper:
-        if self.shader_wrapper is None:
-            self.init_shader_wrapper(ctx)
-        return self.shader_wrapper
-
-    def get_shader_wrapper_list(self, ctx: Context) -> list[ShaderWrapper]:
-        family = self.family_members_with_points()
-        batches = batch_by_property(family, lambda sm: sm.get_shader_wrapper(ctx).get_id())
-
-        result = []
-        for submobs, sid in batches:
-            shader_wrapper = submobs[0].shader_wrapper
-            data_list = [sm.get_shader_data() for sm in submobs]
-            shader_wrapper.read_in(data_list)
-            result.append(shader_wrapper)
+@staticmethod
+def affects_shader_info_id(func: Callable[..., T]) -> Callable[..., T]:
+    # 装饰器：标记被装饰的方法会影响Shader信息ID，执行后需刷新Shader包装器ID
+    @wraps(func)  # 保留原函数的元数据（如名称、文档字符串）
+    def wrapper(self, *args, **kwargs):
+        # 先执行原函数逻辑
+        result = func(self, *args, **kwargs)
+        # 刷新Shader包装器ID（确保Shader识别更新后的状态）
+        self.refresh_shader_wrapper_id()
         return result
+    return wrapper
+
+@affects_shader_info_id  # 应用装饰器，修改Uniform后刷新Shader ID
+def set_uniform(self, recurse: bool = True, **new_uniforms) -> Self:
+    # 为家族成员设置Shader Uniform（统一变量）
+    # recurse=True表示递归应用到所有子对象
+    for mob in self.get_family(recurse):
+        mob.uniforms.update(new_uniforms)  # 更新Uniform字典
+    return self
+
+@affects_shader_info_id  # 应用装饰器，修改后刷新Shader ID
+def fix_in_frame(self, recurse: bool = True) -> Self:
+    # 将对象固定在屏幕坐标系中（不随相机移动而变化）
+    # 通过设置is_fixed_in_frame为1.0实现（Shader会根据该值调整渲染逻辑）
+    self.set_uniform(recurse, is_fixed_in_frame=1.0)
+    return self
+
+@affects_shader_info_id  # 应用装饰器，修改后刷新Shader ID
+def unfix_from_frame(self, recurse: bool = True) -> Self:
+    # 取消对象在屏幕坐标系的固定（恢复随相机移动）
+    # 设置is_fixed_in_frame为0.0
+    self.set_uniform(recurse, is_fixed_in_frame=0.0)
+    return self
+
+def is_fixed_in_frame(self) -> bool:
+    # 判断对象是否固定在屏幕坐标系中
+    # 从Uniform中读取is_fixed_in_frame值，转为布尔类型
+    return bool(self.uniforms["is_fixed_in_frame"])
+
+@affects_shader_info_id  # 应用装饰器，修改后刷新Shader ID
+def apply_depth_test(self, recurse: bool = True) -> Self:
+    # 为家族成员启用深度测试（3D渲染中避免后绘制的物体遮挡先绘制的物体）
+    for mob in self.get_family(recurse):
+        mob.depth_test = True  # 开启深度测试标记
+    return self
+
+@affects_shader_info_id  # 应用装饰器，修改后刷新Shader ID
+def deactivate_depth_test(self, recurse: bool = True) -> Self:
+    # 为家族成员禁用深度测试
+    for mob in self.get_family(recurse):
+        mob.depth_test = False  # 关闭深度测试标记
+    return self
+
+def set_clip_plane(
+    self,
+    vect: Vect3 | None = None,
+    threshold: float | None = None,
+    recurse=True
+) -> Self:
+    # 设置裁剪平面（用于裁剪物体的特定区域，仅渲染平面一侧的部分）
+    for submob in self.get_family(recurse):
+        # 如果指定了平面法向量（vect），更新裁剪平面的前3个分量（法向量）
+        if vect is not None:
+            submob.uniforms["clip_plane"][:3] = vect
+        # 如果指定了阈值（threshold），更新裁剪平面的第4个分量（距离原点的距离）
+        if threshold is not None:
+            submob.uniforms["clip_plane"][3] = threshold
+    return self
+
+def deactivate_clip_plane(self) -> Self:
+    # 禁用裁剪平面（将裁剪平面参数全部设为0，Shader会跳过裁剪逻辑）
+    self.uniforms["clip_plane"][:] = 0
+    return self
+
+# Shader代码操作方法
+
+@affects_data  # 装饰器：标记修改Shader代码会影响数据状态
+def replace_shader_code(self, old: str, new: str) -> Self:
+    # 替换家族成员的Shader代码片段（用于自定义着色逻辑）
+    for mob in self.get_family():
+        # 记录代码替换规则（旧片段→新片段）
+        mob.shader_code_replacements[old] = new
+        # 清空现有Shader包装器（后续需重新初始化以应用新代码）
+        mob.shader_wrapper = None
+    return self
+
+def set_color_by_code(self, glsl_code: str) -> Self:
+    """
+    通过GLSL代码片段自定义对象颜色
+    代码运行上下文包含以下变量：
+    - vec4 color：当前颜色（需修改该变量实现颜色自定义）
+    - vec3 point：顶点的3D坐标
+    - vec3 unit_normal：顶点的单位法向量
+    """
+    # 替换Shader中预留的颜色函数插入位置，注入自定义GLSL代码
+    self.replace_shader_code(
+        "///// INSERT COLOR FUNCTION HERE /////",  # Shader中的预留标记
+        glsl_code  # 自定义GLSL颜色逻辑
+    )
+    return self
+
+def set_color_by_xyz_func(
+    self,
+    glsl_snippet: str,
+    min_value: float = -5.0,
+    max_value: float = 5.0,
+    colormap: str = "viridis"
+) -> Self:
+    """
+    通过GLSL表达式（基于x、y、z坐标）生成颜色
+    输入的GLSL表达式需返回float类型，用于映射到颜色映射表
+    """
+    # TODO：实现一个通过修改点数据而非Shader代码的版本
+    # 将GLSL表达式中的x/y/z替换为point.x/point.y/point.z（适配Shader顶点数据）
+    for char in "xyz":
+        glsl_snippet = glsl_snippet.replace(char, "point." + char)
+    # 获取指定颜色映射表（如viridis）的RGB列表
+    rgb_list = get_colormap_list(colormap)
+    # 注入颜色计算代码：将GLSL表达式结果映射到颜色映射表
+    self.set_color_by_code(
+        "color.rgb = float_to_color({}, {}, {}, {});".format(
+            glsl_snippet,          # 基于坐标的GLSL表达式（返回float）
+            float(min_value),      # 表达式结果的最小值（用于归一化）
+            float(max_value),      # 表达式结果的最大值（用于归一化）
+            get_colormap_code(rgb_list)  # 颜色映射表的GLSL代码
+        )
+    )
+    return self
+
+# Shader数据相关方法
+
+def init_shader_wrapper(self, ctx: Context):
+    # 初始化Shader包装器（连接Python数据与GPU Shader的桥梁）
+    self.shader_wrapper = ShaderWrapper(
+        ctx=ctx,  # 图形上下文（如OpenGL上下文）
+        vert_data=self.data,  # 顶点数据（如位置、颜色）
+        shader_folder=self.shader_folder,  # Shader文件所在文件夹路径
+        mobject_uniforms=self.uniforms,  # 对象的Uniform变量
+        texture_paths=self.texture_paths,  # 纹理文件路径列表
+        depth_test=self.depth_test,  # 是否启用深度测试
+        render_primitive=self.render_primitive,  # 渲染图元（如三角形、线段）
+        code_replacements=self.shader_code_replacements,  # Shader代码替换规则
+    )
+
+def refresh_shader_wrapper_id(self):
+    # 刷新家族成员的Shader包装器ID（确保Shader识别状态更新）
+    for submob in self.get_family():
+        if submob.shader_wrapper is not None:
+            # 同步深度测试状态到Shader包装器
+            submob.shader_wrapper.depth_test = submob.depth_test
+            # 刷新Shader包装器的ID（标记状态已变）
+            submob.shader_wrapper.refresh_id()
+    # 标记当前对象及其所有祖先的数据已变更（触发后续重渲染）
+    for mob in (self, *self.get_ancestors()):
+        mob._data_has_changed = True
+    return self
+
+def get_shader_wrapper(self, ctx: Context) -> ShaderWrapper:
+    # 获取Shader包装器，若未初始化则先创建
+    if self.shader_wrapper is None:
+        self.init_shader_wrapper(ctx)
+    return self.shader_wrapper
+
+def get_shader_wrapper_list(self, ctx: Context) -> list[ShaderWrapper]:
+    # 获取家族中所有含点数据成员的Shader包装器列表（按Shader ID分组）
+    # 筛选出有顶点数据的家族成员（排除空对象）
+    family = self.family_members_with_points()
+    # 按Shader ID分组（相同Shader的对象共享一个包装器，优化渲染效率）
+    batches = batch_by_property(family, lambda sm: sm.get_shader_wrapper(ctx).get_id())
+
+    result = []
+    for submobs, sid in batches:
+        # 取组内第一个对象的Shader包装器（同组共享）
+        shader_wrapper = submobs[0].shader_wrapper
+        # 收集组内所有对象的Shader数据（顶点数据等）
+        data_list = [sm.get_shader_data() for sm in submobs]
+        # 将数据读入Shader包装器（准备批量渲染）
+        shader_wrapper.read_in(data_list)
+        result.append(shader_wrapper)
+    return result
 
     def get_shader_data(self) -> np.ndarray:
         indices = self.get_shader_vert_indices()
