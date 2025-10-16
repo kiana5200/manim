@@ -233,94 +233,146 @@ class Torus(Surface):
 
 
 class Cylinder(Surface):
+    """圆柱体类，继承自Surface，用于在Manim中创建3D圆柱体表面"""
+    
     def __init__(
         self,
-        u_range: Tuple[float, float] = (0, TAU),
-        v_range: Tuple[float, float] = (-1, 1),
-        resolution: Tuple[int, int] = (101, 11),
-        height: float = 2,
-        radius: float = 1,
-        axis: Vect3 = OUT,
-        **kwargs,
+        u_range: Tuple[float, float] = (0, TAU),  # u参数范围，默认0到2π（绕轴线旋转）
+        v_range: Tuple[float, float] = (-1, 1),   # v参数范围，默认-1到1（沿轴线方向）
+        resolution: Tuple[int, int] = (101, 11),  # 表面分辨率（u方向点数, v方向点数）
+        height: float = 2,                        # 圆柱体高度，默认2
+        radius: float = 1,                        # 圆柱体半径，默认1
+        axis: Vect3 = OUT,                        # 圆柱体轴线方向，默认向外(OUT)
+        **kwargs,                                 # 其他关键字参数，传递给父类Surface
     ):
+        # 存储圆柱体高度
         self.height = height
+        # 存储圆柱体半径
         self.radius = radius
+        # 存储圆柱体轴线方向
         self.axis = axis
+        
+        # 调用父类Surface的构造函数，初始化表面基本属性
         super().__init__(
             u_range=u_range,
             v_range=v_range,
-            resolution=resolution,
-            **kwargs
+            resolution=resolution,** kwargs
         )
 
     def init_points(self):
+        """初始化顶点数据，对基本圆柱进行缩放、调整深度和方向"""
+        # 调用父类的init_points方法，生成基础顶点
         super().init_points()
+        # 按半径缩放圆柱体（基础圆柱半径为1）
         self.scale(self.radius)
+        # 调整圆柱体深度以匹配指定高度
         self.set_depth(self.height, stretch=True)
+        # 应用矩阵变换，使圆柱体沿指定轴线方向排列
         self.apply_matrix(z_to_vector(self.axis))
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
+        """
+        圆柱体的参数方程
+        
+        参数:
+            u: 绕轴线旋转的角度
+            v: 沿轴线方向的位置参数
+        
+        返回:
+            三维坐标点(x, y, z)
+        """
+        # 圆柱坐标到笛卡尔坐标的转换（基础圆柱半径为1）
         return np.array([np.cos(u), np.sin(u), v])
 
 
 class Cone(Cylinder):
+    """圆锥体类，继承自Cylinder，用于在Manim中创建3D圆锥体表面"""
+    
     def __init__(
         self,
-        u_range: Tuple[float, float] = (0, TAU),
-        v_range: Tuple[float, float] = (0, 1),
-        *args,
-        **kwargs,
+        u_range: Tuple[float, float] = (0, TAU),  # u参数范围，默认0到2π（绕轴线旋转）
+        v_range: Tuple[float, float] = (0, 1),    # v参数范围，默认0到1（从顶点到底部）
+        *args,                                    # 可变参数，传递给父类Cylinder
+        **kwargs,                                 # 关键字参数，传递给父类Cylinder
     ):
+        # 调用父类Cylinder的构造函数
         super().__init__(u_range=u_range, v_range=v_range, *args, **kwargs)
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
+        """
+        圆锥体的参数方程
+        
+        参数:
+            u: 绕轴线旋转的角度
+            v: 从顶点到底部的位置参数（0为顶点，1为底部）
+        
+        返回:
+            三维坐标点(x, y, z)
+        """
+        # 圆锥参数方程：半径随v线性变化（v=0时半径为1，v=1时半径为0）
         return np.array([(1 - v) * np.cos(u), (1 - v) * np.sin(u), v])
 
 
 class Line3D(Cylinder):
+    """3D线段类，继承自Cylinder，用于在Manim中创建有宽度的3D线段"""
+    
     def __init__(
         self,
-        start: Vect3,
-        end: Vect3,
-        width: float = 0.05,
-        resolution: Tuple[int, int] = (21, 25),
-        **kwargs
+        start: Vect3,                             # 线段起点坐标
+        end: Vect3,                               # 线段终点坐标
+        width: float = 0.05,                      # 线段宽度，默认0.05
+        resolution: Tuple[int, int] = (21, 25),   # 线段表面分辨率
+        **kwargs                                  # 其他关键字参数，传递给父类Cylinder
     ):
+        # 计算线段方向向量（从起点到终点）
         axis = end - start
+        # 调用父类Cylinder的构造函数，将圆柱体变形为线段
         super().__init__(
-            height=get_norm(axis),
-            radius=width / 2,
-            axis=axis,
-            resolution=resolution,
-            **kwargs
+            height=get_norm(axis),                # 线段长度（方向向量的模）
+            radius=width / 2,                     # 线段半径（宽度的一半）
+            axis=axis,                            # 线段方向
+            resolution=resolution,** kwargs
         )
+        # 将线段移动到起点和终点的中间位置（使线段居中于两点之间）
         self.shift((start + end) / 2)
 
 
 class Disk3D(Surface):
+    """3D圆盘类，继承自Surface，用于在Manim中创建3D圆盘表面（圆形平面）"""
+    
     def __init__(
         self,
-        radius: float = 1,
-        u_range: Tuple[float, float] = (0, 1),
-        v_range: Tuple[float, float] = (0, TAU),
-        resolution: Tuple[int, int] = (2, 100),
-        **kwargs
+        radius: float = 1,                        # 圆盘半径，默认1
+        u_range: Tuple[float, float] = (0, 1),    # u参数范围，默认0到1（从中心到边缘）
+        v_range: Tuple[float, float] = (0, TAU),  # v参数范围，默认0到2π（角度方向）
+        resolution: Tuple[int, int] = (2, 100),   # 圆盘表面分辨率
+        **kwargs,                                 # 其他关键字参数，传递给父类Surface
     ):
+        # 调用父类Surface的构造函数，初始化表面基本属性
         super().__init__(
             u_range=u_range,
             v_range=v_range,
-            resolution=resolution,
-            **kwargs,
+            resolution=resolution,** kwargs,
         )
+        # 按指定半径缩放圆盘（基础圆盘半径为1）
         self.scale(radius)
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
+        """
+        圆盘的参数方程
+        
+        参数:
+            u: 从中心到边缘的距离参数（0为中心，1为边缘）
+            v: 角度参数
+        
+        返回:
+            三维坐标点(x, y, z)（位于z=0平面）
+        """
         return np.array([
-            u * math.cos(v),
-            u * math.sin(v),
-            0
+            u * math.cos(v),  # x坐标：距离参数×cos(角度)
+            u * math.sin(v),  # y坐标：距离参数×sin(角度)
+            0                 # z坐标：0（位于xy平面）
         ])
-
 
 class Square3D(Surface):
     def __init__(
