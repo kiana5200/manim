@@ -1,27 +1,41 @@
+# 从__future__导入annotations，用于支持Python 3.7及以下版本的类型提示语法
 from __future__ import annotations
 
+# 导入numpy库，用于数值计算和数组操作
 import numpy as np
 
+# 从manimlib.constants导入常用颜色常量
 from manimlib.constants import BLUE, BLUE_E, GREEN_E, GREY_B, GREY_D, MAROON_B, YELLOW
+# 从manimlib.constants导入方向向量常量
 from manimlib.constants import DOWN, LEFT, RIGHT, UP
+# 从manimlib.constants导入间距常量
 from manimlib.constants import MED_LARGE_BUFF, MED_SMALL_BUFF, SMALL_BUFF
+# 从manimlib.mobject.geometry导入几何图形类
 from manimlib.mobject.geometry import Line
 from manimlib.mobject.geometry import Rectangle
+# 从manimlib.mobject导入Mobject基类，所有可显示对象的父类
 from manimlib.mobject.mobject import Mobject
+# 从manimlib.mobject.svg.brace导入Brace类，用于创建花括号标记
 from manimlib.mobject.svg.brace import Brace
+# 从manimlib.mobject.svg.tex_mobject导入Tex和TexText类，用于处理LaTeX文本
 from manimlib.mobject.svg.tex_mobject import Tex
 from manimlib.mobject.svg.tex_mobject import TexText
+# 从manimlib.mobject.types.vectorized_mobject导入VGroup类，用于组合多个可显示对象
 from manimlib.mobject.types.vectorized_mobject import VGroup
+# 从manimlib.utils.color导入color_gradient函数，用于创建颜色渐变
 from manimlib.utils.color import color_gradient
+# 从manimlib.utils.iterables导入listify函数，用于将输入转换为列表
 from manimlib.utils.iterables import listify
 
+# 导入typing模块中的TYPE_CHECKING常量，用于条件类型检查
 from typing import TYPE_CHECKING
 
+# 如果是类型检查阶段（非运行时），导入所需的类型提示
 if TYPE_CHECKING:
     from typing import Iterable
     from manimlib.typing import ManimColor
 
-
+# 定义一个极小值epsilon，用于避免浮点数计算中的精度问题
 EPSILON = 0.0001
 
 
