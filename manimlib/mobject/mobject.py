@@ -330,11 +330,6 @@ class Mobject(object):
         -----
         recurse_up : bool, optional
             是否向上递归通知父对象，默认True（通知所有父对象）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         self._data_has_changed = True  # 标记数据已变更
         # 若需要向上递归，遍历所有父对象并调用其note_changed_data方法
@@ -404,11 +399,6 @@ class Mobject(object):
         data : np.ndarray
             新的核心数据数组，dtype必须与self.data_dtype一致
         
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
-        
         断言
         -----
         断言输入数据的dtype与图形的data_dtype一致，否则报错
@@ -434,11 +424,6 @@ class Mobject(object):
             新的顶点数量（数据数组长度）
         resize_func : Callable, optional
             调整数组大小的函数，默认使用resize_array（保留原有数据并填充默认值）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         if new_length == 0:
             # 若新长度为0且当前数据非空，保存当前第一个数据作为默认值
@@ -463,11 +448,6 @@ class Mobject(object):
         -----
         points : Vect3Array | list[Vect3]
             新的顶点坐标集合（3D向量数组或列表）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 调整顶点数量，使用保持顺序的调整函数
         self.resize_points(len(points), resize_func=resize_preserving_order)
@@ -485,11 +465,6 @@ class Mobject(object):
         -----
         new_points : Vect3Array
             待追加的新顶点坐标集合（3D向量数组）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         n = self.get_num_points()  # 获取当前顶点数量
         self.resize_points(n + len(new_points))  # 调整顶点数量以容纳新顶点
@@ -505,11 +480,6 @@ class Mobject(object):
         """
         反转顶点顺序：反转当前图形及所有子对象的顶点数据顺序（影响渲染顺序），
         通知家族所有成员标记数据变更。
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 遍历家族中所有对象，反转其数据顺序
         for mob in self.get_family():
@@ -538,10 +508,6 @@ class Mobject(object):
             若未指定about_point，围绕图形的某个边界点运算（如RIGHT表示右边界中心），默认ORIGIN
         works_on_bounding_box : bool, optional
             函数是否直接作用于包围盒而非原始点数据，默认False（作用于原始点）
-        
-        返回
-        -----
-        Self
             当前图形对象自身（支持链式调用）
         """
         # 若未指定about_point但指定了about_edge，获取对应边界点作为中心点
@@ -585,11 +551,6 @@ class Mobject(object):
         -----
         mobject : Mobject
             目标图形对象，需与当前图形的“类点数据”字段匹配
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 调整当前图形顶点数量，与目标图形一致，保持点顺序
         self.resize_points(len(mobject.data), resize_func=resize_preserving_order)
@@ -616,11 +577,6 @@ class Mobject(object):
         """
         清空当前图形的顶点数据：将顶点数量调整为0，删除所有顶点，
         标记数据变更。
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         self.resize_points(0)
         return self
@@ -726,11 +682,6 @@ class Mobject(object):
             是否向下递归标记所有子对象，默认False（仅标记自身）
         recurse_up : bool, optional
             是否向上递归通知父对象刷新，默认True（父对象同步刷新）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 遍历指定范围的家族成员（自身或含子对象），标记需重新计算包围盒
         for mob in self.get_family(recurse_down):
@@ -885,11 +836,6 @@ class Mobject(object):
         -----
         only_changed_order : bool, optional
             仅子对象顺序变更时为True（无需刷新更新器和包围盒），默认False
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         self.family = None  # 清空家族缓存，触发后续重建
         if not only_changed_order:
@@ -985,11 +931,6 @@ class Mobject(object):
         *mobjects : Mobject
             待添加的子对象（一个或多个Mobject实例）
         
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
-        
         异常
         -----
         Exception
@@ -1028,11 +969,6 @@ class Mobject(object):
             移除后是否重建家族结构（更新缓存），默认True
         recurse : bool, optional
             是否递归遍历家族成员（自身及所有子对象）进行移除，默认True
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 遍历目标家族成员（recurse=True时含子对象，否则仅自身）
         for parent in self.get_family(recurse):
@@ -1053,11 +989,6 @@ class Mobject(object):
         """
         清空当前图形的所有子对象：调用remove方法移除自身所有子对象，
         不递归处理子对象的子对象，仅清空当前图形的直接子对象。
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 移除自身所有子对象，recurse=False表示不递归处理子对象的子对象
         self.remove(*self.submobjects, recurse=False)
@@ -1072,11 +1003,6 @@ class Mobject(object):
         -----
         *mobjects : Mobject
             待添加到底层的子对象（一个或多个Mobject实例）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 调用list_update函数，将新子对象添加到现有子列表头部（底层）
         self.set_submobjects(list_update(mobjects, self.submobjects))
@@ -1093,11 +1019,6 @@ class Mobject(object):
             待替换子对象在子列表中的索引（从0开始）
         new_submob : Mobject
             用于替换的新子对象
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 获取指定索引的旧子对象
         old_submob = self.submobjects[index]
@@ -1123,11 +1044,6 @@ class Mobject(object):
             插入位置的索引（从0开始，0表示插入到最前，len(submobjects)表示插入到最后）
         new_submob : Mobject
             待插入的新子对象
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 在子列表指定索引处插入新子对象
         self.submobjects.insert(index, new_submob)
@@ -1146,11 +1062,6 @@ class Mobject(object):
         -----
         submobject_list : list[Mobject]
             新的子对象列表（替换原有子列表）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 若新列表与当前子列表一致，直接返回（避免重复操作）
         if self.submobjects == submobject_list:
@@ -1169,11 +1080,6 @@ class Mobject(object):
         Ensures all attributes which are mobjects are included
         in the submobjects list.
         （确保所有Mobject类型的属性都被包含在子对象列表中）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 筛选出所有值为Mobject实例的属性
         mobject_attrs = [x for x in list(self.__dict__.values()) if isinstance(x, Mobject)]
@@ -1201,11 +1107,6 @@ class Mobject(object):
             排列后是否将整个子对象组居中，默认True（居中）
         **kwargs
             传递给next_to方法的参数，如buff（子对象间间距）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 遍历相邻的子对象对（第1个与第2个、第2个与第3个...）
         for m1, m2 in zip(self.submobjects, self.submobjects[1:]):
@@ -1255,11 +1156,6 @@ class Mobject(object):
             子对象在网格单元中的对齐边缘，默认ORIGIN（中心对齐）
         fill_rows_first : bool, optional
             是否按行优先填充（先填满一行再填下一行），默认True；False为按列优先填充
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         submobs = self.submobjects  # 获取子对象列表
         n_submobs = len(submobs)    # 子对象总数
@@ -1319,11 +1215,6 @@ class Mobject(object):
             目标维度，0=水平（x轴）、1=垂直（y轴）、2=深度（z轴）
         about_edge : Vect3, optional
             排列的基准边缘（如LEFT表示以左侧为基准），默认ORIGIN（中心）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 获取排列的基准点（基于指定边缘的包围盒点）
         ref_point = self.get_bounding_box_point(about_edge)
@@ -1362,11 +1253,6 @@ class Mobject(object):
             目标水平总宽度
         about_edge : Vect3, optional
             水平排列的基准边缘，默认ORIGIN
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         return self.arrange_to_fit_dim(width, 0, about_edge)
 
@@ -1381,11 +1267,6 @@ class Mobject(object):
             目标垂直总高度
         about_edge : Vect3, optional
             垂直排列的基准边缘，默认ORIGIN
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         return self.arrange_to_fit_dim(height, 1, about_edge)
 
@@ -1400,11 +1281,6 @@ class Mobject(object):
             目标深度总长度
         about_edge : Vect3, optional
             深度排列的基准边缘，默认ORIGIN
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         return self.arrange_to_fit_dim(depth, 2, about_edge)
 
@@ -1423,11 +1299,6 @@ class Mobject(object):
             坐标映射函数，输入子对象中心坐标，输出排序用数值（默认按x轴坐标排序）
         submob_func : Callable[[Mobject], float] | None, optional
             子对象自定义函数，输入子对象，输出排序用数值（优先级高于point_to_num_func），默认None
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         if submob_func is not None:
             # 按自定义子对象函数排序
@@ -1448,11 +1319,6 @@ class Mobject(object):
         -----
         recurse : bool, optional
             是否递归打乱子对象的子对象，默认False（仅打乱当前层子对象）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         if recurse:
             # 递归打乱所有子对象的子对象
@@ -1468,11 +1334,6 @@ class Mobject(object):
         """
         反转子对象顺序：将当前层子对象列表反转（如[1,2,3]变为[3,2,1]），
         仅改变顺序不改变位置，更新家族顺序缓存。
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 反转子对象列表
         self.submobjects.reverse()
@@ -1557,11 +1418,6 @@ class Mobject(object):
         """
         创建当前图形对象的深拷贝：使用copy.deepcopy生成完全独立的副本，
         所有子对象和数据均被深度复制，无共享引用。
-        
-        返回
-        -----
-        Self
-            当前图形对象的深拷贝实例
         """
         return copy.deepcopy(self)
 
@@ -1633,11 +1489,6 @@ class Mobject(object):
         -----
         use_deepcopy : bool, optional
             若为True则使用深拷贝生成目标，否则使用浅拷贝，默认False
-        
-        返回
-        -----
-        Self
-            生成的目标状态副本
         """
         # 创建当前对象的副本作为目标
         self.target = self.copy(deep=use_deepcopy)
@@ -1654,11 +1505,6 @@ class Mobject(object):
         -----
         use_deepcopy : bool, optional
             若为True则深拷贝保存状态（副本与原对象完全独立），否则浅拷贝，默认False
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 拷贝当前对象作为保存的状态
         self.saved_state = self.copy(deep=use_deepcopy)
@@ -1670,11 +1516,6 @@ class Mobject(object):
         """
         恢复到之前保存的状态：将`saved_state`中存储的状态应用到当前对象，
         若未保存过状态则抛出异常。
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（状态已恢复为保存时的状态）
         
         异常
         -----
@@ -1704,11 +1545,6 @@ class Mobject(object):
             目标对象（当前对象将复制其所有状态）
         match_updaters : bool, optional
             若为True则同步目标对象的更新器列表，否则保持当前更新器，默认False
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（状态已与目标对象一致）
         """
         # 对齐两个对象的家族结构（确保子对象数量和层级匹配）
         self.align_family(mobject)
@@ -1873,11 +1709,6 @@ class Mobject(object):
             若为True，将每列副本封装为独立子组，最终返回组的组，默认False（与group_by_rows互斥）
         **kwargs
             传递给arrange_in_grid的参数（如buff、aligned_edge等）
-        
-        返回
-        -----
-        Self
-            网格排列的副本组（或按行/列分组的组实例）
         """
         total = n_rows * n_cols  # 副本总数
         grid = self.replicate(total)  # 生成指定数量的副本组
@@ -1927,11 +1758,6 @@ class Mobject(object):
             时间差（自上次更新到当前的时间间隔），默认0（适用于非时间依赖的更新器）
         recurse : bool, optional
             是否递归执行子对象的更新器，默认True（递归执行）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 若无可执行的更新器或更新已暂停，直接返回
         if not self.has_updaters() or self.updating_suspended:
@@ -1952,11 +1778,6 @@ class Mobject(object):
     def get_updaters(self) -> list[Updater]:
         """
         获取当前对象的所有更新器列表：直接返回存储的更新器列表，用于查看或后续操作（如移除）。
-        
-        返回
-        -----
-        list[Updater]
-            当前对象的更新器列表（元素为Updater类型，即时间/非时间更新器）
         """
         return self.updaters
 
@@ -1971,11 +1792,6 @@ class Mobject(object):
             待添加的更新器函数（需符合TimeBasedUpdater或NonTimeUpdater的签名）
         call : bool, optional
             添加后是否立即调用一次更新（dt=0），默认True（立即执行）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         self.updaters.append(update_func)  # 将更新器加入列表
         # 若需要立即执行，调用update方法（dt=0）
@@ -1997,11 +1813,6 @@ class Mobject(object):
             待插入的更新器函数
         index : int, optional
             插入位置的索引，默认0（插入到列表首位，优先执行）
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         self.updaters.insert(index, update_func)  # 在指定索引插入更新器
         self.refresh_has_updater_status()  # 刷新家族的更新器状态标记
@@ -2016,11 +1827,6 @@ class Mobject(object):
         -----
         update_func : Updater
             待移除的更新器函数
-        
-        返回
-        -----
-        Self
-            当前图形对象自身（支持链式调用）
         """
         # 循环移除所有匹配的更新器（处理重复添加的情况）
         while update_func in self.updaters:
@@ -2029,67 +1835,158 @@ class Mobject(object):
         return self
 
     def clear_updaters(self, recurse: bool = True) -> Self:
+        """
+        清空更新器：递归或非递归地删除自身及家族成员的所有更新器，
+        重置更新器状态标记，并同步更新祖先对象的更新器状态。
+        
+        参数
+        -----
+        recurse : bool, optional
+            是否递归清空子对象的更新器，默认True（清空所有家族成员）
+        """
+        # 遍历目标家族成员（recurse=True时含子对象），清空更新器并重置状态
         for mob in self.get_family(recurse):
-            mob.updaters = []
-            mob._has_updaters_in_family = False
+            mob.updaters = []  # 清空更新器列表
+            mob._has_updaters_in_family = False  # 重置家族更新器状态标记
+        # 遍历所有祖先对象，重置其家族更新器状态标记
         for parent in self.get_ancestors():
             parent._has_updaters_in_family = False
         return self
 
     def match_updaters(self, mobject: Mobject) -> Self:
+        """
+        同步目标对象的更新器：将当前对象的更新器列表替换为目标对象的更新器列表，
+        并刷新家族的更新器状态标记，使当前对象与目标对象的更新逻辑一致。
+        
+        参数
+        -----
+        mobject : Mobject
+            目标对象（提供待同步的更新器列表）
+        """
+        # 复制目标对象的更新器列表（浅拷贝，共享更新器函数引用）
         self.updaters = list(mobject.updaters)
+        # 刷新家族更新器状态标记，确保父对象感知更新器变化
         self.refresh_has_updater_status()
         return self
 
     def suspend_updating(self, recurse: bool = True) -> Self:
-        self.updating_suspended = True
+        """
+        暂停更新：设置更新暂停标记为True，禁止当前对象执行更新器，
+        可选择递归暂停所有子对象的更新，暂停后`update`方法将不生效。
+        
+        参数
+        -----
+        recurse : bool, optional
+            是否递归暂停子对象的更新，默认True（暂停所有家族成员）
+        """
+        self.updating_suspended = True  # 暂停当前对象更新
+        # 若递归，暂停所有子对象的更新
         if recurse:
             for submob in self.submobjects:
                 submob.suspend_updating(recurse)
         return self
 
     def resume_updating(self, recurse: bool = True, call_updater: bool = True) -> Self:
-        self.updating_suspended = False
+        """
+        恢复更新：设置更新暂停标记为False，允许当前对象执行更新器，
+        可选择递归恢复子对象更新、通知祖先对象恢复，并可立即执行一次更新。
+        
+        参数
+        -----
+        recurse : bool, optional
+            是否递归恢复子对象的更新，默认True（恢复所有家族成员）
+        call_updater : bool, optional
+            恢复后是否立即执行一次更新（dt=0），默认True（立即同步状态）
+        """
+        self.updating_suspended = False  # 恢复当前对象更新
+        # 若递归，恢复所有子对象的更新
         if recurse:
             for submob in self.submobjects:
                 submob.resume_updating(recurse)
+        # 通知所有祖先对象恢复更新（不递归、不立即执行，避免重复触发）
         for parent in self.parents:
             parent.resume_updating(recurse=False, call_updater=False)
+        # 若需要，恢复后立即执行一次更新，同步当前状态
         if call_updater:
             self.update(dt=0, recurse=recurse)
         return self
 
     def has_updaters(self) -> bool:
+        """
+        判断当前对象或其家族是否含更新器：若状态标记未缓存，先检查自身更新器列表
+        及所有子对象的更新器状态，缓存结果后返回；若已缓存，直接返回缓存值。
+        
+        返回
+        -----
+        bool
+            True表示当前对象或其家族含更新器，False表示无任何更新器
+        """
+        # 若状态标记未缓存（为None），重新计算并缓存
         if self._has_updaters_in_family is None:
-            # Recompute and save
+            # 自身有更新器 或 任一子对象有更新器，即判定为含更新器
             self._has_updaters_in_family = bool(self.updaters) or any(
                 sm.has_updaters() for sm in self.submobjects
             )
         return self._has_updaters_in_family
 
     def refresh_has_updater_status(self) -> Self:
-        self._has_updaters_in_family = None
+        """
+        刷新更新器状态标记：重置当前对象的家族更新器状态标记（设为None），
+        并向上通知所有父对象同步刷新，确保更新器状态的准确性。
+        """
+        self._has_updaters_in_family = None  # 重置当前对象的状态标记（触发后续重新计算）
+        # 向上通知所有父对象刷新状态标记，确保家族层级的状态同步
         for parent in self.parents:
             parent.refresh_has_updater_status()
         return self
-
-    # Check if mark as static or not for camera
+    
+    # 标记对象是否为静态（供相机判断是否需要实时渲染）
 
     def is_changing(self) -> bool:
+        """
+        判断对象是否处于动态变化中：若对象正在执行动画（_is_animating为True）或包含更新器，
+        则判定为动态变化，相机需实时渲染；否则为静态，可优化渲染性能。
+        
+        返回
+        -----
+        bool
+            True表示对象动态变化中，False表示对象静态无变化
+        """
         return self._is_animating or self.has_updaters()
 
     def set_animating_status(self, is_animating: bool, recurse: bool = True) -> Self:
+        """
+        设置对象的动画状态标记：递归或非递归地更新自身、家族成员及祖先对象的_is_animating标记，
+        用于告知系统对象是否正在执行动画。
+        
+        参数
+        -----
+        is_animating : bool
+            动画状态，True表示正在执行动画，False表示动画结束
+        recurse : bool, optional
+            是否递归更新家族成员（自身及子对象）的动画状态，默认True
+        """
+        # 遍历家族成员（含/不含子对象）和所有祖先对象，统一设置动画状态
         for mob in (*self.get_family(recurse), *self.get_ancestors()):
             mob._is_animating = is_animating
         return self
 
-    # Transforming operations
+    # 变换操作（平移、缩放等）
 
     def shift(self, vector: Vect3) -> Self:
+        """
+        平移对象：沿指定3D向量移动对象（如RIGHT表示向右、UP表示向上），
+        直接修改顶点坐标和包围盒，所有家族成员同步平移。
+        
+        参数
+        -----
+        vector : Vect3
+            平移向量（如np.array([1,0,0])表示沿x轴正方向平移1单位）
+        """
         self.apply_points_function(
-            lambda points: points + vector,
-            about_edge=None,
-            works_on_bounding_box=True,
+            lambda points: points + vector,  # 平移逻辑：顶点坐标 + 平移向量
+            about_edge=None,  # 无需围绕特定边缘，直接平移
+            works_on_bounding_box=True,  # 同时更新包围盒（避免后续重复计算）
         )
         return self
 
@@ -2101,41 +1998,97 @@ class Mobject(object):
         about_edge: Vect3 = ORIGIN
     ) -> Self:
         """
+        缩放对象：按指定缩放因子放大/缩小对象，支持围绕特定点或边缘缩放，
+        并限制最小缩放因子避免对象消失，缩放后同步处理家族成员的副作用（如纹理、字体）。
+        
+        说明
+        -----
         Default behavior is to scale about the center of the mobject.
         The argument about_edge can be a vector, indicating which side of
         the mobject to scale about, e.g., mob.scale(about_edge = RIGHT)
         scales about mob.get_right().
-
         Otherwise, if about_point is given a value, scaling is done with
         respect to that point.
+        （默认围绕对象中心缩放；about_edge可指定围绕边缘缩放，如RIGHT表示围绕右边缘；
+        若指定about_point，则围绕该点缩放）
+        
+        参数
+        -----
+        scale_factor : float | npt.ArrayLike
+            缩放因子，单个数值表示等比例缩放（如2表示放大2倍），数组表示各轴独立缩放（如[2,1,1]表示x轴放大2倍）
+        min_scale_factor : float, optional
+            最小缩放因子，避免缩放后对象过小或消失，默认1e-8
+        about_point : Vect3 | None, optional
+            缩放中心点，默认None（优先使用about_edge）
+        about_edge : Vect3, optional
+            缩放围绕的边缘（如LEFT、TOP），默认ORIGIN（围绕中心）
         """
+        # 处理缩放因子：确保不小于最小缩放因子，避免对象消失
         if isinstance(scale_factor, numbers.Number):
             scale_factor = max(scale_factor, min_scale_factor)
         else:
             scale_factor = np.array(scale_factor).clip(min=min_scale_factor)
+        
+        # 调用通用点处理方法执行缩放逻辑
         self.apply_points_function(
-            lambda points: scale_factor * points,
-            about_point=about_point,
-            about_edge=about_edge,
-            works_on_bounding_box=True,
+            lambda points: scale_factor * points,  # 缩放逻辑：顶点坐标 × 缩放因子
+            about_point=about_point,  # 围绕指定点缩放
+            about_edge=about_edge,    # 围绕指定边缘缩放（about_point为None时生效）
+            works_on_bounding_box=True,  # 同时更新包围盒
         )
+        
+        # 处理缩放带来的副作用（如纹理缩放、字体大小调整等，由子类实现_handle_scale_side_effects）
         for mob in self.get_family():
             mob._handle_scale_side_effects(scale_factor)
         return self
 
     def _handle_scale_side_effects(self, scale_factor):
-        # In case subclasses, such as DecimalNumber, need to make
-        # any other changes when the size gets altered
+        """
+        处理缩放带来的副作用：空实现，供子类（如DecimalNumber）重写，
+        用于在缩放时调整额外属性（如字体大小、纹理比例等）。
+        
+        说明
+        -----
+        In case subclasses, such as DecimalNumber, need to make
+        any other changes when the size gets altered
+        （供子类如DecimalNumber在尺寸改变时做额外调整）
+        """
         pass
 
     def stretch(self, factor: float, dim: int, **kwargs) -> Self:
+        """
+        沿指定维度拉伸对象：仅在指定维度（如x轴0、y轴1）上按比例拉伸，
+        其他维度保持不变，可指定拉伸围绕的点或边缘。
+        
+        参数
+        -----
+        factor : float
+            拉伸因子（>1表示拉长，0<factor<1表示压缩）
+        dim : int
+            拉伸维度，0=x轴、1=y轴、2=z轴
+        **kwargs
+            传递给apply_points_function的参数（如about_point、about_edge）
+        """
+        # 定义拉伸函数：仅指定维度的坐标乘以拉伸因子
         def func(points):
             points[:, dim] *= factor
             return points
-        self.apply_points_function(func, works_on_bounding_box=True, **kwargs)
+        # 应用拉伸函数到所有点和包围盒
+        self.apply_points_function(func, works_on_bounding_box=True,** kwargs)
         return self
 
     def rotate_about_origin(self, angle: float, axis: Vect3 = OUT) -> Self:
+        """
+        围绕原点旋转对象：调用rotate方法，指定旋转中心为原点（ORIGIN），
+        简化围绕世界坐标系原点旋转的操作。
+        
+        参数
+        -----
+        angle : float
+            旋转角度（弧度制，如TAU/4表示90度）
+        axis : Vect3, optional
+            旋转轴，默认OUT（垂直屏幕向外，即z轴正方向）
+        """
         return self.rotate(angle, axis, about_point=ORIGIN)
 
     def rotate(
@@ -2145,28 +2098,76 @@ class Mobject(object):
         about_point: Vect3 | None = None,
         **kwargs
     ) -> Self:
+        """
+        旋转对象：围绕指定轴和中心点旋转对象，通过旋转矩阵实现3D空间中的旋转，
+        支持任意轴和中心点，适用于各种旋转动画。
+        
+        参数
+        -----
+        angle : float
+            旋转角度（弧度制）
+        axis : Vect3, optional
+            旋转轴向量（如OUT为z轴、RIGHT为x轴），默认OUT
+        about_point : Vect3 | None, optional
+            旋转中心点，默认None（围绕对象自身中心）
+        **kwargs
+            传递给apply_points_function的其他参数
+        """
+        # 计算旋转矩阵的转置（用于后续点乘实现旋转）
         rot_matrix_T = rotation_matrix_transpose(angle, axis)
+        # 应用旋转函数：点坐标 × 旋转矩阵转置 = 旋转后的坐标
         self.apply_points_function(
             lambda points: np.dot(points, rot_matrix_T),
-            about_point,
-            **kwargs
+            about_point,** kwargs
         )
         return self
 
     def flip(self, axis: Vect3 = UP, **kwargs) -> Self:
-        return self.rotate(TAU / 2, axis, **kwargs)
+        """
+        翻转对象：通过旋转180度（TAU/2弧度）实现对象翻转，等价于绕指定轴旋转半圈，
+        可指定翻转围绕的中心点。
+        
+        参数
+        -----
+        axis : Vect3, optional
+            翻转轴（如UP为y轴，水平翻转；RIGHT为x轴，垂直翻转），默认UP
+        **kwargs
+            传递给rotate方法的参数（如about_point）
+        """
+        return self.rotate(TAU / 2, axis,** kwargs)  # TAU/2 = π，即180度旋转
 
     def apply_function(self, function: Callable[[np.ndarray], np.ndarray], **kwargs) -> Self:
-        # Default to applying matrix about the origin, not mobjects center
+        """
+        对对象的每个顶点应用自定义函数：将函数逐个应用到所有顶点坐标，
+        支持指定变换围绕的中心点（默认围绕原点），适用于自定义几何变换。
+        
+        参数
+        -----
+        function : Callable[[np.ndarray], np.ndarray]
+            顶点变换函数，输入单个顶点坐标（3D数组），输出变换后的坐标
+        **kwargs
+            传递给apply_points_function的参数（如about_point），默认about_point=ORIGIN
+        """
+        # 默认为围绕原点变换，而非对象中心
         if len(kwargs) == 0:
             kwargs["about_point"] = ORIGIN
+        # 应用函数到所有顶点：逐个处理每个点
         self.apply_points_function(
-            lambda points: np.array([function(p) for p in points]),
-            **kwargs
+            lambda points: np.array([function(p) for p in points]),** kwargs
         )
         return self
 
     def apply_function_to_position(self, function: Callable[[np.ndarray], np.ndarray]) -> Self:
+        """
+        对对象位置应用自定义函数：计算对象中心坐标经函数变换后的新位置，
+        将对象整体移动到新位置（不改变对象自身形状和朝向）。
+        
+        参数
+        -----
+        function : Callable[[np.ndarray], np.ndarray]
+            位置变换函数，输入对象中心坐标（3D数组），输出新位置坐标
+        """
+        # 计算新位置：函数作用于当前中心坐标
         self.move_to(function(self.get_center()))
         return self
 
@@ -2174,17 +2175,42 @@ class Mobject(object):
         self,
         function: Callable[[np.ndarray], np.ndarray]
     ) -> Self:
+        """
+        对所有子对象位置应用自定义函数：递归对每个子对象调用apply_function_to_position，
+        仅改变子对象的位置，不影响父对象自身位置，适用于批量调整子对象布局。
+        
+        参数
+        -----
+        function : Callable[[np.ndarray], np.ndarray]
+            位置变换函数，输入子对象中心坐标，输出新位置坐标
+        """
         for submob in self.submobjects:
             submob.apply_function_to_position(function)
         return self
 
     def apply_matrix(self, matrix: npt.ArrayLike, **kwargs) -> Self:
-        # Default to applying matrix about the origin, not mobjects center
+        """
+        对对象应用矩阵变换：将指定矩阵扩展为与对象维度匹配的单位矩阵，
+        通过矩阵乘法实现线性变换（如旋转、缩放、剪切），默认围绕原点变换。
+        
+        参数
+        -----
+        matrix : npt.ArrayLike
+            变换矩阵（如2x2矩阵用于2D变换、3x3矩阵用于3D变换），维度可小于对象维度（将自动补全为单位矩阵）
+        **kwargs
+            传递给apply_points_function的参数（如about_point指定变换中心点）
+        """
+        # 若未指定变换中心点（about_point或about_edge），默认围绕原点变换
         if ("about_point" not in kwargs) and ("about_edge" not in kwargs):
             kwargs["about_point"] = ORIGIN
+        
+        # 创建与对象维度匹配的单位矩阵（基础矩阵，确保变换维度正确）
         full_matrix = np.identity(self.dim)
+        # 将输入矩阵转换为numpy数组，并填充到单位矩阵的左上角（补全维度）
         matrix = np.array(matrix)
         full_matrix[:matrix.shape[0], :matrix.shape[1]] = matrix
+        
+        # 应用矩阵变换：顶点坐标 × 矩阵转置（确保变换方向正确）
         self.apply_points_function(
             lambda points: np.dot(points, full_matrix.T),
             **kwargs
@@ -2192,36 +2218,69 @@ class Mobject(object):
         return self
 
     def apply_complex_function(self, function: Callable[[complex], complex], **kwargs) -> Self:
+        """
+        对对象应用复变函数变换：将对象的2D顶点坐标（x,y）视为复数（x+yi），
+        执行复变函数运算后转换回3D坐标（z轴保持不变），实现复杂2D变形。
+        
+        参数
+        -----
+        function : Callable[[complex], complex]
+            复变函数（如lambda z: z**2实现平方变换、lambda z: np.exp(z)实现指数变换）
+        **kwargs
+            传递给apply_function的参数（如about_point指定变换中心点）
+        """
+        # 定义3D坐标变换函数：提取x,y组成复数，执行复变函数后还原为3D坐标
         def R3_func(point):
             x, y, z = point
-            xy_complex = function(complex(x, y))
+            xy_complex = function(complex(x, y))  # 将(x,y)转为复数并执行函数
             return [
-                xy_complex.real,
-                xy_complex.imag,
-                z
+                xy_complex.real,  # 复数实部作为新x坐标
+                xy_complex.imag,  # 复数虚部作为新y坐标
+                z                 # z坐标保持不变
             ]
+        # 调用apply_function执行3D坐标变换
         return self.apply_function(R3_func, **kwargs)
 
-    def wag(
-        self,
-        direction: Vect3 = RIGHT,
-        axis: Vect3 = DOWN,
-        wag_factor: float = 1.0
-    ) -> Self:
+    def wag(self, direction: Vect3 = RIGHT, axis: Vect3 = DOWN, wag_factor: float = 1.0) -> Self:
+        """
+        使对象产生“摆动”变形：沿指定轴计算顶点的权重系数，按系数沿摆动方向偏移顶点，
+        实现类似“弯曲”“摆动”的非线性变形（如旗帜飘动、叶子摆动）。
+        
+        参数
+        -----
+        direction : Vect3, optional
+            摆动偏移方向（如RIGHT表示水平摆动、UP表示垂直摆动），默认RIGHT
+        axis : Vect3, optional
+            计算权重的参考轴（如DOWN表示沿y轴向下渐变权重），默认DOWN
+        wag_factor : float, optional
+            摆动幅度系数（>1增强幅度梯度，<1减弱幅度梯度），默认1.0
+        """
+        # 遍历家族中所有含顶点数据的成员，逐个执行摆动变形
         for mob in self.family_members_with_points():
+            # 1. 计算每个顶点沿参考轴的投影值（作为权重基础）
             alphas = np.dot(mob.get_points(), np.transpose(axis))
-            alphas -= min(alphas)
-            alphas /= max(alphas)
+            # 2. 归一化权重：将投影值映射到[0,1]区间
+            alphas -= min(alphas)  # 平移到最小值为0
+            alphas /= max(alphas)  # 缩放最大值为1（避免除零，因mob有顶点则max≥min）
+            # 3. 调整权重梯度：通过幂运算改变摆动幅度的分布
             alphas = alphas**wag_factor
-            mob.set_points(mob.get_points() + np.dot(
-                alphas.reshape((len(alphas), 1)),
-                np.array(direction).reshape((1, mob.dim))
-            ))
+            # 4. 计算顶点偏移量：权重 × 摆动方向向量（确保每个顶点偏移量不同）
+            offsets = np.dot(
+                alphas.reshape((len(alphas), 1)),  # 权重数组（N,1）
+                np.array(direction).reshape((1, mob.dim))  # 摆动方向（1,3）
+            )
+            # 5. 应用偏移到顶点，实现摆动变形
+            mob.set_points(mob.get_points() + offsets)
         return self
 
-    # Positioning methods
+    # 定位相关方法（控制对象在画面中的位置与对齐）
 
     def center(self) -> Self:
+        """
+        将对象居中：计算对象的中心坐标，沿相反方向平移对象，使其中心与世界坐标系原点（ORIGIN）重合，
+        实现画面居中效果。
+        """
+        # 平移向量 = -中心坐标（将中心移至原点）
         self.shift(-self.get_center())
         return self
 
@@ -2231,13 +2290,31 @@ class Mobject(object):
         buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
     ) -> Self:
         """
+        将对象对齐到画面边界：根据指定方向（如LEFT、TOP+RIGHT）计算画面边界目标点，
+        平移对象使其边界点与目标点对齐，并保留指定缓冲距离。
+        
+        说明
+        -----
         Direction just needs to be a vector pointing towards side or
         corner in the 2d plane.
+        （方向只需是指向2D平面中边缘或角落的向量，如LEFT表示左边缘，LEFT+UP表示左上角落）
+        
+        参数
+        -----
+        direction : Vect3
+            对齐方向向量（如LEFT、RIGHT、UP+DOWN不合法，需指向单一边缘/角落）
+        buff : float, optional
+            对象与画面边界的缓冲距离，默认使用全局默认边缘缓冲（DEFAULT_MOBJECT_TO_EDGE_BUFF）
         """
+        # 计算画面边界目标点：取方向向量的正负符号 × 画面半宽/半高（仅2D平面，z轴为0）
         target_point = np.sign(direction) * (FRAME_X_RADIUS, FRAME_Y_RADIUS, 0)
+        # 获取对象需要对齐的边界点（与方向对应的包围盒点）
         point_to_align = self.get_bounding_box_point(direction)
+        # 计算平移向量：目标点 - 对齐点 - 缓冲距离×方向（确保缓冲方向正确）
         shift_val = target_point - point_to_align - buff * np.array(direction)
+        # 修正平移向量：仅在方向向量非零的维度生效（避免无关维度偏移）
         shift_val = shift_val * abs(np.sign(direction))
+        # 执行平移，完成边界对齐
         self.shift(shift_val)
         return self
 
@@ -2246,6 +2323,17 @@ class Mobject(object):
         corner: Vect3 = LEFT + DOWN,
         buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
     ) -> Self:
+        """
+        将对象对齐到画面角落：调用align_on_border方法，默认对齐到左下角落（LEFT+DOWN），
+        简化角落对齐的调用流程。
+        
+        参数
+        -----
+        corner : Vect3, optional
+            目标角落方向（如LEFT+UP表示左上、RIGHT+DOWN表示右下），默认LEFT+DOWN（左下）
+        buff : float, optional
+            对象与角落的缓冲距离，默认使用全局默认边缘缓冲
+        """
         return self.align_on_border(corner, buff)
 
     def to_edge(
@@ -2253,6 +2341,17 @@ class Mobject(object):
         edge: Vect3 = LEFT,
         buff: float = DEFAULT_MOBJECT_TO_EDGE_BUFF
     ) -> Self:
+        """
+        将对象对齐到画面边缘：调用align_on_border方法，默认对齐到左边缘（LEFT），
+        简化边缘对齐的调用流程。
+        
+        参数
+        -----
+        edge : Vect3, optional
+            目标边缘方向（如LEFT、RIGHT、UP、DOWN），默认LEFT（左边缘）
+        buff : float, optional
+            对象与边缘的缓冲距离，默认使用全局默认边缘缓冲
+        """
         return self.align_on_border(edge, buff)
 
     def next_to(
@@ -2265,112 +2364,355 @@ class Mobject(object):
         index_of_submobject_to_align: int | slice | None = None,
         coor_mask: Vect3 = np.array([1, 1, 1]),
     ) -> Self:
+        """
+        将对象放置在目标（对象或点）的指定方向旁：支持子对象级对齐、指定轴向生效，
+        自动计算平移距离并保留缓冲，是对象间相对定位的核心方法。
+        
+        参数
+        -----
+        mobject_or_point : Mobject | Vect3
+            目标参考物，可为另一个Mobject实例或3D坐标点
+        direction : Vect3, optional
+            相对于目标的放置方向（如RIGHT表示在目标右侧、UP表示在目标上方），默认RIGHT
+        buff : float, optional
+            对象与目标的缓冲距离，默认使用全局默认对象间缓冲（DEFAULT_MOBJECT_TO_MOBJECT_BUFF）
+        aligned_edge : Vect3, optional
+            对齐边缘（如LEFT表示对象左边缘与目标右边缘对齐），默认ORIGIN（中心对齐）
+        submobject_to_align : Mobject | None, optional
+            用于对齐的子对象（当前对象的子对象），默认None（使用当前对象自身）
+        index_of_submobject_to_align : int | slice | None, optional
+            用于对齐的子对象索引（替代submobject_to_align），默认None
+        coor_mask : Vect3, optional
+            坐标掩码（如[1,0,1]表示仅x和z轴生效，y轴不偏移），默认[1,1,1]（全轴生效）
+        """
+        # 1. 计算目标参考点（根据目标是对象还是点）
         if isinstance(mobject_or_point, Mobject):
             mob = mobject_or_point
+            # 确定目标对象中用于对齐的子对象（按索引或默认自身）
             if index_of_submobject_to_align is not None:
                 target_aligner = mob[index_of_submobject_to_align]
             else:
                 target_aligner = mob
+            # 目标点 = 目标对齐物的“对齐边缘+方向”对应的包围盒点（如目标右边缘）
             target_point = target_aligner.get_bounding_box_point(
                 aligned_edge + direction
             )
         else:
+            # 目标是点时，直接使用该点作为目标点
             target_point = mobject_or_point
+
+        # 2. 确定当前对象中用于对齐的部分（子对象或自身）
         if submobject_to_align is not None:
             aligner = submobject_to_align
         elif index_of_submobject_to_align is not None:
             aligner = self[index_of_submobject_to_align]
         else:
             aligner = self
+        # 当前对齐点 = 对齐物的“对齐边缘-方向”对应的包围盒点（如当前左边缘）
         point_to_align = aligner.get_bounding_box_point(aligned_edge - direction)
-        self.shift((target_point - point_to_align + buff * direction) * coor_mask)
+
+        # 3. 计算平移向量并执行平移（应用坐标掩码，限制生效轴）
+        shift_vector = (target_point - point_to_align + buff * direction) * coor_mask
+        self.shift(shift_vector)
         return self
 
     def shift_onto_screen(self, **kwargs) -> Self:
+        """
+        将对象平移到屏幕内：检查对象的上下左右边缘是否超出屏幕范围，
+        若超出则将对应边缘对齐到屏幕边缘（保留缓冲），确保对象完全显示在屏幕内。
+        
+        参数
+        -----
+        **kwargs
+            传递给to_edge方法的参数，如buff（对象与屏幕边缘的缓冲距离）
+        """
+        # 屏幕在x、y轴的半长度（用于判断是否超出屏幕）
         space_lengths = [FRAME_X_RADIUS, FRAME_Y_RADIUS]
+        # 遍历四个方向（上、下、左、右），逐个检查是否超出屏幕
         for vect in UP, DOWN, LEFT, RIGHT:
+            # 确定当前方向对应的维度（x轴0或y轴1）
             dim = np.argmax(np.abs(vect))
+            # 获取缓冲距离（默认使用全局默认边缘缓冲）
             buff = kwargs.get("buff", DEFAULT_MOBJECT_TO_EDGE_BUFF)
+            # 屏幕在当前维度的最大有效范围（半长度 - 缓冲）
             max_val = space_lengths[dim] - buff
+            # 获取对象在当前方向的边缘中心坐标
             edge_center = self.get_edge_center(vect)
+            # 若边缘中心超出最大有效范围，将对象对齐到对应屏幕边缘
             if np.dot(edge_center, vect) > max_val:
                 self.to_edge(vect, **kwargs)
         return self
 
     def is_off_screen(self) -> bool:
+        """
+        判断对象是否在屏幕外：检查对象的左右上下边缘是否完全超出屏幕范围，
+        只要有一个方向完全超出，即判定为在屏幕外。
+        
+        返回
+        -----
+        bool
+            True表示对象完全在屏幕外，False表示对象部分或全部在屏幕内
+        """
+        # 左边缘 > 屏幕右边界 → 完全在右侧屏幕外
         if self.get_left()[0] > FRAME_X_RADIUS:
             return True
+        # 右边缘 < 屏幕左边界 → 完全在左侧屏幕外
         if self.get_right()[0] < -FRAME_X_RADIUS:
             return True
+        # 下边缘 > 屏幕上边界 → 完全在上侧屏幕外
         if self.get_bottom()[1] > FRAME_Y_RADIUS:
             return True
+        # 上边缘 < 屏幕下边界 → 完全在下侧屏幕外
         if self.get_top()[1] < -FRAME_Y_RADIUS:
             return True
+        # 所有方向均未完全超出 → 在屏幕内
         return False
 
     def stretch_about_point(self, factor: float, dim: int, point: Vect3) -> Self:
+        """
+        围绕指定点沿维度拉伸对象：调用stretch方法，显式指定拉伸围绕的中心点，
+        简化“定点拉伸”的调用流程（如围绕鼠标位置拉伸对象）。
+        
+        参数
+        -----
+        factor : float
+            拉伸因子（>1拉长，0<factor<1压缩）
+        dim : int
+            拉伸维度（0=x轴、1=y轴、2=z轴）
+        point : Vect3
+            拉伸围绕的中心点（如鼠标坐标、对象顶点）
+        """
         return self.stretch(factor, dim, about_point=point)
 
     def stretch_in_place(self, factor: float, dim: int) -> Self:
-        # Now redundant with stretch
+        """
+        原位拉伸对象：仅调用stretch方法，无额外逻辑，当前已冗余（与stretch功能一致），
+        保留该方法用于向后兼容。
+        
+        参数
+        -----
+        factor : float
+            拉伸因子
+        dim : int
+            拉伸维度
+        """
+        # Now redundant with stretch（当前与stretch方法冗余）
         return self.stretch(factor, dim)
 
     def rescale_to_fit(self, length: float, dim: int, stretch: bool = False, **kwargs) -> Self:
+        """
+        缩放/拉伸对象以适配目标长度：根据stretch参数选择“等比例缩放”或“指定维度拉伸”，
+        使对象在目标维度上的长度恰好匹配指定值（如将文本宽度适配为10单位）。
+        
+        参数
+        -----
+        length : float
+            目标维度长度（如目标宽度、目标高度）
+        dim : int
+            目标维度（0=x轴、1=y轴、2=z轴）
+        stretch : bool, optional
+            若为True则沿指定维度拉伸（不保持宽高比），False则等比例缩放（保持宽高比），默认False
+        **kwargs
+            传递给stretch或scale方法的参数（如about_point指定缩放/拉伸中心点）
+        """
+        # 获取对象在目标维度上的当前长度
         old_length = self.length_over_dim(dim)
+        # 若当前长度为0（无顶点），无需调整，直接返回
         if old_length == 0:
             return self
+        # 计算缩放/拉伸因子（目标长度 / 当前长度）
+        factor = length / old_length
+        # 按参数选择拉伸或缩放
         if stretch:
-            self.stretch(length / old_length, dim, **kwargs)
+            self.stretch(factor, dim,** kwargs)
         else:
-            self.scale(length / old_length, **kwargs)
+            self.scale(factor, **kwargs)
         return self
 
     def stretch_to_fit_width(self, width: float, **kwargs) -> Self:
+        """
+        拉伸对象以适配目标宽度：调用rescale_to_fit方法，指定维度0（x轴）和stretch=True，
+        沿水平方向拉伸对象，使其宽度恰好匹配目标值（不保持宽高比）。
+        
+        参数
+        -----
+        width : float
+            目标宽度
+        **kwargs
+            传递给stretch方法的参数（如about_point指定拉伸中心点）
+        """
         return self.rescale_to_fit(width, 0, stretch=True, **kwargs)
 
     def stretch_to_fit_height(self, height: float, **kwargs) -> Self:
+        """
+        拉伸对象以适配目标高度：调用rescale_to_fit方法，指定维度1（y轴）和stretch=True，
+        沿垂直方向拉伸对象，使其高度恰好匹配目标值（不保持宽高比）。
+        
+        参数
+        -----
+        height : float
+            目标高度
+        **kwargs
+            传递给stretch方法的参数（如about_point指定拉伸中心点）
+        """
         return self.rescale_to_fit(height, 1, stretch=True, **kwargs)
-
+    
     def stretch_to_fit_depth(self, depth: float, **kwargs) -> Self:
-        return self.rescale_to_fit(depth, 2, stretch=True, **kwargs)
+        """
+        拉伸对象以适配目标深度：调用rescale_to_fit方法，指定维度2（z轴）和stretch=True，
+        沿深度方向拉伸对象，使其深度恰好匹配目标值（不保持宽高比，仅3D对象生效）。
+        
+        参数
+        -----
+        depth : float
+            目标深度
+        **kwargs
+            传递给stretch方法的参数（如about_point指定拉伸中心点）
+        """
+        return self.rescale_to_fit(depth, 2, stretch=True,** kwargs)
 
     def set_width(self, width: float, stretch: bool = False, **kwargs) -> Self:
+        """
+        设置对象宽度：调用rescale_to_fit方法，指定维度0（x轴），根据stretch参数选择
+        “等比例缩放”或“水平拉伸”，使对象宽度恰好匹配目标值（是rescale_to_fit的宽度专用简化版）。
+        
+        参数
+        -----
+        width : float
+            目标宽度
+        stretch : bool, optional
+            为True时水平拉伸（不保持宽高比），False时等比例缩放（保持宽高比），默认False
+        **kwargs
+            传递给stretch或scale方法的参数（如about_point指定缩放/拉伸中心点）
+        """
         return self.rescale_to_fit(width, 0, stretch=stretch, **kwargs)
 
     def set_height(self, height: float, stretch: bool = False, **kwargs) -> Self:
-        return self.rescale_to_fit(height, 1, stretch=stretch, **kwargs)
+        """
+        设置对象高度：调用rescale_to_fit方法，指定维度1（y轴），根据stretch参数选择
+        “等比例缩放”或“垂直拉伸”，使对象高度恰好匹配目标值（是rescale_to_fit的高度专用简化版）。
+        
+        参数
+        -----
+        height : float
+            目标高度
+        stretch : bool, optional
+            为True时垂直拉伸（不保持宽高比），False时等比例缩放（保持宽高比），默认False
+        **kwargs
+            传递给stretch或scale方法的参数（如about_point指定缩放/拉伸中心点）
+        """
+        return self.rescale_to_fit(height, 1, stretch=stretch,** kwargs)
 
     def set_depth(self, depth: float, stretch: bool = False, **kwargs) -> Self:
+        """
+        设置对象深度：调用rescale_to_fit方法，指定维度2（z轴），根据stretch参数选择
+        “等比例缩放”或“深度拉伸”，使对象深度恰好匹配目标值（仅3D对象生效，是rescale_to_fit的深度专用简化版）。
+        
+        参数
+        -----
+        depth : float
+            目标深度
+        stretch : bool, optional
+            为True时深度拉伸（不保持宽高比），False时等比例缩放（保持宽高比），默认False
+        **kwargs
+            传递给stretch或scale方法的参数（如about_point指定缩放/拉伸中心点）
+        """
         return self.rescale_to_fit(depth, 2, stretch=stretch, **kwargs)
 
     def set_max_width(self, max_width: float, **kwargs) -> Self:
+        """
+        设置对象最大宽度：仅当对象当前宽度超过max_width时，调用set_width将宽度缩放到max_width，
+        宽度未超限时不做调整（用于限制对象最大尺寸，避免溢出）。
+        
+        参数
+        -----
+        max_width : float
+            最大允许宽度
+        **kwargs
+            传递给set_width方法的参数（如stretch、about_point）
+        """
         if self.get_width() > max_width:
             self.set_width(max_width, **kwargs)
         return self
 
     def set_max_height(self, max_height: float, **kwargs) -> Self:
+        """
+        设置对象最大高度：仅当对象当前高度超过max_height时，调用set_height将高度缩放到max_height，
+        高度未超限时不做调整（用于限制对象最大尺寸）。
+        
+        参数
+        -----
+        max_height : float
+            最大允许高度
+        **kwargs
+            传递给set_height方法的参数（如stretch、about_point）
+        """
         if self.get_height() > max_height:
-            self.set_height(max_height, **kwargs)
+            self.set_height(max_height,** kwargs)
         return self
 
     def set_max_depth(self, max_depth: float, **kwargs) -> Self:
+        """
+        设置对象最大深度：仅当对象当前深度超过max_depth时，调用set_depth将深度缩放到max_depth，
+        深度未超限时不做调整（仅3D对象生效，用于限制最大深度）。
+        
+        参数
+        -----
+        max_depth : float
+            最大允许深度
+        **kwargs
+            传递给set_depth方法的参数（如stretch、about_point）
+        """
         if self.get_depth() > max_depth:
             self.set_depth(max_depth, **kwargs)
         return self
 
     def set_min_width(self, min_width: float, **kwargs) -> Self:
+        """
+        设置对象最小宽度：仅当对象当前宽度小于min_width时，调用set_width将宽度放大到min_width，
+        宽度未小于时不做调整（用于保证对象最小显示尺寸）。
+        
+        参数
+        -----
+        min_width : float
+            最小允许宽度
+        **kwargs
+            传递给set_width方法的参数（如stretch、about_point）
+        """
         if self.get_width() < min_width:
-            self.set_width(min_width, **kwargs)
+            self.set_width(min_width,** kwargs)
         return self
 
     def set_min_height(self, min_height: float, **kwargs) -> Self:
+        """
+        设置对象最小高度：仅当对象当前高度小于min_height时，调用set_height将高度放大到min_height，
+        高度未小于时不做调整（用于保证对象最小显示尺寸）。
+        
+        参数
+        -----
+        min_height : float
+            最小允许高度
+        **kwargs
+            传递给set_height方法的参数（如stretch、about_point）
+        """
         if self.get_height() < min_height:
             self.set_height(min_height, **kwargs)
         return self
 
     def set_min_depth(self, min_depth: float, **kwargs) -> Self:
+        """
+        设置对象最小深度：仅当对象当前深度小于min_depth时，调用set_depth将深度放大到min_depth，
+        深度未小于时不做调整（仅3D对象生效，用于保证最小深度）。
+        
+        参数
+        -----
+        min_depth : float
+            最小允许深度
+        **kwargs
+            传递给set_depth方法的参数（如stretch、about_point）
+        """
         if self.get_depth() < min_depth:
-            self.set_depth(min_depth, **kwargs)
+            self.set_depth(min_depth,** kwargs)
         return self
 
     def set_shape(
@@ -2380,36 +2722,115 @@ class Mobject(object):
         depth: Optional[float] = None,
         **kwargs
     ) -> Self:
+        """
+        同时设置对象的宽、高、深：分别选指定宽度、高度、深度中的一个或多个，
+        通过拉伸（不保持宽高比）将对象调整到目标尺寸，未指定的维度保持不变。
+        
+        参数
+        -----
+        width : Optional[float], optional
+            目标宽度，为None时不调整宽度，默认None
+        height : Optional[float], optional
+            目标高度，为None时不调整高度，默认None
+        depth : Optional[float], optional
+            目标深度，为None时不调整深度，默认None
+        **kwargs
+            传递给set_width/set_height/set_depth的参数（如about_point指定拉伸中心）
+        """
+        # 分别设置指定的维度（均使用拉伸模式，不保持比例）
         if width is not None:
-            self.set_width(width, stretch=True, **kwargs)
+            self.set_width(width, stretch=True,** kwargs)
         if height is not None:
             self.set_height(height, stretch=True, **kwargs)
         if depth is not None:
-            self.set_depth(depth, stretch=True, **kwargs)
+            self.set_depth(depth, stretch=True,** kwargs)
         return self
 
     def set_coord(self, value: float, dim: int, direction: Vect3 = ORIGIN) -> Self:
+        """
+        设置对象在指定维度的坐标：计算当前坐标与目标坐标的差值，沿该维度平移对象，
+        使指定方向的点（如中心、左边缘）在目标维度上的坐标恰好为目标值。
+        
+        参数
+        -----
+        value : float
+            目标坐标值
+        dim : int
+            目标维度（0=x轴、1=y轴、2=z轴）
+        direction : Vect3, optional
+            参考方向（如LEFT表示左边缘、ORIGIN表示中心），默认ORIGIN
+        """
+        # 获取对象在指定维度和方向上的当前坐标
         curr = self.get_coord(dim, direction)
+        # 计算平移向量：仅目标维度有差值，其他维度为0
         shift_vect = np.zeros(self.dim)
         shift_vect[dim] = value - curr
+        # 执行平移，将坐标设置为目标值
         self.shift(shift_vect)
         return self
 
     def set_x(self, x: float, direction: Vect3 = ORIGIN) -> Self:
+        """
+        设置对象在x轴的坐标：调用set_coord方法，指定维度0（x轴），
+        使对象指定方向的点（如左边缘、中心）的x坐标为目标值。
+        
+        参数
+        -----
+        x : float
+            目标x坐标值
+        direction : Vect3, optional
+            参考方向（如LEFT表示左边缘x坐标），默认ORIGIN（中心x坐标）
+        """
         return self.set_coord(x, 0, direction)
 
     def set_y(self, y: float, direction: Vect3 = ORIGIN) -> Self:
+        """
+        设置对象在y轴的坐标：调用set_coord方法，指定维度1（y轴），
+        使对象指定方向的点（如上边缘、中心）的y坐标为目标值。
+        
+        参数
+        -----
+        y : float
+            目标y坐标值
+        direction : Vect3, optional
+            参考方向（如UP表示上边缘y坐标），默认ORIGIN（中心y坐标）
+        """
         return self.set_coord(y, 1, direction)
 
     def set_z(self, z: float, direction: Vect3 = ORIGIN) -> Self:
+        """
+        设置对象在z轴的坐标：调用set_coord方法，指定维度2（z轴），
+        使对象指定方向的点的z坐标为目标值（主要影响3D渲染层级）。
+        
+        参数
+        -----
+        z : float
+            目标z坐标值
+        direction : Vect3, optional
+            参考方向，默认ORIGIN（中心z坐标）
+        """
         return self.set_coord(z, 2, direction)
 
     def set_z_index(self, z_index: int) -> Self:
+        """
+        设置对象的z-index（渲染层级）：修改对象的z_index属性，
+        控制多个对象的前后渲染顺序（值越大越靠上）。
+        
+        参数
+        -----
+        z_index : int
+            渲染层级值（整数，可正可负，默认0）
+        """
         self.z_index = z_index
         return self
 
     def space_out_submobjects(self, factor: float = 1.5, **kwargs) -> Self:
-        self.scale(factor, **kwargs)
+        """
+        增加子对象间的间距：先整体放大当前对象（含所有子对象），再将每个子对象缩小回原尺寸，
+        通过“整体放大-子对象还原”的差值实现子对象间距扩大，支持指定缩放中心点。
+        """
+        self.scale(factor,** kwargs)  # 整体放大当前对象（子对象随父对象一起放大）
+        # 逐个将子对象缩小到原尺寸（1/整体放大倍数），仅保留间距扩大效果
         for submob in self.submobjects:
             submob.scale(1. / factor)
         return self
@@ -2420,63 +2841,129 @@ class Mobject(object):
         aligned_edge: Vect3 = ORIGIN,
         coor_mask: Vect3 = np.array([1, 1, 1])
     ) -> Self:
+        """
+        将对象移动到目标位置：根据目标（点或对象）计算平移向量，使对象的指定边缘（如中心、左边缘）
+        与目标的对应边缘对齐，支持限制生效的坐标轴。
+        
+        参数
+        -----
+        point_or_mobject : Mobject | Vect3
+            目标位置，可为3D坐标点或另一个Mobject实例（使用其包围盒边缘）
+        aligned_edge : Vect3, optional
+            对齐边缘（如LEFT表示对象左边缘与目标左边缘对齐），默认ORIGIN（中心对齐）
+        coor_mask : Vect3, optional
+            坐标掩码（如[1,0,1]表示仅x、z轴移动，y轴固定），默认[1,1,1]（全轴移动）
+        """
+        # 确定目标点：若为对象，取其指定边缘的包围盒点；若为点，直接使用
         if isinstance(point_or_mobject, Mobject):
             target = point_or_mobject.get_bounding_box_point(aligned_edge)
         else:
             target = point_or_mobject
+        # 获取当前对象需要对齐的边缘点
         point_to_align = self.get_bounding_box_point(aligned_edge)
+        # 计算平移向量（目标点 - 对齐点），应用坐标掩码后执行平移
         self.shift((target - point_to_align) * coor_mask)
         return self
 
     def replace(self, mobject: Mobject, dim_to_match: int = 0, stretch: bool = False) -> Self:
+        """
+        替换目标对象的位置与尺寸：将当前对象调整为目标对象的尺寸（等比例或拉伸），
+        并移动到目标对象的位置，实现“替换”目标对象的视觉效果。
+        
+        参数
+        -----
+        mobject : Mobject
+            被替换的目标对象（提供尺寸和位置参考）
+        dim_to_match : int, optional
+            等比例缩放时的参考维度（0=x轴、1=y轴、2=z轴），默认0（按宽度匹配）
+        stretch : bool, optional
+            为True时按目标对象的各维度单独拉伸（不保持宽高比），False时按参考维度等比例缩放，默认False
+        """
+        # 若目标对象无顶点且无子对象（空对象），将当前对象缩放到0（隐藏）
         if not mobject.get_num_points() and not mobject.submobjects:
             self.scale(0)
             return self
+        
+        # 调整当前对象尺寸以匹配目标对象
         if stretch:
+            # 拉伸模式：按目标对象的每个维度单独调整（不保持宽高比）
             for i in range(self.dim):
                 self.rescale_to_fit(mobject.length_over_dim(i), i, stretch=True)
         else:
+            # 等比例模式：按参考维度匹配，其他维度按比例缩放（保持宽高比）
             self.rescale_to_fit(
                 mobject.length_over_dim(dim_to_match),
                 dim_to_match,
                 stretch=False
             )
+        
+        # 将当前对象移动到目标对象的中心位置
         self.shift(mobject.get_center() - self.get_center())
         return self
-
-    def surround(
-        self,
+    
+    def surround(self,
         mobject: Mobject,
         dim_to_match: int = 0,
         stretch: bool = False,
         buff: float = MED_SMALL_BUFF
     ) -> Self:
+        """
+        包围目标对象：先将当前对象调整为与目标对象尺寸匹配（等比例或拉伸），
+        再按目标对象尺寸加缓冲距离放大，最终实现当前对象包裹目标对象且保留指定间距的效果。
+        """
+        # 第一步：调用replace方法，使当前对象尺寸匹配目标对象并移动到目标对象位置
         self.replace(mobject, dim_to_match, stretch)
+        # 第二步：计算放大比例 =（目标对象参考维度长度 + 缓冲距离）/ 目标对象参考维度长度
         length = mobject.length_over_dim(dim_to_match)
-        self.scale((length + buff) / length)
+        scale_factor = (length + buff) / length
+        # 第三步：按计算的比例放大当前对象，实现包围效果
+        self.scale(scale_factor)
         return self
 
     def put_start_and_end_on(self, start: Vect3, end: Vect3) -> Self:
+        """
+        固定对象的起点和终点到目标位置：通过缩放、旋转（2D+3D）和平移，
+        将对象的起始端点（curr_start）移动到目标起点（start），终止端点（curr_end）移动到目标终点（end），
+        适用于线段、箭头等有明确起止方向的对象。        
+        
+        异常
+        -----
+        Exception
+            若对象是闭合回路（起点与终点重合，curr_vect为0向量），抛出“无法定位闭合回路端点”的异常
+        """
+        # 1. 获取当前对象的起点和终点，计算当前起止向量
         curr_start, curr_end = self.get_start_and_end()
         curr_vect = curr_end - curr_start
+        # 若当前起止向量为0（闭合回路），无法定位端点，抛出异常
         if np.all(curr_vect == 0):
             raise Exception("Cannot position endpoints of closed loop")
+        
+        # 2. 计算目标起止向量
         target_vect = end - start
+
+        # 3. 缩放对象：使当前对象的长度匹配目标起止向量的长度（围绕当前起点缩放，避免起点偏移）
         self.scale(
-            get_norm(target_vect) / get_norm(curr_vect),
+            get_norm(target_vect) / get_norm(curr_vect),  # 缩放比例 = 目标长度 / 当前长度
             about_point=curr_start,
         )
+
+        # 4. 2D平面旋转：使当前对象的平面方向匹配目标向量的平面方向（绕z轴旋转）
         self.rotate(
-            angle_of_vector(target_vect) - angle_of_vector(curr_vect),
+            angle_of_vector(target_vect) - angle_of_vector(curr_vect),  # 旋转角度 = 目标角度 - 当前角度
         )
+
+        # 5. 3D空间旋转：调整对象在z轴方向的倾斜，匹配目标向量的3D方向（绕垂直于目标向量的轴旋转）
         self.rotate(
+            # 旋转角度 = 当前向量的z轴倾斜角 - 目标向量的z轴倾斜角
             np.arctan2(curr_vect[2], get_norm(curr_vect[:2])) - np.arctan2(target_vect[2], get_norm(target_vect[:2])),
-            axis=np.array([-target_vect[1], target_vect[0], 0]),
+            axis=np.array([-target_vect[1], target_vect[0], 0]),  # 旋转轴：垂直于目标向量的平面轴
         )
+
+        # 6. 平移对象：将对象起点从curr_start移动到目标起点start
         self.shift(start - self.get_start())
         return self
 
-    # Color functions
+    # 颜色相关方法（控制对象的RGBA颜色与透明度）
 
     @affects_family_data
     def set_rgba_array(
@@ -2485,8 +2972,24 @@ class Mobject(object):
         name: str = "rgba",
         recurse: bool = False
     ) -> Self:
+        """
+        批量设置家族成员的RGBA颜色数组：将指定的RGBA数组（含红、绿、蓝、透明度通道）
+        赋值给对象自身或其家族成员的颜色数据字段，支持自定义颜色字段名。
+        
+        参数
+        -----
+        rgba_array : npt.ArrayLike
+            RGBA颜色数组，形状需与对象顶点数量匹配（如(N,4)，N为顶点数，4个通道分别对应RGBA）
+        name : str, optional
+            颜色数据在对象data中的字段名，默认"rgba"（标准颜色字段）
+        recurse : bool, optional
+            是否递归设置所有子对象的颜色，默认False（仅设置当前对象）
+        """
+        # 遍历目标家族成员（自身或含子对象）
         for mob in self.get_family(recurse):
+            # 若对象有顶点，使用其现有data；若无顶点，使用默认数据模板
             data = mob.data if mob.get_num_points() > 0 else mob._data_defaults
+            # 将RGBA数组赋值到指定颜色字段（直接修改数据，确保颜色实时更新）
             data[name][:] = rgba_array
         return self
 
@@ -2496,9 +2999,19 @@ class Mobject(object):
         recurse: bool = True
     ) -> Self:
         """
+        通过函数动态设置RGBA颜色：对每个家族成员的顶点坐标应用自定义函数，
+        由函数返回对应顶点的RGBA颜色，实现基于位置的动态着色（如渐变、纹理）。
+        
+        说明
+        -----
         Func should take in a point in R3 and output an rgba value
+        （函数需接收3D空间中的顶点坐标，输出对应的RGBA颜色值）
         """
+        # 遍历家族中所有成员，逐个通过函数设置颜色
         for mob in self.get_family(recurse):
+            # 1. 获取当前成员的所有顶点坐标
+            # 2. 将顶点坐标传入函数，生成对应的RGBA颜色数组
+            # 3. 调用set_rgba_array应用生成的颜色数组
             mob.set_rgba_array(func(mob.get_points()))
         return self
 
@@ -2509,14 +3022,26 @@ class Mobject(object):
         recurse: bool = True
     ) -> Self:
         """
+        通过函数动态设置RGB颜色并统一控制透明度：对顶点坐标应用自定义函数生成RGB颜色，
+        再拼接统一的透明度通道（RGBA），实现“颜色动态、透明度固定”的着色效果。
+        
+        说明
+        -----
         Func should take in a point in R3 and output an rgb value
+        （函数需接收3D空间中的顶点坐标，输出对应的RGB颜色值）
         """
+        # 遍历家族中所有成员，逐个设置颜色
         for mob in self.get_family(recurse):
+            # 1. 获取当前成员的顶点坐标
             points = mob.get_points()
-            opacity = np.ones((points.shape[0], 1)) * opacity
-            mob.set_rgba_array(np.hstack((func(points), opacity)))
+            # 2. 生成与顶点数量匹配的统一透明度数组（N,1）
+            opacity_array = np.ones((points.shape[0], 1)) * opacity
+            # 3. 函数生成RGB数组 → 拼接透明度数组 → 得到RGBA数组
+            rgba_array = np.hstack((func(points), opacity_array))
+            # 4. 应用RGBA数组设置颜色
+            mob.set_rgba_array(rgba_array)
         return self
-
+    
     @affects_family_data
     def set_rgba_array_by_color(
         self,
