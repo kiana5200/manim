@@ -232,18 +232,45 @@ def get_sample_coords(
     coordinate_system: CoordinateSystem,
     density: float = 1.0
 ) -> it.product[tuple[Vect3, ...]]:
+    """
+    在指定坐标系中生成均匀采样的坐标点集合
+    
+    参数:
+        coordinate_system: 坐标系对象（如笛卡尔坐标系、极坐标系等）
+        density: 采样密度，值越大采样点越密集（默认1.0）
+    
+    返回:
+        采样点数组，每个元素是一个坐标点的坐标值
+    """
+    # 存储每个维度的采样范围
     ranges = []
+    # 获取坐标系所有维度的范围参数（最小值、最大值、步长）
     for range_args in coordinate_system.get_all_ranges():
         _min, _max, step = range_args
+        # 根据密度调整步长：密度越大，步长越小（采样点越密集）
         step /= density
+        # 生成当前维度的采样点序列（从_min到_max，步长为调整后的step）
         ranges.append(np.arange(_min, _max + step, step))
+    # 使用笛卡尔积生成所有维度的采样点组合，并转换为numpy数组
     return np.array(list(it.product(*ranges)))
 
 
 def vectorize(pointwise_function: Callable[[Tuple], Tuple]):
+    """
+    将逐点处理的函数转换为支持数组输入的向量化函数
+    
+    参数:
+        pointwise_function: 接收单个坐标点（元组形式）并返回处理结果的函数
+    
+    返回:
+        向量化函数：接收坐标点数组，返回对应处理结果的数组
+    """
+    # 定义向量化函数
     def v_func(coords_array: VectArray) -> VectArray:
+        # 遍历输入数组中的每个坐标点，应用原始逐点函数，最后转换为numpy数组
         return np.array([pointwise_function(*coords) for coords in coords_array])
 
+    # 返回向量化函数
     return v_func
 
 
