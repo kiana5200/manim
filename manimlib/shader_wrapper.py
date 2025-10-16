@@ -590,85 +590,106 @@ class VShaderWrapper(ShaderWrapper):
         # ------------------------------ 步骤5：恢复混合状态 ------------------------------
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)  # 恢复默认混合模式
 
-    # Static method returning one shared value across all VShaderWrappers
+    # ------------------------------ 静态方法：创建共享填充画布（离屏渲染核心） ------------------------------
     @lru_cache
     @staticmethod
     def get_fill_canvas(ctx: moderngl.Context) -> Tuple[Framebuffer, VertexArray, Framebuffer]:
         """
-        Because VMobjects with fill are rendered in a funny way, using
-        alpha blending to effectively compute the winding number around
-        each pixel, they need to be rendered to a separate texture, which
-        is then composited onto the ordinary frame buffer.
-
-        This returns a texture, loaded into a frame buffer, and a vao
-        which can display that texture as a simple quad onto a screen,
-        along with the rgb value which is meant to be discarded.
+        创建二次贝塞尔曲线填充用的共享离屏渲染画布：所有 VShaderWrapper 实例共享同一画布（通过 lru_cache 缓存），
+        解决复杂形状填充的 alpha 混合问题（如自相交曲线、不规则多边形），核心原理是通过离屏渲染计算像素的“环绕数”，
+        再将结果合成到主屏幕。
+        
+        返回值：Tuple[Framebuffer, VertexArray, Framebuffer]
+            - 第一个 Framebuffer：填充颜色离屏帧缓冲（存储填充区域的颜色信息）；
+            - VertexArray：简单四边形 VAO（用于将离屏纹理绘制到主屏幕）；
+            - 第二个 Framebuffer：深度信息离屏帧缓冲（存储填充区域的深度信息）。
         """
+        # 获取相机分辨率（主屏幕渲染分辨率）
         size = manim_config.camera.resolution
-        double_size = (2 * size[0], 2 * size[1])
+        double_size = (2 * size[0], 2 * size[1])  # 填充纹理尺寸：2倍分辨率（抗锯齿，提升填充精度）
 
-        # Important to make sure dtype is floating point (not fixed point)
-        # so that alpha values can be negative and are not clipped
+        # 1. 创建离屏纹理（浮点型 dtype 确保 alpha 可正负，支持环绕数计算）
+        # 填充颜色纹理：4通道（RGBA），f2=16位浮点（支持负 alpha 值，用于抵消计算）
         fill_texture = ctx.texture(size=double_size, components=4, dtype='f2')
-        # Use another one to keep track of depth
+        # 深度信息纹理：1通道（仅深度值），f4=32位浮点（高精度深度存储）
         depth_texture = ctx.texture(size=size, components=1, dtype='f4')
 
-        fill_texture_fbo = ctx.framebuffer(fill_texture)
-        depth_texture_fbo = ctx.framebuffer(depth_texture)
+        # 2. 创建离屏帧缓冲（绑定纹理，用于离屏渲染）
+        fill_texture_fbo = ctx.framebuffer(fill_texture)  # 颜色离屏帧缓冲
+        depth_texture_fbo = ctx.framebuffer(depth_texture)  # 深度离屏帧缓冲
 
+        # 3. 定义简单四边形着色器（用于将离屏纹理合成到主屏幕）
+        # 顶点着色器：将纹理坐标转为屏幕坐标（映射到全屏四边形）
         simple_vert = '''
             #version 330
 
-            in vec2 texcoord;
-            out vec2 uv;
+            in vec2 texcoord;  // 输入纹理坐标（0-1 范围）
+            out vec2 uv;       // 输出纹理坐标（传递给片段着色器）
 
             void main() {
+                // 纹理坐标 (0,0)→(1,1) 转为 NDC 坐标 (-1,-1)→(1,1)（屏幕全屏）
                 gl_Position = vec4((2.0 * texcoord - 1.0), 0.0, 1.0);
                 uv = texcoord;
             }
         '''
+        # 片段着色器：调整离屏纹理的 alpha 值（还原环绕数计算结果），并读取深度信息
         alpha_adjust_frag = '''
             #version 330
 
-            uniform sampler2D Texture;
-            uniform sampler2D DepthTexture;
+            uniform sampler2D Texture;       // 填充颜色纹理（离屏渲染结果）
+            uniform sampler2D DepthTexture;  // 深度信息纹理
 
-            in vec2 uv;
-            out vec4 color;
+            in vec2 uv;  // 纹理坐标（从顶点着色器传入）
+            out vec4 color;  // 最终输出颜色
 
             void main() {
+                // 采样离屏填充纹理的颜色
                 color = texture(Texture, uv);
-                if(color.a == 0) discard;
+                if(color.a == 0) discard;  // alpha=0 表示无填充，丢弃该像素
 
+                // 还原环绕数计算结果：负 alpha 转为正常透明度（核心逻辑）
                 if(color.a < 0){
-                    color.a = -color.a / (1.0 - color.a);
-                    color.rgb *= (color.a - 1);
+                    color.a = -color.a / (1.0 - color.a);  // 负 alpha 转为正透明度
+                    color.rgb *= (color.a - 1);           // 调整 RGB 颜色（抵消离屏渲染时的混合影响）
                 }
 
-                // Counteract scaling in fill frag
+                // 抵消填充着色器中的缩放（修正颜色亮度）
                 color *= 1.06;
 
+                // 读取深度纹理，设置当前像素的深度值（确保遮挡关系正确）
                 gl_FragDepth = texture(DepthTexture, uv)[0];
             }
         '''
+        # 创建简单四边形着色器程序
         fill_program = ctx.program(
             vertex_shader=simple_vert,
             fragment_shader=alpha_adjust_frag,
         )
 
+        # 4. 创建简单四边形 VAO（用于绘制全屏纹理）
+        # 四边形顶点坐标（纹理坐标 0-1，对应屏幕全屏）
         verts = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
-        simple_vbo = ctx.buffer(verts.astype('f4').tobytes())
+        simple_vbo = ctx.buffer(verts.astype('f4').tobytes())  # 顶点缓冲区（float32 类型）
+        # 简单 VAO：关联着色器、VBO，模式为三角形带（TRIANGLE_STRIP，4个顶点绘制2个三角形组成四边形）
         fill_texture_vao = ctx.simple_vertex_array(
             fill_program, simple_vbo, 'texcoord',
             mode=moderngl.TRIANGLE_STRIP
         )
 
+        # 返回离屏帧缓冲、四边形 VAO、深度帧缓冲
         return (fill_texture_fbo, fill_texture_vao, depth_texture_fbo)
 
+    # ------------------------------ 核心渲染方法（整合描边与填充） ------------------------------
     def render(self):
+        """
+        统一渲染入口：根据描边层级（stroke_behind）决定描边和填充的渲染顺序，
+        确保视觉层级符合预期（描边在填充之上或之下）。
+        """
         if self.stroke_behind:
+            # stroke_behind=True：先渲染描边，再渲染填充（填充覆盖描边，描边在下方）
             self.render_stroke()
             self.render_fill()
         else:
+            # stroke_behind=False（默认）：先渲染填充，再渲染描边（描边覆盖填充，描边在上方）
             self.render_fill()
             self.render_stroke()
