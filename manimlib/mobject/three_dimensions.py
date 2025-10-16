@@ -598,18 +598,37 @@ class Dodecahedron(VGroup3D):
 
 
 class Prismify(VGroup3D):
+    """3D棱柱化类，继承自VGroup3D，用于将2D向量图形（VMobject）转换为3D棱柱"""
+    
     def __init__(self, vmobject, depth=1.0, direction=IN, **kwargs):
-        # At the moment, this assume stright edges
+        # 注：当前版本假设输入的2D图形（vmobject）仅包含直边（非曲线边）
+        # 计算棱柱的延伸向量：深度 × 延伸方向（控制棱柱的厚度和朝向）
         vect = depth * direction
+        # 初始化存储棱柱所有组成部分的列表，先加入2D图形的"底面"（原始图形副本）
         pieces = [vmobject.copy()]
+        # 获取2D图形的所有锚点（顶点坐标），用于构建侧面
         points = vmobject.get_anchors()
+        
+        # 遍历相邻的顶点对，为每对顶点构建棱柱的一个侧面
         for p1, p2 in adjacent_pairs(points):
+            # 创建一个空的向量图形对象，作为当前侧面
             wall = VMobject()
+            # 让侧面的样式（颜色、边框等）与原始2D图形保持一致
             wall.match_style(vmobject)
+            # 设置侧面的四个顶点，形成矩形侧面：
+            # 顺序为“底面顶点1 → 底面顶点2 → 顶面顶点2 → 顶面顶点1”
             wall.set_points_as_corners([p1, p2, p2 + vect, p1 + vect])
+            # 将当前侧面添加到棱柱组成部分列表中
             pieces.append(wall)
+        
+        # 创建棱柱的"顶面"：复制原始2D图形
         top = vmobject.copy()
+        # 将顶面沿延伸向量移动，与底面形成厚度（顶面位置 = 底面位置 + 延伸向量）
         top.shift(vect)
+        # 反转顶面的顶点顺序：确保顶面的法向量方向与底面相反（避免3D渲染时的面朝向错误）
         top.reverse_points()
+        # 将顶面添加到棱柱组成部分列表中
         pieces.append(top)
+        
+        # 调用父类VGroup3D的构造函数，将底面、所有侧面、顶面整合为3D棱柱组合
         super().__init__(*pieces, **kwargs)
