@@ -3050,16 +3050,41 @@ class Mobject(object):
         name: str = "rgba",
         recurse: bool = True
     ) -> Self:
+        """
+        通过颜色值/透明度批量设置RGBA数组：将Manim颜色（或颜色列表）转换为RGB值，
+        结合透明度（单个值或列表）生成RGBA数组，赋值给对象的颜色字段，支持插值适配顶点数量。          
+        """
+        # 遍历目标家族成员（自身及子对象，由recurse控制）
         for mob in self.get_family(recurse):
+            # 确定使用的颜色数据：有顶点则用现有data，无顶点则用默认数据模板
             data = mob.data if mob.has_points() > 0 else mob._data_defaults
+            data_length = len(data)  # 颜色数据需要适配的长度（通常等于顶点数）
+
+            # 1. 处理颜色：转换为RGB并插值适配数据长度
             if color is not None:
-                rgbs = np.array(list(map(color_to_rgb, listify(color))))
-                if 1 < len(rgbs):
-                    rgbs = resize_with_interpolation(rgbs, len(data))
+                # 将颜色（或颜色列表）转换为列表形式，再转为RGB数组
+                color_list = listify(color)
+                rgbs = np.array(list(map(color_to_rgb, color_list)))
+                # 若颜色数量≠数据长度，通过插值调整颜色数组长度（如2种颜色渐变到N个顶点）
+                if 1 < len(rgbs) != data_length:
+                    rgbs = resize_with_interpolation(rgbs, data_length)
+                # 若颜色数量为1，扩展为与数据长度一致的数组（单一颜色填充所有顶点）
+                elif len(rgbs) == 1:
+                    rgbs = np.tile(rgbs, (data_length, 1))
+                # 将RGB值赋值到RGBA字段的前3个通道
                 data[name][:, :3] = rgbs
+
+            # 2. 处理透明度：插值适配数据长度
             if opacity is not None:
+                # 若透明度是列表/数组且长度≠数据长度，通过插值调整
                 if not isinstance(opacity, (float, int, np.floating)):
-                    opacity = resize_with_interpolation(np.array(opacity), len(data))
+                    opacity = np.array(opacity)
+                    if len(opacity) != data_length:
+                        opacity = resize_with_interpolation(opacity, data_length)
+                # 若透明度是单个值，扩展为与数据长度一致的数组
+                else:
+                    opacity = np.full(data_length, opacity)
+                # 将透明度赋值到RGBA字段的第4个通道
                 data[name][:, 3] = opacity
         return self
 
@@ -3069,12 +3094,17 @@ class Mobject(object):
         opacity: float | Iterable[float] | None = None,
         recurse: bool = True
     ) -> Self:
+        """
+        统一设置对象颜色（支持子对象重写）：先调用set_rgba_array_by_color设置当前对象颜色，
+        再递归调用子对象的set_color方法（允许子对象自定义颜色设置逻辑，如文本、图形差异化处理）。
+        """
+        # 第一步：设置当前对象的颜色（recurse=False，避免与后续子对象处理重复）
         self.set_rgba_array_by_color(color, opacity, recurse=False)
-        # Recurse to submobjects differently from how set_rgba_array_by_color
-        # in case they implement set_color differently
+        
+        # 第二步：递归处理子对象（调用子对象自身的set_color，支持子对象重写逻辑）
         if recurse:
             for submob in self.submobjects:
-                submob.set_color(color, recurse=True)
+                submob.set_color(color, opacity=opacity, recurse=True)
         return self
 
     def set_opacity(
@@ -3082,46 +3112,111 @@ class Mobject(object):
         opacity: float | Iterable[float] | None,
         recurse: bool = True
     ) -> Self:
+        """
+        设置对象透明度：通过set_rgba_array_by_color仅修改透明度通道（不改变颜色），
+        支持递归设置子对象透明度，适用于整体淡入淡出效果。
+        
+        参数
+        -----
+        opacity : float | Iterable[float] | None
+            透明度值（0=完全透明，1=完全不透明）或透明度列表（为None时不修改）
+        recurse : bool, optional
+            是否递归设置子对象透明度，默认True
+        """
+        # 仅修改透明度，颜色保持不变（color=None）
         self.set_rgba_array_by_color(color=None, opacity=opacity, recurse=False)
+        # 递归处理子对象
         if recurse:
             for submob in self.submobjects:
                 submob.set_opacity(opacity, recurse=True)
         return self
 
     def get_color(self) -> str:
+        """
+        获取对象主颜色：取第一个顶点的RGB值并转换为十六进制颜色字符串，
+        适用于单一颜色对象的颜色查询。
+        """
         return rgb_to_hex(self.data["rgba"][0, :3])
 
     def get_opacity(self) -> float:
+        """
+        获取对象主透明度：取第一个顶点的透明度值，适用于单一透明度对象的查询。
+        """
         return float(self.data["rgba"][0, 3])
 
     def get_opacities(self) -> float:
+        """
+        获取所有顶点的透明度：返回整个透明度通道数组，适用于多透明度对象的查询。
+        
+        返回
+        -----
+        np.ndarray
+            透明度数组（形状为(N,)，N为顶点数）
+        """
         return self.data["rgba"][:, 3]
 
     def set_color_by_gradient(self, *colors: ManimColor) -> Self:
+        """
+        按渐变设置对象颜色：若对象自身有顶点，直接对顶点应用颜色渐变；
+        若对象无顶点（如组合对象），则对其子对象应用颜色渐变。
+        """
         if self.has_points():
+            # 自身有顶点时，直接设置顶点颜色渐变
             self.set_color(colors)
         else:
+            # 自身无顶点时，对其子对象设置颜色渐变
             self.set_submobject_colors_by_gradient(*colors)
         return self
 
     def set_submobject_colors_by_gradient(self, *colors: ManimColor) -> Self:
+        """
+        按渐变设置子对象颜色：将颜色序列插值为与子对象数量匹配的颜色列表，
+        为每个子对象分配一个颜色，实现子对象间的颜色渐变效果。
+        
+        参数
+        -----
+        *colors : ManimColor
+            渐变颜色序列（至少1种颜色）
+        
+        异常
+        -----
+        Exception
+            若未提供任何颜色，抛出“至少需要一种颜色”的异常
+        """
         if len(colors) == 0:
             raise Exception("Need at least one color")
         elif len(colors) == 1:
+            # 仅一种颜色时，直接统一设置所有子对象颜色
             return self.set_color(*colors)
-
-        # mobs = self.family_members_with_points()
+        
+        # 获取所有子对象（作为渐变分配的目标）
         mobs = self.submobjects
+        # 生成与子对象数量匹配的渐变颜色列表
         new_colors = color_gradient(colors, len(mobs))
-
+        # 为每个子对象分配对应的渐变颜色
         for mob, color in zip(mobs, new_colors):
             mob.set_color(color)
         return self
 
     def fade(self, darkness: float = 0.5, recurse: bool = True) -> Self:
+        """
+        使对象褪色：通过设置透明度实现褪色效果（1 - darkness为目标透明度），
+        darkness=0.5表示半透明，darkness=1表示完全透明。
+        
+        参数
+        -----
+        darkness : float, optional
+            褪色程度（0=不褪色，1=完全透明），默认0.5
+        recurse : bool, optional
+            是否递归褪色子对象，默认True
+        """
         self.set_opacity(1.0 - darkness, recurse=recurse)
 
     def get_shading(self) -> np.ndarray:
+        """
+        获取对象的着色参数：返回包含反射率、光泽度、阴影强度的数组，
+        用于3D渲染时的光照效果计算。
+        """
         return self.uniforms["shading"]
 
     def set_shading(
@@ -3132,132 +3227,222 @@ class Mobject(object):
         recurse: bool = True
     ) -> Self:
         """
+        设置对象的着色参数（影响3D光照效果）：可单独或同时设置反射率、光泽度、阴影强度，
+        控制对象在光照下的视觉表现。
+        
+        说明
+        -----
         Larger reflectiveness makes things brighter when facing the light
         Larger shadow makes faces opposite the light darker
         Makes parts bright where light gets reflected toward the camera
+        （反射率越高，面向光源的部分越亮；阴影强度越高，背向光源的部分越暗；
+        光泽度影响高光区域的亮度和范围）
         """
         for mob in self.get_family(recurse):
+            # 获取当前对象的着色参数
             shading = mob.uniforms["shading"]
+            # 更新指定的着色参数（反射率、光泽度、阴影强度）
             for i, value in enumerate([reflectiveness, gloss, shadow]):
                 if value is not None:
                     shading[i] = value
+            # 应用更新后的着色参数
             mob.set_uniform(shading=shading, recurse=False)
         return self
 
     def get_reflectiveness(self) -> float:
+        """获取反射率（着色参数中的第一个值）"""
         return self.get_shading()[0]
 
     def get_gloss(self) -> float:
+        """获取光泽度（着色参数中的第二个值）"""
         return self.get_shading()[1]
 
     def get_shadow(self) -> float:
+        """获取阴影强度（着色参数中的第三个值）"""
         return self.get_shading()[2]
 
     def set_reflectiveness(self, reflectiveness: float, recurse: bool = True) -> Self:
+        """单独设置反射率（调用set_shading的简化方法）"""
         self.set_shading(reflectiveness=reflectiveness, recurse=recurse)
         return self
 
     def set_gloss(self, gloss: float, recurse: bool = True) -> Self:
+        """单独设置光泽度（调用set_shading的简化方法）"""
         self.set_shading(gloss=gloss, recurse=recurse)
         return self
 
     def set_shadow(self, shadow: float, recurse: bool = True) -> Self:
+        """单独设置阴影强度（调用set_shading的简化方法）"""
         self.set_shading(shadow=shadow, recurse=recurse)
         return self
 
-    # Background rectangle
+    # 背景矩形相关
 
     def add_background_rectangle(
         self,
         color: ManimColor | None = None,
-        opacity: float = 1.0,
-        **kwargs
+        opacity: float = 1.0,** kwargs
     ) -> Self:
+        """
+        为对象添加背景矩形：创建一个与对象尺寸匹配的背景矩形，放置在对象后方，
+        用于突出显示对象（如文本背景、图标底色）。
+        """
         from manimlib.mobject.shape_matchers import BackgroundRectangle
+        # 创建与当前对象匹配的背景矩形
         self.background_rectangle = BackgroundRectangle(
             self, color=color,
-            fill_opacity=opacity,
-            **kwargs
+            fill_opacity=opacity,** kwargs
         )
+        # 将背景矩形添加到对象后方（z-index更低）
         self.add_to_back(self.background_rectangle)
         return self
 
     def add_background_rectangle_to_submobjects(self, **kwargs) -> Self:
+        """
+        为所有子对象添加背景矩形：遍历当前对象的直接子对象，
+        为每个子对象单独调用add_background_rectangle方法，实现子对象批量加背景。
+        """
         for submobject in self.submobjects:
-            submobject.add_background_rectangle(**kwargs)
+            submobject.add_background_rectangle(** kwargs)
         return self
 
     def add_background_rectangle_to_family_members_with_points(self, **kwargs) -> Self:
+        """
+        为家族中含顶点的成员添加背景矩形：遍历当前对象家族中所有有顶点数据的成员（含子对象、孙对象等），
+        为每个成员添加背景矩形，仅对有实际形状的对象生效。
+        """
         for mob in self.family_members_with_points():
             mob.add_background_rectangle(**kwargs)
         return self
 
-    # Getters
+    # 坐标与边界获取方法（Getters）
 
     def get_bounding_box_point(self, direction: Vect3) -> Vect3:
-        bb = self.get_bounding_box()
+        """
+        根据方向获取包围盒上的点：通过方向向量的正负符号，定位包围盒在x、y、z轴上的极值点，
+        可用于获取边缘点（如左边缘、上边缘）或角落点（如左上角落、右下角落）。
+        """
+        bb = self.get_bounding_box()  # 获取对象的包围盒（格式：[[x_min,y_min,z_min], [x_center,y_center,z_center], [x_max,y_max,z_max]]）
+        # 根据方向向量符号生成索引（-1→0取最小值，1→2取最大值）
         indices = (np.sign(direction) + 1).astype(int)
+        # 遍历x、y、z轴，取每个轴上对应索引的极值，组成目标点
         return np.array([
             bb[indices[i]][i]
             for i in range(3)
         ])
 
     def get_edge_center(self, direction: Vect3) -> Vect3:
+        """
+        获取边缘中心：直接调用get_bounding_box_point方法，返回包围盒上对应方向的点，
+        简化“获取边缘中心”的调用（实际与对应方向的包围盒点一致）。
+        """
         return self.get_bounding_box_point(direction)
 
     def get_corner(self, direction: Vect3) -> Vect3:
+        """
+        获取角落点：直接调用get_bounding_box_point方法，返回包围盒上对应方向的点，
+        简化“获取角落”的调用（如LEFT+DOWN对应左下角落）。
+        """
         return self.get_bounding_box_point(direction)
 
     def get_all_corners(self):
+        """
+        获取包围盒的所有角落点：生成3D包围盒的8个角落点（x/y/z轴各取最小/最大值组合），
+        覆盖对象空间范围的所有极端角落。
+        """
         bb = self.get_bounding_box()
+        # 生成x/y/z轴最小/最大值的所有组合（共2×2×2=8种），对应8个角落
         return np.array([
             [bb[indices[-i + 1]][i] for i in range(3)]
             for indices in it.product([0, 2], repeat=3)
         ])
 
     def get_center(self) -> Vect3:
+        """
+        获取对象中心：直接返回包围盒的中心坐标（包围盒数组的第2个元素），
+        代表对象在空间中的几何中心。
+        """
         return self.get_bounding_box()[1]
 
     def get_center_of_mass(self) -> Vect3:
+        """
+        获取对象质心：计算所有顶点坐标的平均值，代表对象的“质量中心”（基于顶点分布），
+        与几何中心（get_center）可能因顶点分布不均而不同。
+        """
         return self.get_all_points().mean(0)
 
     def get_boundary_point(self, direction: Vect3) -> Vect3:
+        """
+        获取对象边界上沿指定方向的最远点：通过计算所有顶点相对于中心的方向，
+        找到与目标方向最一致的顶点，即该方向上的边界极值点（适用于不规则形状）。
+        """
+        # 1. 获取对象所有顶点坐标
         all_points = self.get_all_points()
+        # 2. 计算每个顶点相对于对象中心的方向向量
         boundary_directions = all_points - self.get_center()
-        norms = np.linalg.norm(boundary_directions, axis=1)
+        # 3. 归一化方向向量（消除距离影响，仅保留方向信息）
+        norms = np.linalg.norm(boundary_directions, axis=1)  # 计算每个方向向量的模长
+        # 避免除以零（若顶点与中心重合，模长为0，归一化后仍为0向量）
         boundary_directions /= np.repeat(norms, 3).reshape((len(norms), 3))
-        index = np.argmax(np.dot(boundary_directions, np.array(direction).T))
+        # 4. 计算每个顶点方向与目标方向的点积（点积越大，方向越一致）
+        dot_products = np.dot(boundary_directions, np.array(direction).T)
+        # 5. 找到点积最大的顶点索引，即为目标方向的边界点
+        index = np.argmax(dot_products)
         return all_points[index]
 
     def get_continuous_bounding_box_point(self, direction: Vect3) -> Vect3:
+        """
+        获取包围盒上沿指定方向的“连续边界点”：根据包围盒的半长（中心到顶点的距离），
+        按目标方向的比例延伸，得到包围盒在该方向上的理论边界点（支持任意方向，非仅轴对齐）。
+        """
+        # 获取包围盒的下左后（dl）、中心（center）、上右前（ur）三点
         dl, center, ur = self.get_bounding_box()
+        # 计算包围盒在各轴上的半长（中心到边界的距离）
         corner_vect = (ur - center)
-        return center + direction / np.max(np.abs(np.true_divide(
+        # 计算方向向量在各轴上的“比例系数”（避免除以零，无长度的轴比例设为0）
+        scale_factors = np.true_divide(
             direction, corner_vect,
             out=np.zeros(len(direction)),
-            where=((corner_vect) != 0)
-        )))
+            where=(corner_vect != 0)  # 仅在包围盒该轴有长度时计算比例
+        )
+        # 找到最大比例系数，按该系数缩放方向向量，确保点在包围盒边界上
+        max_scale = np.max(np.abs(scale_factors))
+        # 若所有比例系数为0（包围盒无体积），直接返回中心；否则计算边界点
+        if max_scale == 0:
+            return center
+        return center + direction / max_scale
 
     def get_top(self) -> Vect3:
+        """获取对象上边缘中心（沿UP方向的边缘中心）"""
         return self.get_edge_center(UP)
 
     def get_bottom(self) -> Vect3:
+        """获取对象下边缘中心（沿DOWN方向的边缘中心）"""
         return self.get_edge_center(DOWN)
 
     def get_right(self) -> Vect3:
+        """获取对象右边缘中心（沿RIGHT方向的边缘中心）"""
         return self.get_edge_center(RIGHT)
 
     def get_left(self) -> Vect3:
+        """获取对象左边缘中心（沿LEFT方向的边缘中心）"""
         return self.get_edge_center(LEFT)
 
     def get_zenith(self) -> Vect3:
+        """获取对象“天顶”点（沿OUT方向的边缘中心，3D场景中远离屏幕的边缘）"""
         return self.get_edge_center(OUT)
 
     def get_nadir(self) -> Vect3:
+        """获取对象“天底”点（沿IN方向的边缘中心，3D场景中靠近屏幕的边缘）"""
         return self.get_edge_center(IN)
 
     def length_over_dim(self, dim: int) -> float:
+        """
+        计算对象在指定维度上的长度：通过包围盒在该维度的最大值与最小值之差，
+        得到对象在该维度的空间跨度（如x轴长度即宽度，y轴长度即高度）。
+        """
         bb = self.get_bounding_box()
+        # 包围盒该维度的最大值（bb[2][dim]）减去最小值（bb[0][dim]），取绝对值确保非负
         return abs((bb[2] - bb[0])[dim])
 
     def get_width(self) -> float:
