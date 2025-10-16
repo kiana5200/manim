@@ -428,97 +428,136 @@ class ShowCreationThenFadeAround(AnimationOnSurroundingRectangle):
     RectAnimationType = ShowCreationThenFadeOut
 
 
+# 定义 ApplyWave 类，继承自 Homotopy（ homotopy 动画 同伦动画，用于实现连续变形效果）
 class ApplyWave(Homotopy):
+    # 构造方法，初始化波浪动画的参数
     def __init__(
         self,
-        mobject: Mobject,
-        direction: np.ndarray = UP,
-        amplitude: float = 0.2,
-        run_time: float = 1.0,
-        **kwargs
+        mobject: Mobject,  # 要应用波浪效果的图形对象
+        direction: np.ndarray = UP,  # 波浪运动的方向，默认为向上
+        amplitude: float = 0.2,  # 波浪的振幅，默认为0.2
+        run_time: float = 1.0,  # 动画运行时间，默认为1秒
+        **kwargs  # 传递给父类的其他关键字参数
     ):
-
+        # 获取图形对象最左侧的x坐标
         left_x = mobject.get_left()[0]
+        # 获取图形对象最右侧的x坐标
         right_x = mobject.get_right()[0]
+        # 计算位移向量：振幅乘以方向向量
         vect = amplitude * direction
 
+        # 定义同伦函数，用于计算每个点在动画过程中的位置变化
         def homotopy(x, y, z, t):
+            # 计算当前x坐标在对象宽度范围内的比例（0到1之间）
             alpha = (x - left_x) / (right_x - left_x)
+            # 计算指数函数值，用于调整波浪的形状
             power = np.exp(2.0 * (alpha - 0.5))
+            # 计算偏移量：使用there_and_back函数实现往返运动，受power影响
             nudge = there_and_back(t**power)
+            # 返回新位置：原位置加上偏移量乘以方向向量
             return np.array([x, y, z]) + nudge * vect
 
+        # 调用父类构造方法，传入同伦函数和图形对象等参数
         super().__init__(homotopy, mobject, **kwargs)
 
 
+# 定义 WiggleOutThenIn 类，继承自 Animation（基础动画类）
 class WiggleOutThenIn(Animation):
+    # 构造方法，初始化摇摆动画的参数
     def __init__(
         self,
-        mobject: Mobject,
-        scale_value: float = 1.1,
-        rotation_angle: float = 0.01 * TAU,
-        n_wiggles: int = 6,
-        scale_about_point: np.ndarray | None = None,
-        rotate_about_point: np.ndarray | None = None,
-        run_time: float = 2,
-        **kwargs
+        mobject: Mobject,  # 要应用摇摆效果的图形对象
+        scale_value: float = 1.1,  # 缩放比例，默认为1.1倍
+        rotation_angle: float = 0.01 * TAU,  # 旋转角度，默认为0.01个圆周
+        n_wiggles: int = 6,  # 摇摆次数，默认为6次
+        scale_about_point: np.ndarray | None = None,  # 缩放的中心点，默认为None
+        rotate_about_point: np.ndarray | None = None,  # 旋转的中心点，默认为None
+        run_time: float = 2,  # 动画运行时间，默认为2秒
+        **kwargs  # 传递给父类的其他关键字参数
     ):
+        # 存储缩放比例参数
         self.scale_value = scale_value
+        # 存储旋转角度参数
         self.rotation_angle = rotation_angle
+        # 存储摇摆次数参数
         self.n_wiggles = n_wiggles
+        # 存储缩放中心点参数
         self.scale_about_point = scale_about_point
+        # 存储旋转中心点参数
         self.rotate_about_point = rotate_about_point
-        super().__init__(mobject, run_time=run_time, **kwargs)
+        # 调用父类构造方法，传入图形对象和运行时间等参数
+        super().__init__(mobject, run_time=run_time,** kwargs)
 
+    # 获取缩放的中心点，如果未指定则使用图形对象的中心
     def get_scale_about_point(self) -> np.ndarray:
         return self.scale_about_point or self.mobject.get_center()
 
+    # 获取旋转的中心点，如果未指定则使用图形对象的中心
     def get_rotate_about_point(self) -> np.ndarray:
         return self.rotate_about_point or self.mobject.get_center()
 
+    # 定义子对象的插值方法，控制动画的每一帧
     def interpolate_submobject(
         self,
-        submobject: Mobject,
-        starting_sumobject: Mobject,
-        alpha: float
+        submobject: Mobject,  # 当前子对象
+        starting_sumobject: Mobject,  # 起始状态的子对象
+        alpha: float  # 动画进度（0到1之间）
     ) -> None:
+        # 使当前子对象与起始状态的子对象匹配点结构
         submobject.match_points(starting_sumobject)
+        # 对当前子对象进行缩放：从1倍到scale_value再回到1倍
         submobject.scale(
             interpolate(1, self.scale_value, there_and_back(alpha)),
-            about_point=self.get_scale_about_point()
+            about_point=self.get_scale_about_point()  # 围绕指定中心点缩放
         )
+        # 对当前子对象进行旋转：根据摇摆函数和进度计算旋转角度
         submobject.rotate(
-            wiggle(alpha, self.n_wiggles) * self.rotation_angle,
-            about_point=self.get_rotate_about_point()
+            wiggle(alpha, self.n_wiggles) * self.rotation_angle,  # 摇摆角度计算
+            about_point=self.get_rotate_about_point()  # 围绕指定中心点旋转
         )
 
 
+# 定义 TurnInsideOut 类，继承自 Transform（变换动画类）
 class TurnInsideOut(Transform):
+    # 构造方法，初始化内外翻转动画的参数
     def __init__(self, mobject: Mobject, path_arc: float = 90 * DEG, **kwargs):
-        super().__init__(mobject, path_arc=path_arc, **kwargs)
+        # 调用父类构造方法，传入图形对象和路径弧度等参数
+        super().__init__(mobject, path_arc=path_arc,** kwargs)
 
+    # 创建目标状态的图形对象（用于变换动画）
     def create_target(self) -> Mobject:
+        # 复制原图形对象并反转其点的顺序（实现内外翻转效果）
         result = self.mobject.copy().reverse_points()
+        # 如果是向量图形对象，刷新其三角剖分（确保渲染正确）
         if isinstance(result, VMobject):
             result.refresh_triangulation()
+        # 返回目标状态对象
         return result
 
 
+# 定义 FlashyFadeIn 类，继承自 AnimationGroup（动画组类，用于组合多个动画）
 class FlashyFadeIn(AnimationGroup):
+    # 构造方法，初始化闪烁淡入动画的参数
     def __init__(self,
-        vmobject: VMobject,
-        stroke_width: float = 2.0,
-        fade_lag: float = 0.0,
-        time_width: float = 1.0,
-        **kwargs
+        vmobject: VMobject,  # 要应用效果的向量图形对象
+        stroke_width: float = 2.0,  # 轮廓线宽度，默认为2.0
+        fade_lag: float = 0.0,  # 淡入动画的延迟，默认为0.0
+        time_width: float = 1.0,  # 闪烁效果的时间宽度，默认为1.0
+        **kwargs  # 传递给父类的其他关键字参数
     ):
+        # 复制原向量图形对象作为轮廓
         outline = vmobject.copy()
+        # 设置轮廓的填充透明度为0（只显示边框）
         outline.set_fill(opacity=0)
+        # 设置轮廓的线条宽度和透明度
         outline.set_stroke(width=stroke_width, opacity=1)
 
+        # 获取速率函数，默认为smooth（平滑函数）
         rate_func = kwargs.get("rate_func", smooth)
+        # 调用父类构造方法，组合淡入动画和闪烁动画
         super().__init__(
+            # 淡入动画：使用调整后的速率函数，可能带有延迟
             FadeIn(vmobject, rate_func=squish_rate_func(rate_func, fade_lag, 1)),
-            VShowPassingFlash(outline, time_width=time_width),
-            **kwargs
+            # 向量图形的闪烁动画：应用于轮廓
+            VShowPassingFlash(outline, time_width=time_width),** kwargs  # 其他参数
         )
