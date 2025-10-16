@@ -1,30 +1,46 @@
+# 从__future__导入annotations，用于支持Python 3.7及以下版本的类型提示语法
 from __future__ import annotations
 
+# 导入math模块，用于数学计算
 import math
 
+# 导入numpy库，用于数值计算和数组操作
 import numpy as np
 
+# 从manimlib.constants导入常用颜色常量
 from manimlib.constants import BLUE, BLUE_D, BLUE_E, GREY_A, BLACK
+# 从manimlib.constants导入方向和位置常量
 from manimlib.constants import IN, ORIGIN, OUT, RIGHT
+# 从manimlib.constants导入数学常量（圆周率相关）
 from manimlib.constants import PI, TAU
+# 从manimlib.mobject导入Mobject基类，所有可显示对象的父类
 from manimlib.mobject.mobject import Mobject
+# 从manimlib.mobject.types.surface导入表面相关的类
 from manimlib.mobject.types.surface import SGroup
 from manimlib.mobject.types.surface import Surface
+# 从manimlib.mobject.types.vectorized_mobject导入向量图形相关的组合类
 from manimlib.mobject.types.vectorized_mobject import VGroup
 from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从manimlib.mobject.geometry导入几何图形类
 from manimlib.mobject.geometry import Polygon
 from manimlib.mobject.geometry import Square
+# 从manimlib.utils.bezier导入贝塞尔曲线插值函数
 from manimlib.utils.bezier import interpolate
+# 从manimlib.utils.iterables导入用于处理可迭代对象的函数
 from manimlib.utils.iterables import adjacent_pairs
+# 从manimlib.utils.space_ops导入空间操作相关的函数
 from manimlib.utils.space_ops import compass_directions
 from manimlib.utils.space_ops import get_norm
 from manimlib.utils.space_ops import z_to_vector
 
+# 导入typing模块中的TYPE_CHECKING常量，用于条件类型检查
 from typing import TYPE_CHECKING
+# 如果是类型检查阶段（非运行时），导入所需的类型提示
 if TYPE_CHECKING:
     from typing import Tuple, TypeVar
     from manimlib.typing import ManimColor, Vect3, Sequence
 
+    # 定义类型变量T，限定为Mobject的子类
     T = TypeVar("T", bound=Mobject)
 
 
