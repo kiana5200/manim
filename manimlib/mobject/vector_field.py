@@ -55,21 +55,43 @@ def get_vectorized_rgb_gradient_function(
     max_value: T,
     color_map: str
 ) -> Callable[[VectN], Vect3Array]:
+    """
+    创建**向量化的RGB渐变函数**，支持批量将数值映射为对应颜色
+    
+    参数:
+        min_value: 数值范围的最小值（对应渐变的起始颜色）
+        max_value: 数值范围的最大值（对应渐变的结束颜色）
+        color_map: 颜色映射名称（如"viridis"、"coolwarm"，需符合Manim支持的色表）
+    
+    返回:
+        向量化函数：输入数值数组，输出对应RGB颜色数组（每个颜色为[R,G,B]格式）
+    """
+    # 根据颜色映射名称，获取对应的RGB颜色列表，并转换为numpy数组
     rgbs = np.array(get_colormap_list(color_map))
 
+    # 定义内部向量化函数，实现数值到颜色的映射
     def func(values):
+        # 1. 将输入数值归一化到[0,1]区间：计算每个数值在min-max范围内的相对位置
         alphas = inverse_interpolate(
             min_value, max_value, np.array(values)
         )
+        # 2. 裁剪归一化结果：确保超出min-max的数值也能映射到有效颜色（<min取0，>max取1）
         alphas = np.clip(alphas, 0, 1)
+        # 3. 缩放归一化值：将[0,1]映射到颜色列表的索引范围（如色表有100种颜色，缩放为[0,99]）
         scaled_alphas = alphas * (len(rgbs) - 1)
+        # 4. 计算当前颜色的索引（向下取整，获取基础颜色）
         indices = scaled_alphas.astype(int)
+        # 5. 计算下一个颜色的索引（避免超出色表长度，用clip限制最大值）
         next_indices = np.clip(indices + 1, 0, len(rgbs) - 1)
+        # 6. 计算两个颜色间的插值比例（scaled_alphas的小数部分，决定两种颜色的混合程度）
         inter_alphas = scaled_alphas % 1
+        # 7. 重塑插值比例数组：使其与RGB颜色维度匹配（每个比例重复3次，对应R/G/B通道）
         inter_alphas = inter_alphas.repeat(3).reshape((len(indices), 3))
+        # 8. 两种颜色的线性插值：生成最终的RGB颜色数组
         result = interpolate(rgbs[indices], rgbs[next_indices], inter_alphas)
         return result
 
+    # 返回向量化的颜色映射函数
     return func
 
 
@@ -78,18 +100,45 @@ def get_rgb_gradient_function(
     max_value: T,
     color_map: str
 ) -> Callable[[float], Vect3]:
+    """
+    创建**单值RGB渐变函数**，将单个数值映射为对应颜色（基于向量化函数封装）
+    
+    参数:
+        min_value: 数值范围的最小值
+        max_value: 数值范围的最大值
+        color_map: 颜色映射名称
+    
+    返回:
+        单值函数：输入单个数值，输出对应RGB颜色（[R,G,B]格式）
+    """
+    # 先获取向量化的渐变函数
     vectorized_func = get_vectorized_rgb_gradient_function(min_value, max_value, color_map)
+    # 封装为单值函数：输入单个数值→转为数组传入向量化函数→取第一个结果（仅一个元素）
     return lambda value: vectorized_func(np.array([value]))[0]
-####
 
 
+#### 以下为向量场相关工具函数 ####
 def ode_solution_points(function, state0, time, dt=0.01):
+    """
+    求解常微分方程（ODE），生成运动轨迹的坐标点
+    
+    参数:
+        function: ODE函数，输入当前状态（如位置/速度），输出状态的变化率（如速度/加速度）
+        state0: 初始状态（如初始位置[x0,y0]或初始位置+速度[x0,y0,vx0,vy0]）
+        time: 模拟总时长（从t=0到t=time）
+        dt: 时间步长，默认0.01（步长越小，轨迹越精确）
+    
+    返回:
+        轨迹点数组：shape=(总步数, 状态维度)，每一行是对应时间点的状态（如位置）
+    """
+    # 调用scipy的solve_ivp求解ODE
     solution = solve_ivp(
-        lambda t, state: function(state),
-        t_span=(0, time),
-        y0=state0,
-        t_eval=np.arange(0, time, dt)
+        lambda t, state: function(state),  # ODE函数（忽略时间t，适用于自治系统）
+        t_span=(0, time),                  # 时间范围
+        y0=state0,                         # 初始状态
+        t_eval=np.arange(0, time, dt)      # 输出时间点（按dt间隔生成）
     )
+    # 转换结果格式：将solve_ivp返回的"行=状态维度，列=时间步"转为"行=时间步，列=状态维度"
     return solution.y.T
 
 
@@ -97,9 +146,20 @@ def move_along_vector_field(
     mobject: Mobject,
     func: Callable[[Vect3], Vect3]
 ) -> Mobject:
+    """
+    让单个图形（Mobject）沿向量场运动（添加实时更新器）
+    
+    参数:
+        mobject: 要运动的图形（如点、圆、正方形）
+        func: 向量场函数，输入图形的中心坐标，输出对应位置的向量（运动方向和速度）
+    
+    返回:
+        添加了更新器的图形对象（会自动沿向量场运动）
+    """
+    # 为图形添加更新器：每帧根据向量场更新位置
     mobject.add_updater(
         lambda m, dt: m.shift(
-            func(m.get_center()) * dt
+            func(m.get_center()) * dt  # 位移 = 向量场强度 × 时间步长（dt是每帧时间）
         )
     )
     return mobject
@@ -109,12 +169,27 @@ def move_submobjects_along_vector_field(
     mobject: Mobject,
     func: Callable[[Vect3], Vect3]
 ) -> Mobject:
+    """
+    让组合图形（Mobject）的所有子图形，分别沿向量场运动（添加实时更新器）
+    
+    参数:
+        mobject: 组合图形（如VGroup，包含多个子图形）
+        func: 向量场函数，输入子图形中心坐标，输出对应位置的向量
+    
+    返回:
+        添加了更新器的组合图形对象（子图形各自沿向量场运动）
+    """
+    # 定义更新逻辑：遍历所有子图形，计算并更新位置
     def apply_nudge(mob, dt):
         for submob in mob:
+            # 获取子图形中心的x、y坐标（忽略z轴，适用于2D场景）
             x, y = submob.get_center()[:2]
+            # 检查子图形是否在画面内（避免运动到屏幕外）
             if abs(x) < FRAME_WIDTH and abs(y) < FRAME_HEIGHT:
+                # 子图形位移 = 向量场强度 × 时间步长
                 submob.shift(func(submob.get_center()) * dt)
 
+    # 为组合图形添加更新器
     mobject.add_updater(apply_nudge)
     return mobject
 
@@ -124,13 +199,31 @@ def move_points_along_vector_field(
     func: Callable[[float, float], Iterable[float]],
     coordinate_system: CoordinateSystem
 ) -> Mobject:
+    """
+    让图形的每个顶点，沿指定坐标系下的向量场运动（支持自定义坐标系，如极坐标）
+    
+    参数:
+        mobject: 要运动的图形（如多边形，顶点位置会更新）
+        func: 向量场函数（在目标坐标系下），输入坐标系内坐标（如极径r、极角θ），输出向量分量
+        coordinate_system: 目标坐标系（如PolarCoordinateSystem，提供坐标转换功能）
+    
+    返回:
+        添加了更新器的图形对象（顶点沿自定义坐标系的向量场运动）
+    """
+    # 简化变量名：目标坐标系
     cs = coordinate_system
+    # 获取坐标系原点（用于后续向量计算）
     origin = cs.get_origin()
 
+    # 定义更新逻辑：遍历图形每个顶点，按向量场更新位置
     def apply_nudge(mob, dt):
         mob.apply_function(
-            lambda p: p + (cs.c2p(*func(*cs.p2c(p))) - origin) * dt
+            lambda p:  # p：图形的某个顶点（笛卡尔坐标）
+            p + (  # 顶点最终位移 = 原始位置 + 向量场位移
+                cs.c2p(*func(*cs.p2c(p))) - origin  # 1. 笛卡尔坐标→目标坐标系坐标→向量场函数→目标坐标系向量→笛卡尔坐标向量
+            ) * dt  # 2. 向量 × 时间步长（dt），得到每帧位移
         )
+    # 为图形添加更新器
     mobject.add_updater(apply_nudge)
     return mobject
 
