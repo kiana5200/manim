@@ -575,25 +575,34 @@ class Text(MarkupText):
 
 
 class Code(MarkupText):
+    """
+    代码高亮显示类：继承自MarkupText，利用Pygments库实现代码语法高亮，
+    支持指定编程语言、代码风格、字体等，最终生成带Pango标记的高亮文本。
+    """
     def __init__(
         self,
-        code: str,
-        font: str = "Consolas",
-        font_size: int = 24,
-        lsh: float = 1.0,
-        fill_color: ManimColor = None,
-        stroke_color: ManimColor = None,
-        language: str = "python",
-        # Visit https://pygments.org/demo/ to have a preview of more styles.
-        code_style: str = "monokai",
+        code: str,  # 待高亮显示的代码字符串（如Python代码文本）
+        font: str = "Consolas",  # 代码显示字体，默认等宽字体Consolas（适合代码）
+        font_size: int = 24,  # 字体大小，默认24
+        lsh: float = 1.0,  # 行间距系数（Line Spacing Height），默认1.0（正常间距）
+        fill_color: ManimColor = None,  # 文本填充色，默认None（使用代码风格默认颜色）
+        stroke_color: ManimColor = None,  # 文本描边色，默认None（无描边）
+        language: str = "python",  # 代码所属编程语言，默认Python（用于语法解析）
+        # Visit https://pygments.org/demo/ to have a preview of more styles.（访问该链接预览更多代码风格）
+        code_style: str = "monokai",  # 代码高亮风格，默认monokai（深色高对比度风格）
         **kwargs
     ):
+        # 根据指定编程语言获取Pygments的语法解析器（lexer）
         lexer = pygments.lexers.get_lexer_by_name(language)
+        # 创建Pygments的PangoMarkup格式器，用于生成带标记的高亮文本（适配Manim的MarkupText）
         formatter = pygments.formatters.PangoMarkupFormatter(
             style=code_style
         )
+        # 对输入代码进行语法高亮处理，生成Pango标记字符串
         markup = pygments.highlight(code, lexer, formatter)
+        # 移除标记中的<tt>和</tt>标签（PangoMarkup格式器可能生成，Manim无需该标签）
         markup = re.sub(r"</?tt>", "", markup)
+        # 调用父类MarkupText的初始化方法，传入处理后的高亮标记文本及样式参数
         super().__init__(
             markup,
             font=font,
@@ -607,42 +616,50 @@ class Code(MarkupText):
 
 @contextmanager
 def register_font(font_file: str | Path):
-    """Temporarily add a font file to Pango's search path.
-    This searches for the font_file at various places. The order it searches it described below.
-    1. Absolute path.
-    2. Downloads dir.
+    """
+    临时注册字体文件的上下文管理器：在with语句块内，将指定字体文件添加到Pango的字体搜索路径，
+    块结束后自动注销该字体，避免全局字体环境污染。
+    
+    搜索字体文件的顺序：
+    1. 绝对路径（直接查找指定的完整路径）
+    2. 下载目录（若绝对路径不存在，尝试在下载目录中查找）
 
-    Parameters
+    参数
     ----------
-    font_file :
-        The font file to add.
-    Examples
+    font_file : str | Path
+        待注册的字体文件路径（如"./fonts/CustomFont.ttf"）
+
+    示例
     --------
-    Use ``with register_font(...)`` to add a font file to search
-    path.
+    使用with语句临时注册字体，在块内可使用该字体创建文本：
     .. code-block:: python
         with register_font("path/to/font_file.ttf"):
-           a = Text("Hello", font="Custom Font Name")
-    Raises
+           a = Text("Hello", font="Custom Font Name")  # "Custom Font Name"为字体实际名称
+
+    异常
     ------
     FileNotFoundError:
-        If the font doesn't exists.
+        若指定的字体文件在所有搜索路径中均不存在时抛出
     AttributeError:
-        If this method is used on macOS.
-    Notes
+        在macOS系统上使用不兼容的ManimPango版本（低于v0.2.3）时抛出
+
+    说明
     -----
-    This method of adding font files also works with :class:`CairoText`.
+    该方法注册的字体同样适用于CairoText类。
     .. important ::
-        This method is available for macOS for ``ManimPango>=v0.2.3``. Using this
-        method with previous releases will raise an :class:`AttributeError` on macOS.
+        macOS系统需确保ManimPango版本≥v0.2.3，旧版本使用该方法会抛出AttributeError。
     """
 
+    # 将输入的字体路径解析为绝对路径（统一路径格式，避免相对路径问题）
     file_path = Path(font_file).resolve()
+    # 检查字体文件是否存在，不存在则抛出文件未找到异常
     if not file_path.exists():
-        error = f"Can't find {font_file}."
+        error = f"Can't find {font_file}."  # 错误信息：提示找不到指定字体文件
         raise FileNotFoundError(error)
     try:
+        # 注册字体文件：调用manimpango的register_font方法，断言注册成功（失败则触发AssertionError）
         assert manimpango.register_font(str(file_path))
-        yield
+        yield  # 进入上下文管理器的代码块（with语句内的代码在此处执行）
     finally:
+        # 无论块内代码是否抛出异常，最终都会注销该字体，恢复字体环境
         manimpango.unregister_font(str(file_path))
