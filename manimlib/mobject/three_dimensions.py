@@ -375,48 +375,79 @@ class Disk3D(Surface):
         ])
 
 class Square3D(Surface):
+    """3D正方形平面类，继承自Surface，用于创建3D空间中的正方形表面"""
+    
     def __init__(
         self,
-        side_length: float = 2.0,
-        u_range: Tuple[float, float] = (-1, 1),
-        v_range: Tuple[float, float] = (-1, 1),
-        resolution: Tuple[int, int] = (2, 2),
-        **kwargs,
+        side_length: float = 2.0,         # 正方形边长，默认2.0
+        u_range: Tuple[float, float] = (-1, 1),  # u参数范围，默认-1到1
+        v_range: Tuple[float, float] = (-1, 1),  # v参数范围，默认-1到1
+        resolution: Tuple[int, int] = (2, 2),    # 表面分辨率，默认(2,2)（低分辨率足够）
+        **kwargs,                         # 其他关键字参数，传递给父类Surface
     ):
+        # 调用父类Surface的构造函数，初始化基础属性
         super().__init__(
             u_range=u_range, 
             v_range=v_range, 
             resolution=resolution, 
             **kwargs
         )
+        # 按边长缩放正方形（基础正方形边长为2，所以除以2）
         self.scale(side_length / 2)
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
-        return np.array([u, v, 0])
+        """
+        正方形平面的参数方程
+        
+        参数:
+            u: u方向参数
+            v: v方向参数
+        
+        返回:
+            三维坐标点(x, y, z)（位于z=0平面）
+        """
+        return np.array([u, v, 0])  # 正方形位于xy平面
 
 
 def square_to_cube_faces(square: T) -> list[T]:
+    """
+    将单个正方形转换为立方体的6个面
+    
+    参数:
+        square: 基础正方形对象
+    
+    返回:
+        组成立方体的6个面的列表
+    """
+    # 计算从中心到边缘的距离（半径）
     radius = square.get_height() / 2
+    # 将正方形移动到z轴正方向（朝外）
     square.move_to(radius * OUT)
+    # 初始化结果列表，包含第一个面（前面）
     result = [square.copy()]
+    # 添加四个侧面：围绕四个方向向量旋转90度
     result.extend([
         square.copy().rotate(PI / 2, axis=vect, about_point=ORIGIN)
-        for vect in compass_directions(4)
+        for vect in compass_directions(4)  # 四个方向：右、上、左、下
     ])
+    # 添加最后一个面（后面）：绕RIGHT轴旋转180度
     result.append(square.copy().rotate(PI, RIGHT, about_point=ORIGIN))
     return result
 
 
 class Cube(SGroup):
+    """立方体类，继承自SGroup，由6个Square3D面组成"""
+    
     def __init__(
         self,
-        color: ManimColor = BLUE,
-        opacity: float = 1,
-        shading: Tuple[float, float, float] = (0.1, 0.5, 0.1),
-        square_resolution: Tuple[int, int] = (2, 2),
-        side_length: float = 2,
-        **kwargs,
+        color: ManimColor = BLUE,              # 立方体颜色，默认蓝色
+        opacity: float = 1,                    # 不透明度，默认完全不透明
+        shading: Tuple[float, float, float] = (0.1, 0.5, 0.1),  # 阴影参数
+        square_resolution: Tuple[int, int] = (2, 2),  # 每个面的分辨率
+        side_length: float = 2,                # 边长，默认2
+        **kwargs,                             # 其他关键字参数
     ):
+        # 创建一个正方形面作为基础
         face = Square3D(
             resolution=square_resolution,
             side_length=side_length,
@@ -424,93 +455,116 @@ class Cube(SGroup):
             opacity=opacity,
             shading=shading,
         )
+        # 调用父类SGroup的构造函数，传入6个面
         super().__init__(*square_to_cube_faces(face), **kwargs)
 
 
 class Prism(Cube):
+    """棱柱类，继承自Cube，可创建长方体（各边可不等长）"""
+    
     def __init__(
         self,
-        width: float = 3.0,
-        height: float = 2.0,
-        depth: float = 1.0,
-        **kwargs
+        width: float = 3.0,    # 宽度（x方向），默认3.0
+        height: float = 2.0,   # 高度（y方向），默认2.0
+        depth: float = 1.0,    # 深度（z方向），默认1.0
+        **kwargs               # 其他关键字参数
     ):
-        super().__init__(**kwargs)
+        # 调用父类Cube的构造函数
+        super().__init__(** kwargs)
+        # 分别在三个维度上调整大小以匹配指定的宽、高、深
         for dim, value in enumerate([width, height, depth]):
             self.rescale_to_fit(value, dim, stretch=True)
 
 
 class VGroup3D(VGroup):
+    """3D向量图形组合类，继承自VGroup，为3D对象提供额外属性"""
+    
     def __init__(
         self,
-        *vmobjects: VMobject,
-        depth_test: bool = True,
-        shading: Tuple[float, float, float] = (0.2, 0.2, 0.2),
-        joint_type: str = "no_joint",
-        **kwargs
+        *vmobjects: VMobject,    # 要包含的向量图形对象
+        depth_test: bool = True,  # 是否启用深度测试，默认True
+        shading: Tuple[float, float, float] = (0.2, 0.2, 0.2),  # 阴影参数
+        joint_type: str = "no_joint",  # 连接点类型，默认无特殊样式
+        **kwargs                  # 其他关键字参数
     ):
+        # 调用父类VGroup的构造函数
         super().__init__(*vmobjects, **kwargs)
+        # 设置阴影效果
         self.set_shading(*shading)
+        # 设置连接点类型
         self.set_joint_type(joint_type)
+        # 如果需要，应用深度测试
         if depth_test:
             self.apply_depth_test()
 
 
 class VCube(VGroup3D):
+    """向量立方体类，继承自VGroup3D，使用2D正方形构建3D立方体"""
+    
     def __init__(
         self,
-        side_length: float = 2.0,
-        fill_color: ManimColor = BLUE_D,
-        fill_opacity: float = 1,
-        stroke_width: float = 0,
-        **kwargs
+        side_length: float = 2.0,        # 边长，默认2.0
+        fill_color: ManimColor = BLUE_D, # 填充颜色，默认深蓝色
+        fill_opacity: float = 1,         # 填充不透明度，默认1
+        stroke_width: float = 0,         # 边框宽度，默认0（无边界）
+        **kwargs                         # 其他关键字参数
     ):
+        # 整合样式参数
         style = dict(
             fill_color=fill_color,
             fill_opacity=fill_opacity,
-            stroke_width=stroke_width,
-            **kwargs
+            stroke_width=stroke_width,** kwargs
         )
+        # 创建一个2D正方形作为基础面
         face = Square(side_length=side_length, **style)
-        super().__init__(*square_to_cube_faces(face), **style)
+        # 调用父类VGroup3D的构造函数，传入6个面
+        super().__init__(*square_to_cube_faces(face), ** style)
 
 
 class VPrism(VCube):
+    """向量棱柱类，继承自VCube，可创建长方体"""
+    
     def __init__(
         self,
-        width: float = 3.0,
-        height: float = 2.0,
-        depth: float = 1.0,
-        **kwargs
+        width: float = 3.0,    # 宽度（x方向），默认3.0
+        height: float = 2.0,   # 高度（y方向），默认2.0
+        depth: float = 1.0,    # 深度（z方向），默认1.0
+        **kwargs               # 其他关键字参数
     ):
-        super().__init__(**kwargs)
+        # 调用父类VCube的构造函数
+        super().__init__(** kwargs)
+        # 分别在三个维度上调整大小以匹配指定的宽、高、深
         for dim, value in enumerate([width, height, depth]):
             self.rescale_to_fit(value, dim, stretch=True)
 
 
 class Dodecahedron(VGroup3D):
+    """十二面体类，继承自VGroup3D，创建正十二面体（12个五边形面）"""
+    
     def __init__(
         self,
-        fill_color: ManimColor = BLUE_E,
-        fill_opacity: float = 1,
-        stroke_color: ManimColor = BLUE_E,
-        stroke_width: float = 1,
-        shading: Tuple[float, float, float] = (0.2, 0.2, 0.2),
-        **kwargs,
+        fill_color: ManimColor = BLUE_E,  # 填充颜色，默认浅蓝色
+        fill_opacity: float = 1,          # 填充不透明度，默认1
+        stroke_color: ManimColor = BLUE_E, # 边框颜色，默认浅蓝色
+        stroke_width: float = 1,          # 边框宽度，默认1
+        shading: Tuple[float, float, float] = (0.2, 0.2, 0.2),  # 阴影参数
+        **kwargs,                         # 其他关键字参数
     ):
+        # 整合样式参数
         style = dict(
             fill_color=fill_color,
             fill_opacity=fill_opacity,
             stroke_color=stroke_color,
             stroke_width=stroke_width,
-            shading=shading,
-            **kwargs
+            shading=shading,** kwargs
         )
 
-        # Start by creating two of the pentagons, meeting
-        # back to back on the positive x-axis
+        # 黄金比例（正十二面体的关键比例）
         phi = (1 + math.sqrt(5)) / 2
+        # 创建x、y、z轴单位向量
         x, y, z = np.identity(3)
+        
+        # 创建第一个五边形面
         pentagon1 = Polygon(
             np.array([phi, 1 / phi, 0]),
             np.array([1, 1, 1]),
@@ -519,19 +573,27 @@ class Dodecahedron(VGroup3D):
             np.array([phi, -1 / phi, 0]),
             **style
         )
+        # 创建背面五边形（沿z轴翻转）
         pentagon2 = pentagon1.copy().stretch(-1, 2, about_point=ORIGIN)
-        pentagon2.reverse_points()
+        pentagon2.reverse_points()  # 反转点顺序以确保法线方向正确
+        
+        # 创建x方向的五边形对
         x_pair = VGroup(pentagon1, pentagon2)
+        # 创建z方向的五边形对（通过矩阵变换旋转x方向的对）
         z_pair = x_pair.copy().apply_matrix(np.array([z, -x, -y]).T)
+        # 创建y方向的五边形对（通过矩阵变换旋转x方向的对）
         y_pair = x_pair.copy().apply_matrix(np.array([y, z, x]).T)
 
+        # 收集所有五边形面
         pentagons = [*x_pair, *y_pair, *z_pair]
+        # 添加剩余的六个面（通过中心对称创建）
         for pentagon in list(pentagons):
             pc = pentagon.copy()
-            pc.apply_function(lambda p: -p)
-            pc.reverse_points()
+            pc.apply_function(lambda p: -p)  # 中心对称
+            pc.reverse_points()  # 反转点顺序
             pentagons.append(pc)
 
+        # 调用父类VGroup3D的构造函数，传入所有12个五边形面
         super().__init__(*pentagons, **style)
 
 
