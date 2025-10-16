@@ -45,21 +45,27 @@ if TYPE_CHECKING:
 
 
 class SurfaceMesh(VGroup):
+    """表面网格类，继承自VGroup，用于为Manim中的Surface对象生成可视化网格线"""
+    
     def __init__(
         self,
-        uv_surface: Surface,
-        resolution: Tuple[int, int] = (21, 11),
-        stroke_width: float = 1,
-        stroke_color: ManimColor = GREY_A,
-        normal_nudge: float = 1e-2,
-        depth_test: bool = True,
-        joint_type: str = 'no_joint',
-        **kwargs
+        uv_surface: Surface,        # 待添加网格的Surface对象（核心依赖）
+        resolution: Tuple[int, int] = (21, 11),  # 网格分辨率（u方向线数, v方向线数），默认(21,11)
+        stroke_width: float = 1,    # 网格线的线条宽度，默认1
+        stroke_color: ManimColor = GREY_A,  # 网格线的颜色，默认浅灰色
+        normal_nudge: float = 1e-2, # 网格线相对于原始表面的偏移量（沿法向量方向），默认0.01
+        depth_test: bool = True,    # 是否启用深度测试（影响3D场景中的遮挡显示），默认True
+        joint_type: str = 'no_joint',  # 网格线连接点的样式，默认无特殊样式
+        **kwargs                    # 其他关键字参数，传递给父类VGroup
     ):
+        # 存储核心属性：待处理的Surface对象
         self.uv_surface = uv_surface
+        # 存储网格分辨率：决定u、v两个方向各生成多少条网格线
         self.resolution = resolution
+        # 存储网格线偏移量：避免网格线与原始表面完全重叠
         self.normal_nudge = normal_nudge
 
+        # 调用父类VGroup的构造函数，传递样式相关参数
         super().__init__(
             stroke_color=stroke_color,
             stroke_width=stroke_width,
@@ -69,38 +75,65 @@ class SurfaceMesh(VGroup):
         )
 
     def init_points(self) -> None:
+        """初始化网格线的顶点数据，生成u、v两个方向的网格线并添加到组合中"""
+        # 简化变量名：获取待处理的Surface对象
         uv_surface = self.uv_surface
 
+        # 获取原始Surface的分辨率（u方向点数, v方向点数）
         full_nu, full_nv = uv_surface.resolution
+        # 获取网格线的分辨率（u方向线数, v方向线数）
         part_nu, part_nv = self.resolution
-        # 'indices' are treated as floats. Later, there will be
-        # an interpolation between the floor and ceiling of these
-        # indices
+        # 注：此处的“indices”为浮点型，后续会通过插值计算，实现网格线在两点间的平滑过渡
+        # 生成u方向网格线对应的索引（从0到原始u方向最大索引，均匀生成part_nu个点）
         u_indices = np.linspace(0, full_nu - 1, part_nu)
+        # 生成v方向网格线对应的索引（从0到原始v方向最大索引，均匀生成part_nv个点）
         v_indices = np.linspace(0, full_nv - 1, part_nv)
 
+        # 获取原始Surface的所有顶点坐标
         points = uv_surface.get_points()
+        # 获取原始Surface每个顶点的单位法向量（用于计算网格线偏移方向）
         normals = uv_surface.get_unit_normals()
+        # 简化变量名：获取网格线偏移量
         nudge = self.normal_nudge
+        # 计算偏移后的顶点坐标：原始顶点 + 偏移量×法向量（沿法向量方向轻微偏移）
         nudged_points = points + nudge * normals
 
+        # -------------------------- 生成u方向的网格线 --------------------------
+        # 遍历u方向的每个索引，生成一条沿v方向延伸的网格线
         for ui in u_indices:
+            # 创建一个VMobject对象，用于存储单条u方向网格线
             path = VMobject()
+            # 计算当前u索引对应的下限顶点索引（整数，向下取整）
             low_ui = full_nv * int(math.floor(ui))
+            # 计算当前u索引对应的上限顶点索引（整数，向上取整）
             high_ui = full_nv * int(math.ceil(ui))
+            # 为网格线设置平滑顶点：通过插值计算当前u索引对应的v方向所有顶点
             path.set_points_smoothly(interpolate(
+                # 下限u对应的所有v方向偏移后顶点
                 nudged_points[low_ui:low_ui + full_nv],
+                # 上限u对应的所有v方向偏移后顶点
                 nudged_points[high_ui:high_ui + full_nv],
+                # 插值系数（ui的小数部分，0~1之间，决定两点间的插值比例）
                 ui % 1
             ))
+            # 将当前u方向网格线添加到SurfaceMesh组合中
             self.add(path)
+
+        # -------------------------- 生成v方向的网格线 --------------------------
+        # 遍历v方向的每个索引，生成一条沿u方向延伸的网格线
         for vi in v_indices:
+            # 创建一个VMobject对象，用于存储单条v方向网格线
             path = VMobject()
+            # 为网格线设置平滑顶点：通过插值计算当前v索引对应的u方向所有顶点
             path.set_points_smoothly(interpolate(
+                # 下限v对应的所有u方向偏移后顶点（步长为full_nv，按列取点）
                 nudged_points[int(math.floor(vi))::full_nv],
+                # 上限v对应的所有u方向偏移后顶点（步长为full_nv，按列取点）
                 nudged_points[int(math.ceil(vi))::full_nv],
+                # 插值系数（vi的小数部分，0~1之间，决定两点间的插值比例）
                 vi % 1
             ))
+            # 将当前v方向网格线添加到SurfaceMesh组合中
             self.add(path)
 
 
