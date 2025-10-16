@@ -318,80 +318,113 @@ class VShowPassingFlash(Animation):
             submob.match_style(start)
 
 
+# 定义 FlashAround 类，继承自 VShowPassingFlash（一个显示闪烁动画的基础类）
 class FlashAround(VShowPassingFlash):
+    # 构造方法，初始化动画的各种参数
     def __init__(
         self,
-        mobject: Mobject,
-        time_width: float = 1.0,
-        taper_width: float = 0.0,
-        stroke_width: float = 4.0,
-        color: ManimColor = YELLOW,
-        buff: float = SMALL_BUFF,
-        n_inserted_curves: int = 100,
-        **kwargs
+        mobject: Mobject,  # 要围绕其创建闪烁效果的图形对象
+        time_width: float = 1.0,  # 动画持续的时间宽度
+        taper_width: float = 0.0,  # 闪烁效果的渐变宽度
+        stroke_width: float = 4.0,  # 边框线条宽度
+        color: ManimColor = YELLOW,  # 闪烁效果的颜色，默认为黄色
+        buff: float = SMALL_BUFF,  # 与目标对象的缓冲距离，使用预定义的小缓冲值
+        n_inserted_curves: int = 100,  # 插入的曲线段数量，用于使动画更平滑
+        **kwargs  # 其他传递给父类的关键字参数
     ):
+        # 获取围绕目标对象的路径（默认是边框矩形）
         path = self.get_path(mobject, buff)
+        # 如果目标对象是固定在帧中的，则路径也固定在帧中
         if mobject.is_fixed_in_frame():
             path.fix_in_frame()
+        # 向路径中插入指定数量的曲线段，使动画更平滑
         path.insert_n_curves(n_inserted_curves)
+        # 移除路径中的空曲线点，确保路径有效
         path.set_points(path.get_points_without_null_curves())
+        # 设置路径的外观：颜色和线条宽度
         path.set_stroke(color, stroke_width)
-        super().__init__(path, time_width=time_width, taper_width=taper_width, **kwargs)
+        # 调用父类的构造方法，传递路径和其他参数
+        super().__init__(path, time_width=time_width, taper_width=taper_width,** kwargs)
 
+    # 定义获取路径的方法，返回围绕目标对象的矩形
     def get_path(self, mobject: Mobject, buff: float) -> SurroundingRectangle:
+        # 创建并返回一个围绕目标对象的矩形，使用指定的缓冲距离
         return SurroundingRectangle(mobject, buff=buff)
 
 
+# 定义 FlashUnder 类，继承自 FlashAround
 class FlashUnder(FlashAround):
+    # 重写 get_path 方法，返回下划线而不是矩形
     def get_path(self, mobject: Mobject, buff: float) -> Underline:
+        # 创建并返回一个位于目标对象下方的下划线，缓冲距离和拉伸因子为1.0
         return Underline(mobject, buff=buff, stretch_factor=1.0)
 
 
+# 定义 ShowCreationThenDestruction 类，继承自 ShowPassingFlash
 class ShowCreationThenDestruction(ShowPassingFlash):
+    # 构造方法，初始化动画参数
     def __init__(self, vmobject: VMobject, time_width: float = 2.0, **kwargs):
-        super().__init__(vmobject, time_width=time_width, **kwargs)
+        # 调用父类的构造方法，传递向量图形对象和时间宽度等参数
+        # 这个类本质上是对 ShowPassingFlash 的简单封装，使用默认的2.0秒动画时长
+        super().__init__(vmobject, time_width=time_width,** kwargs)
 
 
+# 定义 ShowCreationThenFadeOut 类，继承自 Succession（序列动画类）
 class ShowCreationThenFadeOut(Succession):
+    # 构造方法，初始化动画序列
     def __init__(self, mobject: Mobject, remover: bool = True, **kwargs):
+        # 调用父类的构造方法，创建一个动画序列
         super().__init__(
-            ShowCreation(mobject),
-            FadeOut(mobject),
-            remover=remover,
-            **kwargs
+            ShowCreation(mobject),  # 第一个动画：创建对象（逐渐显示）
+            FadeOut(mobject),       # 第二个动画：淡出对象（逐渐消失）
+            remover=remover,        # 是否在动画结束后移除对象，默认为True
+            **kwargs                # 其他传递给父类的关键字参数
         )
 
 
+# 定义一个围绕目标对象矩形的动画组基类，继承自 AnimationGroup
 class AnimationOnSurroundingRectangle(AnimationGroup):
+    # 类属性：矩形要使用的动画类型，默认为基础 Animation 类
     RectAnimationType: type = Animation
 
+    # 构造方法，初始化围绕目标对象的矩形及相关动画
     def __init__(
         self,
-        mobject: Mobject,
-        stroke_width: float = 2.0,
-        stroke_color: ManimColor = YELLOW,
-        buff: float = SMALL_BUFF,
-        **kwargs
+        mobject: Mobject,  # 要围绕其创建矩形的图形对象
+        stroke_width: float = 2.0,  # 矩形边框宽度，默认2.0
+        stroke_color: ManimColor = YELLOW,  # 矩形边框颜色，默认黄色
+        buff: float = SMALL_BUFF,  # 矩形与目标对象的缓冲距离，使用预定义小缓冲值
+        **kwargs  # 传递给父类或动画的其他关键字参数
     ):
+        # 创建围绕目标对象的矩形
         rect = SurroundingRectangle(
-            mobject,
-            stroke_width=stroke_width,
-            stroke_color=stroke_color,
-            buff=buff,
+            mobject,  # 目标对象
+            stroke_width=stroke_width,  # 边框宽度
+            stroke_color=stroke_color,  # 边框颜色
+            buff=buff,  # 缓冲距离
         )
+        # 为矩形添加更新器：使矩形始终跟随目标对象移动
+        # 当目标对象位置变化时，矩形会自动移动到相同位置
         rect.add_updater(lambda r: r.move_to(mobject))
+        # 调用父类构造方法，将矩形的指定类型动画添加到动画组
         super().__init__(self.RectAnimationType(rect, **kwargs))
 
 
+# 定义闪烁效果围绕目标对象的动画类，继承自 AnimationOnSurroundingRectangle
 class ShowPassingFlashAround(AnimationOnSurroundingRectangle):
+    # 重写矩形动画类型为 ShowPassingFlash（闪烁效果动画）
     RectAnimationType = ShowPassingFlash
 
 
+# 定义先创建后销毁矩形的动画类，继承自 AnimationOnSurroundingRectangle
 class ShowCreationThenDestructionAround(AnimationOnSurroundingRectangle):
+    # 重写矩形动画类型为 ShowCreationThenDestruction（先创建后销毁动画）
     RectAnimationType = ShowCreationThenDestruction
 
 
+# 定义先创建后淡出矩形的动画类，继承自 AnimationOnSurroundingRectangle
 class ShowCreationThenFadeAround(AnimationOnSurroundingRectangle):
+    # 重写矩形动画类型为 ShowCreationThenFadeOut（先创建后淡出动画）
     RectAnimationType = ShowCreationThenFadeOut
 
 
