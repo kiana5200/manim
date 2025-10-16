@@ -278,73 +278,110 @@ def vectorize(pointwise_function: Callable[[Tuple], Tuple]):
 
 
 class VectorField(VMobject):
+    """向量场类，继承自VMobject，用于在Manim中生成并显示2D/3D向量场（箭头网格）"""
+    
     def __init__(
         self,
-        # Vectorized function: Takes in an array of coordinates, returns an array of outputs.
+        # 向量化向量场函数：输入坐标点数组，输出对应位置的向量数组
         func: Callable[[VectArray], VectArray],
-        # Typically a set of Axes or NumberPlane
+        # 关联的坐标系（如Axes/NumberPlane），用于坐标转换
         coordinate_system: CoordinateSystem,
+        # 自定义采样点坐标数组（可选，未提供则自动生成）
         sample_coords: Optional[VectArray] = None,
+        # 采样密度（值越大，箭头分布越密集），默认2.0
         density: float = 2.0,
+        # 向量大小范围（用于颜色映射归一化），可选
         magnitude_range: Optional[Tuple[float, float]] = None,
+        # 向量统一颜色（指定后忽略颜色映射），可选
         color: Optional[ManimColor] = None,
+        # 默认颜色映射名称（3Blue1Brown风格），默认"3b1b_colormap"
         color_map_name: Optional[str] = "3b1b_colormap",
+        # 自定义颜色映射函数（输入向量大小序列，输出RGBA数组），可选
         color_map: Optional[Callable[[Sequence[float]], Vect4Array]] = None,
+        # 线条不透明度，默认1.0
         stroke_opacity: float = 1.0,
+        # 向量主体线条宽度，默认3
         stroke_width: float = 3,
+        # 箭头尖端宽度与主体宽度的比例，默认4
         tip_width_ratio: float = 4,
+        # 箭头尖端长度与尖端宽度的比例，默认0.01
         tip_len_to_width: float = 0.01,
+        # 向量显示的最大长度（可选，None则自动计算）
         max_vect_len: float | None = None,
+        # 最大向量长度与采样步长的比例（自动计算时用），默认0.8
         max_vect_len_to_step_size: float = 0.8,
+        # 是否使用平面线条样式，默认False
         flat_stroke: bool = False,
-        norm_to_opacity_func=None,  # TODO, check on this
-        **kwargs
+        # 向量大小到不透明度的映射函数（待完善）
+        norm_to_opacity_func=None,
+        **kwargs  # 其他传递给父类VMobject的参数
     ):
+        # 存储向量场核心函数
         self.func = func
+        # 存储关联的坐标系
         self.coordinate_system = coordinate_system
+        # 存储主体线条宽度
         self.stroke_width = stroke_width
+        # 存储箭头尖端宽度比例
         self.tip_width_ratio = tip_width_ratio
+        # 存储箭头尖端长度比例
         self.tip_len_to_width = tip_len_to_width
+        # 存储不透明度映射函数
         self.norm_to_opacity_func = norm_to_opacity_func
 
-        # Search for sample_points
+        # 处理采样点：使用自定义采样点或自动生成
         if sample_coords is not None:
             self.sample_coords = sample_coords
         else:
+            # 调用工具函数生成坐标系内的均匀采样点
             self.sample_coords = get_sample_coords(coordinate_system, density)
+        # 将采样点从坐标系坐标转换为全局坐标
         self.update_sample_points()
 
+        # 计算向量显示的最大长度
         if max_vect_len is None:
+            # 自动计算：根据采样点间距和比例系数
             step_size = get_norm(self.sample_points[1] - self.sample_points[0])
             self.max_displayed_vect_len = max_vect_len_to_step_size * step_size
         else:
+            # 手动指定：结合坐标系单位大小（适配不同坐标轴缩放）
             self.max_displayed_vect_len = max_vect_len * coordinate_system.x_axis.get_unit_size()
 
-        # Prepare the color map
+        # 准备颜色映射的向量大小范围
         if magnitude_range is None:
+            # 自动计算：向量场在所有采样点的最大大小
             max_value = max(map(get_norm, func(self.sample_coords)))
             magnitude_range = (0, max_value)
-
         self.magnitude_range = magnitude_range
 
+        # 配置颜色映射逻辑
         if color is not None:
+            # 若指定统一颜色，禁用颜色映射
             self.color_map = None
         else:
+            # 使用自定义颜色映射或默认颜色映射
             self.color_map = color_map or get_color_map(color_map_name)
 
+        # 初始化箭头各部分的基础宽度数组
         self.init_base_stroke_width_array(len(self.sample_coords))
 
+        # 调用父类VMobject的构造函数，初始化向量场图形属性
         super().__init__(
             stroke_opacity=stroke_opacity,
-            flat_stroke=flat_stroke,
-            **kwargs
+            flat_stroke=flat_stroke,** kwargs
         )
+        # 设置向量线条的颜色和宽度
         self.set_stroke(color, stroke_width)
+        # 生成并更新所有向量箭头的显示
         self.update_vectors()
 
     def init_points(self):
+        """初始化向量场的顶点数据（每个箭头用8个顶点定义）"""
+        # 采样点数量 = 箭头数量
         n_samples = len(self.sample_coords)
+        # 总顶点数 = 8*箭头数 - 1（最后一个箭头无需额外间隔点）
         self.set_points(np.zeros((8 * n_samples - 1, 3)))
+        # 设置箭头各顶点的连接方式为"无特殊关节"
         self.set_joint_type('no_joint')
 
     def get_sample_points(
@@ -357,100 +394,136 @@ class VectorField(VMobject):
         y_density: float,
         z_density: float
     ) -> np.ndarray:
+        """在指定3D区域内生成均匀采样点（支持局部采样）"""
+        # 计算区域中心到角落的半长向量
         to_corner = np.array([width / 2, height / 2, depth / 2])
+        # 计算各维度的采样间隔（密度越大，间隔越小）
         spacings = 1.0 / np.array([x_density, y_density, z_density])
+        # 调整半长向量，确保为采样间隔的整数倍（避免边缘采样点错位）
         to_corner = spacings * (to_corner / spacings).astype(int)
+        # 计算区域的下/上边界坐标
         lower_corner = center - to_corner
         upper_corner = center + to_corner + spacings
+        # 生成各维度采样点序列，并用笛卡尔积组合为3D采样点数组
         return cartesian_product(*(
             np.arange(low, high, space)
             for low, high, space in zip(lower_corner, upper_corner, spacings)
         ))
 
     def init_base_stroke_width_array(self, n_sample_points):
+        """初始化箭头各部分的基础宽度比例数组（控制箭头形状）"""
+        # 基础宽度数组：长度 = 8*箭头数 - 1，默认值1（与主体宽度一致）
         arr = np.ones(8 * n_sample_points - 1)
-        arr[4::8] = self.tip_width_ratio
-        arr[5::8] = self.tip_width_ratio * 0.5
-        arr[6::8] = 0
-        arr[7::8] = 0
+        # 箭头尖端部分宽度比例：尖端起点（4::8）→ 尖端中点（5::8）→ 尖端终点（6::8）
+        arr[4::8] = self.tip_width_ratio       # 尖端起点：宽度=主体*比例
+        arr[5::8] = self.tip_width_ratio * 0.5 # 尖端中点：宽度=主体*比例*0.5（渐变）
+        arr[6::8] = 0                          # 尖端终点：宽度=0（收尖）
+        arr[7::8] = 0                          # 箭头间间隔点：宽度=0（避免连在一起）
+        # 存储基础宽度比例数组
         self.base_stroke_width_array = arr
 
     def set_sample_coords(self, sample_coords: VectArray):
+        """更新采样点坐标（外部调用，用于动态调整采样区域）"""
         self.sample_coords = sample_coords
         return self
 
     def set_stroke(self, color=None, width=None, opacity=None, behind=None, flat=None, recurse=True):
+        """重写父类方法：统一设置线条样式（颜色/宽度/不透明度）"""
+        # 调用父类set_stroke设置颜色、不透明度等（宽度单独处理）
         super().set_stroke(color, None, opacity, behind, flat, recurse)
+        # 若指定宽度，调用set_stroke_width更新
         if width is not None:
             self.set_stroke_width(float(width))
         return self
 
     def set_stroke_width(self, width: float):
+        """设置向量线条宽度（应用基础宽度比例数组）"""
         if self.get_num_points() > 0:
+            # 计算最终宽度：主体宽度 × 基础比例数组（实现箭头尖端渐变）
             self.get_stroke_widths()[:] = width * self.base_stroke_width_array
+            # 更新存储的主体宽度
             self.stroke_width = width
         return self
 
     def update_sample_points(self):
+        """将采样点从坐标系坐标（如Axes的x/y）转换为全局坐标"""
+        # coordinate_system.c2p：坐标系坐标→全局坐标；sample_coords.T：转置为行向量便于传入
         self.sample_points = self.coordinate_system.c2p(*self.sample_coords.T)
 
     def update_vectors(self):
+        """核心方法：计算并绘制所有向量箭头（位置、长度、颜色、宽度）"""
+        # 计算箭头尖端的实际宽度和长度
         tip_width = self.tip_width_ratio * self.stroke_width
         tip_len = self.tip_len_to_width * tip_width
 
-        # Outputs in the coordinate system
+        # 1. 计算坐标系内的向量输出（未转换为全局坐标）
         outputs = self.func(self.sample_coords)
+        # 计算每个向量的大小（用于颜色映射和长度限制）
         output_norms = np.linalg.norm(outputs, axis=1)[:, np.newaxis]
 
-        # Corresponding vector values in global coordinates
+        # 2. 将向量转换为全局坐标下的向量（排除坐标系原点偏移）
+        # coordinate_system.c2p转换向量→减去坐标系原点→得到全局坐标系下的向量
         out_vects = self.coordinate_system.c2p(*outputs.T) - self.coordinate_system.get_origin()
+        # 计算全局向量的大小
         out_vect_norms = np.linalg.norm(out_vects, axis=1)[:, np.newaxis]
+        # 计算全局向量的单位向量（用于确定箭头方向）
         unit_outputs = np.zeros_like(out_vects)
+        # 安全除法：避免除以0（where指定非零位置才计算）
         np.true_divide(out_vects, out_vect_norms, out=unit_outputs, where=(out_vect_norms > 0))
 
-        # How long should the arrows be drawn, in global coordinates
+        # 3. 计算箭头的显示长度（限制最大长度，避免重叠）
         max_len = self.max_displayed_vect_len
         if max_len < np.inf:
+            # 用双曲正切函数平滑限制长度（接近max_len时增长放缓）
             drawn_norms = max_len * np.tanh(out_vect_norms / max_len)
         else:
+            # 不限制长度，使用原始向量大小
             drawn_norms = out_vect_norms
 
-        # What's the distance from the base of an arrow to
-        # the base of its head?
-        dist_to_head_base = np.clip(drawn_norms - tip_len, 0, np.inf)  # Mixing units!
+        # 4. 计算箭头主体终点到尖端起点的距离（排除尖端长度）
+        # clip确保距离非负（短向量可能无明显尖端）
+        dist_to_head_base = np.clip(drawn_norms - tip_len, 0, np.inf)
 
-        # Set all points
+        # 5. 设置箭头所有顶点的位置（每个箭头8个顶点）
         points = self.get_points()
-        points[0::8] = self.sample_points
-        points[2::8] = self.sample_points + dist_to_head_base * unit_outputs
-        points[4::8] = points[2::8]
-        points[6::8] = self.sample_points + drawn_norms * unit_outputs
+        points[0::8] = self.sample_points                  # 顶点0：箭头起点
+        points[2::8] = self.sample_points + dist_to_head_base * unit_outputs  # 顶点2：箭头主体终点（尖端起点）
+        points[4::8] = points[2::8]                        # 顶点4：尖端起点（与顶点2重合，用于宽度过渡）
+        points[6::8] = self.sample_points + drawn_norms * unit_outputs        # 顶点6：箭头尖端终点
+        # 顶点1/3/5：中间过渡点（取相邻顶点中点，实现平滑线条）
         for i in (1, 3, 5):
             points[i::8] = 0.5 * (points[i - 1::8] + points[i + 1::8])
-        points[7::8] = points[6:-1:8]
+        points[7::8] = points[6:-1:8]                      # 顶点7：箭头间间隔点（与前一个箭头尖端终点重合）
 
-        # Adjust stroke widths
+        # 6. 调整箭头各部分的线条宽度（应用基础比例+长度缩放）
+        # 基础宽度数组×主体宽度：得到原始宽度分布
         width_arr = self.stroke_width * self.base_stroke_width_array
+        # 宽度缩放系数：短向量尖端更窄（clip限制在0-1，避免负宽度）
         width_scalars = np.clip(drawn_norms / tip_len, 0, 1)
+        # 扩展系数数组：每个箭头对应8个系数（最后一个箭头少1个）
         width_scalars = np.repeat(width_scalars, 8)[:-1]
+        # 应用最终宽度：缩放系数×原始宽度分布
         self.get_stroke_widths()[:] = width_scalars * width_arr
 
-        # Potentially adjust opacity and color
+        # 7. 调整箭头颜色（若启用颜色映射）
         if self.color_map is not None:
-            self.get_stroke_colors()  # Ensures the array is updated to appropriate length
+            self.get_stroke_colors()  # 确保颜色数组长度匹配顶点数
             low, high = self.magnitude_range
-            self.data['stroke_rgba'][:, :3] = self.color_map(
-                inverse_interpolate(low, high, np.repeat(output_norms, 8)[:-1])
-            )[:, :3]
+            # 向量大小归一化：(实际大小-最小值)/(最大值-最小值)→[0,1]
+            normalized_norms = inverse_interpolate(low, high, np.repeat(output_norms, 8)[:-1])
+            # 颜色映射：归一化大小→RGBA颜色（取前3通道，忽略透明度）
+            self.data['stroke_rgba'][:, :3] = self.color_map(normalized_norms)[:, :3]
 
+        # 8. 调整箭头不透明度（若启用不透明度映射）
         if self.norm_to_opacity_func is not None:
-            self.get_stroke_opacities()[:] = self.norm_to_opacity_func(
-                np.repeat(output_norms, 8)[:-1]
-            )
+            # 扩展向量大小数组，匹配顶点数
+            extended_norms = np.repeat(output_norms, 8)[:-1]
+            # 应用不透明度映射函数
+            self.get_stroke_opacities()[:] = self.norm_to_opacity_func(extended_norms)
 
+        # 通知Manim图形系统：向量场数据已更新，需要重新渲染
         self.note_changed_data()
         return self
-
 
 class TimeVaryingVectorField(VectorField):
     def __init__(
