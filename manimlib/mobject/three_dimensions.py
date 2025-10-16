@@ -140,56 +140,95 @@ class SurfaceMesh(VGroup):
 # 3D shapes
 
 class Sphere(Surface):
+    """球体类，继承自Surface，用于在Manim中创建3D球体表面"""
+    
     def __init__(
         self,
-        u_range: Tuple[float, float] = (0, TAU),
-        v_range: Tuple[float, float] = (0, PI),
-        resolution: Tuple[int, int] = (101, 51),
-        radius: float = 1.0,
-        true_normals: bool = True,
-        clockwise=False,
-        **kwargs,
+        u_range: Tuple[float, float] = (0, TAU),  # u参数范围，默认0到2π（完整圆周）
+        v_range: Tuple[float, float] = (0, PI),   # v参数范围，默认0到π（半个圆周）
+        resolution: Tuple[int, int] = (101, 51),  # 表面分辨率（u方向点数, v方向点数），默认(101,51)
+        radius: float = 1.0,                      # 球体半径，默认1.0
+        true_normals: bool = True,                # 是否使用真实法向量，默认True（避免极点处的问题）
+        clockwise=False,                          # 是否顺时针方向生成，默认False
+        **kwargs,                                 # 其他关键字参数，传递给父类Surface
     ):
+        # 存储球体半径
         self.radius = radius
+        # 存储旋转方向标志
         self.clockwise = clockwise
+        
+        # 调用父类Surface的构造函数，初始化表面基本属性
         super().__init__(
             u_range=u_range,
             v_range=v_range,
-            resolution=resolution,
-            **kwargs
+            resolution=resolution,** kwargs
         )
-        # Add bespoke normal specification to avoid issue at poles
+        
+        # 为避免极点处的法向量问题，使用自定义的法向量点
         if true_normals:
+            # 法向量点 = 表面点 × (半径+法向量偏移)/半径（按比例调整法向量长度）
             self.data['d_normal_point'] = self.data['point'] * ((radius + self.normal_nudge) / radius)
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
+        """
+        球坐标系到笛卡尔坐标系的转换函数
+        
+        参数:
+            u: 方位角（绕z轴旋转角度）
+            v: 极角（与z轴夹角）
+        
+        返回:
+            三维坐标点(x, y, z)
+        """
+        # 根据旋转方向设置符号（顺时针为-1，逆时针为+1）
         sign = -1 if self.clockwise else +1
+        
+        # 球坐标到笛卡尔坐标的转换公式（乘以半径缩放）
         return self.radius * np.array([
-            math.cos(sign * u) * math.sin(v),
-            math.sin(sign * u) * math.sin(v),
-            -math.cos(v)
+            math.cos(sign * u) * math.sin(v),  # x坐标
+            math.sin(sign * u) * math.sin(v),  # y坐标
+            -math.cos(v)                       # z坐标（负号调整方向）
         ])
 
 
 class Torus(Surface):
+    """圆环面类，继承自Surface，用于在Manim中创建3D圆环表面（甜甜圈形状）"""
+    
     def __init__(
         self,
-        u_range: Tuple[float, float] = (0, TAU),
-        v_range: Tuple[float, float] = (0, TAU),
-        r1: float = 3.0,
-        r2: float = 1.0,
-        **kwargs,
+        u_range: Tuple[float, float] = (0, TAU),  # u参数范围，默认0到2π（绕中心轴旋转）
+        v_range: Tuple[float, float] = (0, TAU),  # v参数范围，默认0到2π（绕圆环自身旋转）
+        r1: float = 3.0,                          # 圆环中心到管中心的距离（大半径），默认3.0
+        r2: float = 1.0,                          # 管的半径（小半径），默认1.0
+        **kwargs,                                 # 其他关键字参数，传递给父类Surface
     ):
+        # 存储大半径（中心到管中心距离）
         self.r1 = r1
+        # 存储小半径（管自身半径）
         self.r2 = r2
+        
+        # 调用父类Surface的构造函数，初始化表面基本属性
         super().__init__(
             u_range=u_range,
-            v_range=v_range,
-            **kwargs,
+            v_range=v_range,** kwargs,
         )
 
     def uv_func(self, u: float, v: float) -> np.ndarray:
+        """
+        圆环面的参数方程，计算三维坐标点
+        
+        参数:
+            u: 绕中心轴旋转的角度
+            v: 绕圆环管自身旋转的角度
+        
+        返回:
+            三维坐标点(x, y, z)
+        """
+        # 计算绕中心轴旋转的单位向量（x-y平面内）
         P = np.array([math.cos(u), math.sin(u), 0])
+        
+        # 圆环面参数方程：
+        # (大半径 - 小半径×cos(v)) × 旋转向量 - 小半径×sin(v) × 外方向向量
         return (self.r1 - self.r2 * math.cos(v)) * P - self.r2 * math.sin(v) * OUT
 
 
