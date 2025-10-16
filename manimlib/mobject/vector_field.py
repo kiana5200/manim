@@ -526,52 +526,64 @@ class VectorField(VMobject):
         return self
 
 class TimeVaryingVectorField(VectorField):
+    """时变向量场类，继承自VectorField，支持向量场随时间动态变化"""
+    
     def __init__(
         self,
-        # Takes in an array of points and a float for time
+        # 时变向量场函数：输入坐标点数组和时间，输出对应时间的向量数组
         time_func: Callable[[VectArray, float], VectArray],
-        coordinate_system: CoordinateSystem,
-        **kwargs
+        coordinate_system: CoordinateSystem,  # 关联的坐标系
+        **kwargs  # 传递给父类VectorField的参数（如采样密度、颜色等）
     ):
+        # 初始化时间变量（初始时刻为0）
         self.time = 0
 
+        # 定义适配父类的静态向量场函数：固定时间参数，仅接收坐标
         def func(coords):
             return time_func(coords, self.time)
 
-        super().__init__(func, coordinate_system, **kwargs)
+        # 调用父类VectorField的构造函数，传入适配后的静态函数
+        super().__init__(func, coordinate_system,** kwargs)
+        # 添加时间更新器：每帧根据时间步长dt更新时间
         self.add_updater(lambda m, dt: m.increment_time(dt))
+        # 设置向量场始终随时间更新（确保每帧重新计算向量）
         self.always.update_vectors()
 
     def increment_time(self, dt):
-        self.time += dt
+        """时间递增方法：每帧更新时间变量"""
+        self.time += dt  # 时间 = 当前时间 + 帧时间步长dt
 
 
 class StreamLines(VGroup):
+    """流线类，继承自VGroup，用于绘制向量场的流线（粒子运动轨迹）"""
+    
     def __init__(
         self,
-        func: Callable[[VectArray], VectArray],
-        coordinate_system: CoordinateSystem,
-        density: float = 1.0,
-        n_repeats: int = 1,
-        noise_factor: float | None = None,
-        # Config for drawing lines
-        solution_time: float = 3,
-        dt: float = 0.05,
-        arc_len: float = 3,
-        max_time_steps: int = 200,
-        n_samples_per_line: int = 10,
-        cutoff_norm: float = 15,
-        # Style info
-        stroke_width: float = 1.0,
-        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,
-        stroke_opacity: float = 1,
-        color_by_magnitude: bool = True,
-        magnitude_range: Tuple[float, float] = (0, 2.0),
-        taper_stroke_width: bool = False,
-        color_map: str = "3b1b_colormap",
-        **kwargs
+        func: Callable[[VectArray], VectArray],  # 静态向量场函数（输入坐标，输出向量）
+        coordinate_system: CoordinateSystem,    # 关联的坐标系
+        density: float = 1.0,                   # 流线密度（值越大，流线越多）
+        n_repeats: int = 1,                     # 流线重复生成次数（增加密度）
+        noise_factor: float | None = None,      # 采样点随机偏移量（避免流线重叠）
+        # 流线绘制参数
+        solution_time: float = 3,               # 流线模拟总时长
+        dt: float = 0.05,                       # 模拟时间步长（步长越小，轨迹越平滑）
+        arc_len: float = 3,                     # 流线弧长（暂未启用）
+        max_time_steps: int = 200,              # 最大模拟步数（暂未启用）
+        n_samples_per_line: int = 10,           # 每条流线的采样点数（暂未启用）
+        cutoff_norm: float = 15,                # 向量大小阈值（暂未启用）
+        # 样式参数
+        stroke_width: float = 1.0,              # 流线宽度
+        stroke_color: ManimColor = DEFAULT_MOBJECT_COLOR,  # 流线统一颜色
+        stroke_opacity: float = 1,              # 流线不透明度
+        color_by_magnitude: bool = True,        # 是否按向量大小着色（True则启用颜色映射）
+        magnitude_range: Tuple[float, float] = (0, 2.0),  # 颜色映射的向量大小范围
+        taper_stroke_width: bool = False,       # 是否让流线宽度渐变（两端窄、中间宽）
+        color_map: str = "3b1b_colormap",       # 颜色映射名称
+        **kwargs  # 传递给父类VGroup的参数
     ):
+        # 调用父类VGroup的构造函数
         super().__init__(**kwargs)
+        # 存储核心参数
         self.func = func
         self.coordinate_system = coordinate_system
         self.density = density
@@ -591,67 +603,103 @@ class StreamLines(VGroup):
         self.taper_stroke_width = taper_stroke_width
         self.color_map = color_map
 
+        # 绘制所有流线
         self.draw_lines()
+        # 初始化流线样式（颜色、宽度等）
         self.init_style()
 
     def point_func(self, points: Vect3Array) -> Vect3:
+        """点级向量场函数：输入全局坐标点，输出对应全局向量（适配坐标系）"""
+        # 1. 全局坐标→坐标系坐标（如Axes的x/y坐标）
         in_coords = np.array(self.coordinate_system.p2c(points)).T
+        # 2. 调用向量场函数，得到坐标系内的向量
         out_coords = self.func(in_coords)
+        # 3. 获取坐标系原点（用于抵消偏移）
         origin = self.coordinate_system.get_origin()
+        # 4. 坐标系向量→全局向量（减去原点偏移）
         return self.coordinate_system.c2p(*out_coords.T) - origin
 
     def draw_lines(self) -> None:
+        """核心方法：生成并绘制所有流线（基于ODE求解粒子运动轨迹）"""
+        # 存储所有流线的列表
         lines = []
 
-        # Todo, it feels like coordinate system should just have
-        # the ODE solver built into it, no?
-        lines = []
+        # 遍历所有采样点（每个采样点对应一条流线）
         for coords in self.get_sample_coords():
-            solution_coords = ode_solution_points(self.func, coords, self.solution_time, self.dt)
+            # 1. 求解ODE：计算粒子从当前采样点出发的运动轨迹（坐标系内坐标）
+            solution_coords = ode_solution_points(
+                self.func,          # 向量场函数（决定粒子运动方向）
+                coords,             # 初始采样点（坐标系内）
+                self.solution_time, # 模拟总时长
+                self.dt             # 时间步长
+            )
+            # 2. 创建流线对象（VMobject）
             line = VMobject()
+            # 3. 将轨迹从坐标系坐标转换为全局坐标，并设置为流线的平滑顶点
             line.set_points_smoothly(self.coordinate_system.c2p(*solution_coords.T))
-            # TODO, account for arc length somehow?
+            # 4. 存储流线的模拟时间（暂未启用）
             line.virtual_time = self.solution_time
+            # 5. 将流线添加到列表
             lines.append(line)
+        # 6. 将所有流线设置为当前对象的子图形
         self.set_submobjects(lines)
 
     def get_sample_coords(self):
+        """生成流线的初始采样点（支持随机偏移，避免流线重叠）"""
+        # 简化变量名：关联的坐标系
         cs = self.coordinate_system
+        # 1. 生成坐标系内的均匀采样点
         sample_coords = get_sample_coords(cs, self.density)
 
+        # 2. 计算采样点的随机偏移量（默认基于坐标系单位大小和密度）
         noise_factor = self.noise_factor
         if noise_factor is None:
             noise_factor = (cs.x_axis.get_unit_size() / self.density) * 0.5
 
+        # 3. 生成最终采样点：重复n_repeats次 + 随机偏移（增加密度并避免重叠）
         return np.array([
             coords + noise_factor * np.random.random(coords.shape)
-            for n in range(self.n_repeats)
-            for coords in sample_coords
+            for n in range(self.n_repeats)  # 重复生成n_repeats次
+            for coords in sample_coords     # 遍历初始均匀采样点
         ])
 
     def init_style(self) -> None:
+        """初始化所有流线的样式（颜色和宽度）"""
+        # 1. 按向量大小着色（启用颜色映射）
         if self.color_by_magnitude:
+            # 创建向量化的颜色映射函数：输入向量大小，输出RGB颜色
             values_to_rgbs = get_vectorized_rgb_gradient_function(
-                *self.magnitude_range, self.color_map,
+                *self.magnitude_range,  # 颜色映射的向量大小范围
+                self.color_map,         # 颜色映射名称
             )
             cs = self.coordinate_system
+            # 遍历每条流线，为其设置渐变颜色
             for line in self.submobjects:
+                # 计算流线每个顶点处的向量大小
                 norms = [
-                    get_norm(self.func(cs.p2c(point)))
-                    for point in line.get_points()
+                    get_norm(self.func(cs.p2c(point)))  # 全局坐标→坐标系坐标→向量场函数→向量大小
+                    for point in line.get_points()      # 遍历流线的所有顶点
                 ]
+                # 根据向量大小生成对应的RGB颜色
                 rgbs = values_to_rgbs(norms)
+                # 构建RGBA数组（添加透明度通道）
                 rgbas = np.zeros((len(rgbs), 4))
-                rgbas[:, :3] = rgbs
-                rgbas[:, 3] = self.stroke_opacity
+                rgbas[:, :3] = rgbs          # 前3通道：RGB颜色
+                rgbas[:, 3] = self.stroke_opacity  # 第4通道：透明度
+                # 为流线设置颜色数组
                 line.set_rgba_array(rgbas, "stroke_rgba")
+        # 2. 统一颜色（不启用颜色映射）
         else:
             self.set_stroke(self.stroke_color, opacity=self.stroke_opacity)
 
+        # 3. 设置流线宽度（支持渐变宽度）
         if self.taper_stroke_width:
+            # 渐变宽度：两端0 → 中间self.stroke_width（通过列表指定渐变趋势）
             width = [0, self.stroke_width, 0]
         else:
+            # 固定宽度：所有位置均为self.stroke_width
             width = self.stroke_width
+        # 应用宽度设置
         self.set_stroke(width=width)
 
 
