@@ -40,119 +40,168 @@ EPSILON = 0.0001
 
 
 class SampleSpace(Rectangle):
+    """样本空间类，继承自Rectangle，用于在Manim中创建概率样本空间的可视化表示"""
+    
     def __init__(
         self,
-        width: float = 3,
-        height: float = 3,
-        fill_color: ManimColor = GREY_D,
-        fill_opacity: float = 1,
-        stroke_width: float = 0.5,
-        stroke_color: ManimColor = GREY_B,
-        default_label_scale_val: float = 1,
-        **kwargs,
+        width: float = 3,          # 样本空间矩形的宽度，默认值为3
+        height: float = 3,         # 样本空间矩形的高度，默认值为3
+        fill_color: ManimColor = GREY_D,  # 填充颜色，默认为深灰色
+        fill_opacity: float = 1,   # 填充不透明度，默认完全不透明
+        stroke_width: float = 0.5, # 边框宽度，默认0.5
+        stroke_color: ManimColor = GREY_B,  # 边框颜色，默认为中灰色
+        default_label_scale_val: float = 1, # 默认标签缩放值
+        **kwargs,                  # 其他关键字参数，传递给父类
     ):
+        # 调用父类Rectangle的构造函数，初始化基本矩形属性
         super().__init__(
             width, height,
             fill_color=fill_color,
             fill_opacity=fill_opacity,
             stroke_width=stroke_width,
-            stroke_color=stroke_color,
-            **kwargs
+            stroke_color=stroke_color,** kwargs
         )
+        # 存储默认标签缩放值
         self.default_label_scale_val = default_label_scale_val
 
     def add_title(
         self,
-        title: str = "Sample space",
-        buff: float = MED_SMALL_BUFF
+        title: str = "Sample space",  # 标题文本，默认"Sample space"
+        buff: float = MED_SMALL_BUFF  # 与样本空间的距离，默认中等小间距
     ) -> None:
-        # TODO, should this really exist in SampleSpaceScene
+        # TODO, 这个方法是否应该存在于SampleSpaceScene中
+        # 创建标题文本对象
         title_mob = TexText(title)
+        # 如果标题宽度超过样本空间宽度，则调整标题宽度
         if title_mob.get_width() > self.get_width():
             title_mob.set_width(self.get_width())
+        # 将标题放置在样本空间上方
         title_mob.next_to(self, UP, buff=buff)
+        # 存储标题对象并添加到场景中
         self.title = title_mob
         self.add(title_mob)
 
     def add_label(self, label: str) -> None:
+        """为样本空间添加标签"""
         self.label = label
 
     def complete_p_list(self, p_list: list[float]) -> list[float]:
+        """
+        补全概率列表，确保概率和为1
+        
+        参数:
+            p_list: 概率列表
+        
+        返回:
+            补全后的概率列表，总和为1
+        """
+        # 将输入转换为列表（确保是列表类型）
         new_p_list = listify(p_list)
+        # 计算剩余概率（1减去现有概率总和）
         remainder = 1.0 - sum(new_p_list)
+        # 如果剩余概率大于极小值（考虑浮点数误差），则添加到列表中
         if abs(remainder) > EPSILON:
             new_p_list.append(remainder)
         return new_p_list
 
     def get_division_along_dimension(
         self,
-        p_list: list[float],
-        dim: int,
-        colors: Iterable[ManimColor],
-        vect: np.ndarray
+        p_list: list[float],        # 概率列表，决定每个部分的比例
+        dim: int,                   # 划分维度，0为水平，1为垂直
+        colors: Iterable[ManimColor],  # 颜色迭代器，用于每个部分的填充色
+        vect: np.ndarray            # 方向向量，指示划分方向
     ) -> VGroup:
+        """沿指定维度按概率比例划分样本空间"""
+        # 补全概率列表，确保总和为1
         p_list = self.complete_p_list(p_list)
+        # 根据概率列表长度创建颜色渐变
         colors = color_gradient(colors, len(p_list))
 
+        # 获取起始点（沿反方向向量的边缘中心）
         last_point = self.get_edge_center(-vect)
+        # 创建用于存储所有部分的VGroup
         parts = VGroup()
+        
+        # 遍历每个概率和对应的颜色
         for factor, color in zip(p_list, colors):
+            # 创建新的样本空间部分
             part = SampleSpace()
+            # 设置部分的填充颜色和不透明度
             part.set_fill(color, 1)
+            # 替换为当前样本空间的大小和位置
             part.replace(self, stretch=True)
+            # 沿指定维度按概率因子拉伸
             part.stretch(factor, dim)
+            # 移动到正确位置
             part.move_to(last_point, -vect)
+            # 更新下一个部分的起始点
             last_point = part.get_edge_center(vect)
+            # 将部分添加到VGroup
             parts.add(part)
+        
         return parts
 
     def get_horizontal_division(
         self,
-        p_list: list[float],
-        colors: Iterable[ManimColor] = [GREEN_E, BLUE_E],
-        vect: np.ndarray = DOWN
+        p_list: list[float],        # 概率列表
+        colors: Iterable[ManimColor] = [GREEN_E, BLUE_E],  # 默认颜色列表
+        vect: np.ndarray = DOWN     # 默认方向向量为向下
     ) -> VGroup:
+        """获取水平方向的划分（按高度划分）"""
         return self.get_division_along_dimension(p_list, 1, colors, vect)
 
     def get_vertical_division(
         self,
-        p_list: list[float],
-        colors: Iterable[ManimColor] = [MAROON_B, YELLOW],
-        vect: np.ndarray = RIGHT
+        p_list: list[float],        # 概率列表
+        colors: Iterable[ManimColor] = [MAROON_B, YELLOW],  # 默认颜色列表
+        vect: np.ndarray = RIGHT    # 默认方向向量为向右
     ) -> VGroup:
+        """获取垂直方向的划分（按宽度划分）"""
         return self.get_division_along_dimension(p_list, 0, colors, vect)
 
     def divide_horizontally(self, *args, **kwargs) -> None:
+        """执行水平划分并将结果添加到当前对象"""
         self.horizontal_parts = self.get_horizontal_division(*args, **kwargs)
         self.add(self.horizontal_parts)
 
     def divide_vertically(self, *args, **kwargs) -> None:
+        """执行垂直划分并将结果添加到当前对象"""
         self.vertical_parts = self.get_vertical_division(*args, **kwargs)
         self.add(self.vertical_parts)
 
     def get_subdivision_braces_and_labels(
         self,
-        parts: VGroup,
-        labels: str,
-        direction: np.ndarray,
-        buff: float = SMALL_BUFF,
+        parts: VGroup,              # 要添加花括号和标签的部分组
+        labels: str,                # 标签文本
+        direction: np.ndarray,      # 花括号和标签的方向
+        buff: float = SMALL_BUFF,   # 间距，默认小间距
     ) -> VGroup:
+        """为划分的部分添加花括号和标签"""
+        # 创建存储标签和花括号的VGroup
         label_mobs = VGroup()
         braces = VGroup()
+        
+        # 为每个部分添加花括号和标签
         for label, part in zip(labels, parts):
+            # 创建花括号
             brace = Brace(
                 part, direction,
                 buff=buff
             )
+            # 处理标签，如果是Mobject则直接使用，否则创建Tex对象
             if isinstance(label, Mobject):
                 label_mob = label
             else:
                 label_mob = Tex(label)
                 label_mob.scale(self.default_label_scale_val)
+            # 将标签放置在花括号的指定方向
             label_mob.next_to(brace, direction, buff)
 
+            # 添加花括号和标签到对应的组
             braces.add(brace)
             label_mobs.add(label_mob)
+        
+        # 将花括号和标签存储在parts对象中
         parts.braces = braces
         parts.labels = label_mobs
         parts.label_kwargs = {
@@ -160,50 +209,70 @@ class SampleSpace(Rectangle):
             "direction": direction,
             "buff": buff,
         }
+        
         return VGroup(parts.braces, parts.labels)
 
     def get_side_braces_and_labels(
         self,
-        labels: str,
-        direction: np.ndarray = LEFT,
+        labels: str,                # 标签文本
+        direction: np.ndarray = LEFT,  # 方向，默认为左
         **kwargs
     ) -> VGroup:
+        """为水平划分的部分添加侧边花括号和标签"""
+        # 确保对象已进行水平划分
         assert hasattr(self, "horizontal_parts")
         parts = self.horizontal_parts
-        return self.get_subdivision_braces_and_labels(parts, labels, direction, **kwargs)
+        return self.get_subdivision_braces_and_labels(parts, labels, direction,** kwargs)
 
     def get_top_braces_and_labels(
         self,
-        labels: str,
+        labels: str,                # 标签文本
         **kwargs
     ) -> VGroup:
+        """为垂直划分的部分添加顶部花括号和标签"""
+        # 确保对象已进行垂直划分
         assert hasattr(self, "vertical_parts")
         parts = self.vertical_parts
-        return self.get_subdivision_braces_and_labels(parts, labels, UP, **kwargs)
+        return self.get_subdivision_braces_and_labels(parts, labels, UP,** kwargs)
 
     def get_bottom_braces_and_labels(
         self,
-        labels: str,
+        labels: str,                # 标签文本
         **kwargs
     ) -> VGroup:
+        """为垂直划分的部分添加底部花括号和标签"""
+        # 确保对象已进行垂直划分
         assert hasattr(self, "vertical_parts")
         parts = self.vertical_parts
-        return self.get_subdivision_braces_and_labels(parts, labels, DOWN, **kwargs)
+        return self.get_subdivision_braces_and_labels(parts, labels, DOWN,** kwargs)
 
     def add_braces_and_labels(self) -> None:
+        """将已创建的花括号和标签添加到场景中"""
+        # 检查水平和垂直划分部分
         for attr in "horizontal_parts", "vertical_parts":
             if not hasattr(self, attr):
                 continue
             parts = getattr(self, attr)
+            # 添加花括号和标签
             for subattr in "braces", "labels":
                 if hasattr(parts, subattr):
                     self.add(getattr(parts, subattr))
 
     def __getitem__(self, index: int | slice) -> VGroup:
+        """
+        重载索引运算符，允许通过索引访问划分的部分
+        
+        参数:
+            index: 索引或切片
+        
+        返回:
+            对应的部分或部分组
+        """
         if hasattr(self, "horizontal_parts"):
             return self.horizontal_parts[index]
         elif hasattr(self, "vertical_parts"):
             return self.vertical_parts[index]
+        # 如果没有划分，则返回分割后的部分
         return self.split()[index]
 
 
