@@ -1437,55 +1437,63 @@ class Arrow(Line):
 
 class Vector(Arrow):
     '''
-    Creates a vector. Vector is an arrow with start point as ORIGIN
-    Parameters
+    创建向量（Vector）对象，本质是起点固定为原点（ORIGIN）的箭头，用于表示数学中的向量。
+    
+    参数
     -----
     direction : array_like
-        Coordinates of direction of the arrow
-    Examples :
-            arrow = Vector(direction=LEFT)
-    Returns
+        向量的方向坐标（同时决定向量的终点和长度），支持2D或3D坐标
+    buff : float, optional
+        向量与起点/终点的缓冲距离，默认值为0.0（因起点固定为原点，无额外缓冲需求）
+    **kwargs
+        传递给父类Arrow的其他参数，如thickness（厚度）、tip_angle（尖端夹角）等
+    
+    示例 :
+            arrow = Vector(direction=LEFT)  # 向左的单位向量
+            vector = Vector(direction=(3, 4, 0), thickness=2)  # 终点为(3,4,0)的3D向量
+    
+    返回
     -----
     out : Vector object
-        A Vector object satisfying the specified parameters
+        符合指定参数的向量对象
     '''
 
     def __init__(
         self,
         direction: Vect3 = RIGHT,
-        buff: float = 0.0,
-        **kwargs
+        buff: float = 0.0,** kwargs
     ):
+        # 处理2D坐标：若输入为2个值，自动补全z轴为0，转为3D坐标
         if len(direction) == 2:
             direction = np.hstack([direction, 0])
+        # 调用父类Arrow的初始化方法，强制起点为原点，终点为direction参数
         super().__init__(ORIGIN, direction, buff=buff, **kwargs)
-
 
 class CubicBezier(VMobject):
     '''
-    Creates a cubic Bézier curve.
+    创建三次贝塞尔曲线（CubicBezier）对象，通过四个控制点定义平滑的曲线形态。
+    
+    三次贝塞尔曲线由两类共四个控制点定义：两个锚点（起点和终点）用于确定曲线的端点，
+    两个控制点用于控制曲线的弯曲方向和曲率，曲线会从起点出发、向控制点方向弯曲，最终到达终点。
 
-    A cubic Bézier curve is defined by four control points: two anchor points (start and end)
-    and two handle points that control the curvature. The curve starts at the first anchor
-    point, is "pulled" toward the handle points, and ends at the second anchor point.
-
-    Parameters
+    参数
     ----------
     a0 : array_like
-        First anchor point (starting point of the curve).
+        第一个锚点，即曲线的起点。
     h0 : array_like
-        First handle point (controls the initial direction and curvature from a0).
+        第一个控制点，用于控制曲线从起点（a0）出发时的方向和曲率。
     h1 : array_like
-        Second handle point (controls the final direction and curvature toward a1).
+        第二个控制点，用于控制曲线向终点（a1）靠近时的方向和曲率。
     a1 : array_like
-        Second anchor point (ending point of the curve).
+        第二个锚点，即曲线的终点。
     **kwargs
-        Additional keyword arguments passed to the parent VMobject class, such as
-        stroke_color, stroke_width, fill_color, fill_opacity, etc.
-    Returns
+        传递给父类VMobject的额外参数，例如描边颜色（stroke_color）、描边宽度（stroke_width）、
+        填充颜色（fill_color）、填充不透明度（fill_opacity）等。
+
+    返回
     -------
     CubicBezier
-        A CubicBezier object representing the specified cubic Bézier curve.
+        表示指定三次贝塞尔曲线的CubicBezier对象。
 
     '''
 
@@ -1494,137 +1502,214 @@ class CubicBezier(VMobject):
         a0: Vect3,
         h0: Vect3,
         h1: Vect3,
-        a1: Vect3,
-        **kwargs
+        a1: Vect3,** kwargs
     ):
+        # 调用父类VMobject的初始化方法，配置基础样式
         super().__init__(**kwargs)
+        # 直接调用VMobject的方法，根据四个控制点生成三次贝塞尔曲线
         self.add_cubic_bezier_curve(a0, h0, h1, a1)
 
 
 class Polygon(VMobject):
     '''
-    Creates a polygon by joining the specified vertices.
-    Parameters
+    通过连接指定顶点创建多边形（Polygon）对象，顶点按输入顺序依次连接，最后自动闭合。
+    
+    参数
     -----
     *vertices : array_like
-        Vertex of the polygon
-    Examples :
-            triangle = Polygon((-3,0,0), (3,0,0), (0,3,0))
-    Returns
+        多边形的顶点坐标，支持传入多个2D或3D坐标，数量需≥3（构成闭合图形）
+    
+    示例 :
+            triangle = Polygon((-3,0,0), (3,0,0), (0,3,0))  # 三角形（3个顶点）
+            square = Polygon((1,1,0), (1,-1,0), (-1,-1,0), (-1,1,0))  # 正方形（4个顶点）
+    
+    返回
     -----
     out : Polygon object
-        A Polygon object satisfying the specified parameters
+        符合指定参数的多边形对象
     '''
 
     def __init__(
         self,
-        *vertices: Vect3,
-        **kwargs
+        *vertices: Vect3,** kwargs
     ):
+        # 调用父类VMobject的初始化方法，配置填充、描边等基础样式
         super().__init__(**kwargs)
+        # 将顶点按顺序转为角点路径，最后添加第一个顶点实现闭合（[*vertices, vertices[0]]）
         self.set_points_as_corners([*vertices, vertices[0]])
 
     def get_vertices(self) -> Vect3Array:
+        # 返回多边形的所有顶点（取起点锚点，即角点路径的转折点）
         return self.get_start_anchors()
 
     def round_corners(self, radius: Optional[float] = None) -> Self:
+        # 若未指定圆角半径，自动计算：取最短边长度的25%（避免圆角过大导致图形变形）
         if radius is None:
             verts = self.get_vertices()
+            # 计算所有相邻顶点间的边长，取最小值
             min_edge_length = min(
                 get_norm(v1 - v2)
-                for v1, v2 in zip(verts, verts[1:])
-                if not np.isclose(v1, v2).all()
+                for v1, v2 in zip(verts, verts[1:])  # 遍历相邻顶点对
+                if not np.isclose(v1, v2).all()     # 排除重合顶点（避免除以0）
             )
-            radius = 0.25 * min_edge_length
+            radius = 0.25 * min_edge_length  # 自动半径 = 最短边的1/4
+        
+        # 1. 获取所有顶点，准备处理每个角
         vertices = self.get_vertices()
-        arcs = []
+        arcs = []  # 存储每个角的圆弧（用于替换直角）
+        
+        # 2. 遍历每个顶点（v2），结合前一个顶点（v1）和后一个顶点（v3）计算圆角
         for v1, v2, v3 in adjacent_n_tuples(vertices, 3):
-            vect1 = normalize(v2 - v1)
-            vect2 = normalize(v3 - v2)
+            # 计算顶点v2处的两个邻边方向（单位向量）
+            vect1 = normalize(v2 - v1)  # v1→v2的方向
+            vect2 = normalize(v3 - v2)  # v2→v3的方向
+            # 计算两个邻边的夹角（决定圆角的弧度）
             angle = angle_between_vectors(vect1, vect2)
-            # Distance between vertex and start of the arc
+            
+            # 计算“切角长度”：从顶点v2向两边截取的距离（确保圆弧平滑衔接）
             cut_off_length = radius * np.tan(angle / 2)
-            # Negative radius gives concave curves
+            # 确定圆弧方向：正半径凸向外侧，负半径凸向内侧（通过叉积判断）
             sign = float(np.sign(radius * cross2d(vect1, vect2)))
+            
+            # 创建顶点v2处的圆角圆弧：连接两个切角点
             arc = ArcBetweenPoints(
-                v2 - vect1 * cut_off_length,
-                v2 + vect2 * cut_off_length,
-                angle=sign * angle,
-                n_components=2,
+                v2 - vect1 * cut_off_length,  # 圆弧起点（v1→v2方向上的切角点）
+                v2 + vect2 * cut_off_length,  # 圆弧终点（v2→v3方向上的切角点）
+                angle=sign * angle,           # 圆弧的角度（含方向）
+                n_components=2,               # 圆弧的细分组件数
             )
-            arcs.append(arc)
+            arcs.append(arc)  # 收集当前顶点的圆弧
 
-        self.clear_points()
-        # To ensure that we loop through starting with last
-        arcs = [arcs[-1], *arcs[:-1]]
+        # 3. 重新构建圆角多边形的轮廓
+        self.clear_points()  # 清空原直角顶点的路径
+        arcs = [arcs[-1], *arcs[:-1]]  # 调整圆弧顺序，确保闭合衔接
+        
+        # 4. 依次添加每个圆弧，并连接相邻圆弧的端点
         for arc1, arc2 in adjacent_pairs(arcs):
-            self.add_subpath(arc1.get_points())
-            self.add_line_to(arc2.get_start())
+            self.add_subpath(arc1.get_points())  # 添加当前圆弧的点集
+            self.add_line_to(arc2.get_start())   # 连接到下一个圆弧的起点
         return self
 
-
 class Polyline(VMobject):
+    '''
+    创建折线（Polyline）对象，按输入顶点顺序连接线段，但**不自动闭合**（区别于Polygon）。
+    
+    参数
+    -----
+    *vertices : array_like
+        折线的顶点坐标，支持传入多个2D或3D坐标，数量需≥2（构成至少一条线段）
+    **kwargs
+        传递给父类VMobject的额外参数，如描边颜色（stroke_color）、描边宽度（stroke_width）等
+    
+    示例 :
+            polyline = Polyline((0,0,0), (2,1,0), (-1,3,0))  # 两段线段组成的折线，不闭合
+    '''
     def __init__(
         self,
-        *vertices: Vect3,
-        **kwargs
+        *vertices: Vect3,** kwargs
     ):
+        # 调用父类VMobject的初始化方法，配置基础样式
         super().__init__(**kwargs)
+        # 按顶点顺序生成角点路径，仅连接顶点，不额外添加起点闭合
         self.set_points_as_corners(vertices)
 
 
 class RegularPolygon(Polygon):
     '''
-    Creates a regular polygon of edge length 1 at the center of the screen.
-    Parameters
+    创建正多边形（RegularPolygon）对象，所有边长相等、内角相等，默认居中显示。
+    
+    参数
     -----
     n : int
-        Number of vertices of the regular polygon
-    start_angle : float
-        Starting angle of the regular polygon in radians. (Angles are measured counter-clockwise)
-    Examples :
-            pentagon = RegularPolygon(n=5, start_angle=30 * DEGREES)
-    Returns
+        正多边形的顶点数量（如n=3为正三角形，n=5为正五边形），默认值为6（正六边形）
+    radius : float
+        正多边形的外接圆半径（顶点到中心的距离），默认值为1.0
+    start_angle : float | None, optional
+        正多边形的起始角度（单位：弧度），按逆时针方向计算；
+        默认为None，此时奇数边正多边形起始角度为0，偶数边为90度（DEG），确保图形端正
+    **kwargs
+        传递给父类Polygon的额外参数，如填充颜色（fill_color）、描边宽度（stroke_width）等
+    
+    示例 :
+            pentagon = RegularPolygon(n=5, start_angle=30 * DEGREES)  # 起始角度30度的正五边形
+            hexagon = RegularPolygon(n=6, radius=2, fill_color=BLUE)  # 外接圆半径2、蓝色填充的正六边形
+    
+    返回
     -----
     out : RegularPolygon object
-        A RegularPolygon object satisfying the specified parameters
+        符合指定参数的正多边形对象
     '''
 
     def __init__(
         self,
         n: int = 6,
         radius: float = 1.0,
-        start_angle: float | None = None,
-        **kwargs
+        start_angle: float | None = None,** kwargs
     ):
-        # Defaults to 0 for odd, 90 for even
+        # 处理默认起始角度：奇数边（n%2=1）为0，偶数边为90度，避免图形偏移
         if start_angle is None:
             start_angle = (n % 2) * 90 * DEG
+        
+        # 1. 计算起始顶点的向量：从中心沿起始角度指向第一个顶点
         start_vect = rotate_vector(radius * RIGHT, start_angle)
+        # 2. 生成所有顶点：按等角度间隔分布在半径为radius的圆上（compass_directions实现均分）
         vertices = compass_directions(n, start_vect)
+        # 3. 调用父类Polygon的初始化方法，传入顶点生成闭合正多边形
         super().__init__(*vertices, **kwargs)
 
 
 class Triangle(RegularPolygon):
     '''
-    Creates a triangle of edge length 1 at the center of the screen.
-    Parameters
+    创建正三角形（Triangle）对象，即顶点数固定为3的正多边形，默认居中显示，所有边长和内角均相等。
+    
+    参数
     -----
-    start_angle : float
-        Starting angle of the triangle in radians. (Angles are measured counter-clockwise)
-    Examples :
-            triangle = Triangle(start_angle=45 * DEGREES)
-    Returns
+    start_angle : float, optional
+        正三角形的起始角度（单位：弧度），按逆时针方向计算；
+        未指定时默认遵循RegularPolygon规则，即奇数边起始角度为0，确保图形端正
+    radius : float, optional
+        正三角形的外接圆半径（顶点到中心的距离），默认值为1.0（继承自RegularPolygon）
+    **kwargs
+        传递给父类RegularPolygon的额外参数，如填充颜色（fill_color）、描边宽度（stroke_width）等
+    
+    示例 :
+            triangle = Triangle(start_angle=45 * DEGREES)  # 起始角度45度的正三角形
+            red_triangle = Triangle(radius=2, fill_color=RED, stroke_width=2)  # 半径2、红色填充的正三角形
+    
+    返回
     -----
     out : Triangle object
-        A Triangle object satisfying the specified parameters
+        符合指定参数的正三角形对象
     '''
 
     def __init__(self, **kwargs):
+        # 调用父类RegularPolygon的初始化方法，强制顶点数n=3（固定为三角形）
         super().__init__(n=3, **kwargs)
 
-
 class ArrowTip(Triangle):
+    '''
+    创建箭头尖端（ArrowTip）对象，基于正三角形扩展，支持多种尖端样式（三角形、平滑内侧、圆点），可灵活适配箭头。
+    
+    参数
+    -----
+    angle : float, optional
+        尖端的旋转角度（单位：弧度），用于匹配箭头的方向，默认值为0
+    width : float, optional
+        尖端的底部宽度（垂直于尖端方向的尺寸），默认值为DEFAULT_ARROW_TIP_WIDTH
+    length : float, optional
+        尖端的长度（沿尖端方向的尺寸），默认值为DEFAULT_ARROW_TIP_LENGTH
+    fill_opacity : float, optional
+        尖端的填充不透明度，默认值为1.0（完全不透明）
+    fill_color : ManimColor, optional
+        尖端的填充颜色，默认值为DEFAULT_MOBJECT_COLOR
+    stroke_width : float, optional
+        尖端的描边宽度，默认值为0.0（无描边）
+    tip_style : int, optional
+        尖端样式，0为三角形（默认）、1为内侧平滑形、2为圆点形
+    **kwargs
+        传递给父类Triangle的额外参数
+    '''
+
     def __init__(
         self,
         angle: float = 0,
@@ -1636,117 +1721,152 @@ class ArrowTip(Triangle):
         tip_style: int = 0,  # triangle=0, inner_smooth=1, dot=2
         **kwargs
     ):
+        # 调用父类Triangle的初始化方法，固定正三角形起始角度为0，配置填充和描边
         super().__init__(
             start_angle=0,
             fill_opacity=fill_opacity,
             fill_color=fill_color,
-            stroke_width=stroke_width,
-            **kwargs
+            stroke_width=stroke_width,** kwargs
         )
+        
+        # 1. 基础缩放：按宽度（高度）和长度（宽度）调整尖端尺寸
         self.set_height(width)
         self.set_width(length, stretch=True)
-        if tip_style == 1:
+        
+        # 2. 按样式调整尖端形态
+        if tip_style == 1:  # 内侧平滑形：调整高度并移动中间点实现平滑效果
             self.set_height(length * 0.9, stretch=True)
-            self.data["point"][4] += np.array([0.6 * length, 0, 0])
-        elif tip_style == 2:
+            self.data["point"][4] += np.array([0.6 * length, 0, 0])  # 移动第5个点（三角形中间点）
+        elif tip_style == 2:  # 圆点形：替换为圆点的点集，按长度一半调整大小
             h = length / 2
             self.set_points(Dot().set_width(h).get_points())
+        
+        # 3. 旋转尖端到指定角度，匹配箭头方向
         self.rotate(angle)
 
     def get_base(self) -> Vect3:
+        # 返回尖端的底部中心点（按比例0.5取点，对应三角形底边中点）
         return self.point_from_proportion(0.5)
 
     def get_tip_point(self) -> Vect3:
+        # 返回尖端的顶点（取点集中的第一个点，对应三角形的顶端）
         return self.get_points()[0]
 
     def get_vector(self) -> Vect3:
+        # 返回从尖端底部中心指向顶点的向量（代表尖端的方向）
         return self.get_tip_point() - self.get_base()
 
     def get_angle(self) -> float:
+        # 返回尖端方向与x轴正方向的夹角（单位：弧度）
         return angle_of_vector(self.get_vector())
 
     def get_length(self) -> float:
+        # 返回尖端的实际长度（底部中心到顶点的距离）
         return get_norm(self.get_vector())
 
 
 class Rectangle(Polygon):
     '''
-    Creates a rectangle at the center of the screen.
-    Parameters
+    创建矩形（Rectangle）对象，基于Polygon实现，默认居中显示，支持通过宽高快速定义尺寸。
+    
+    参数
     -----
-    width : float
-        Width of the rectangle
-    height : float
-        Height of the rectangle
-    Examples :
-            rectangle = Rectangle(width=3, height=4, color=BLUE)
-    Returns
+    width : float, optional
+        矩形的宽度（水平方向尺寸），默认值为4.0
+    height : float, optional
+        矩形的高度（垂直方向尺寸），默认值为2.0
+    **kwargs
+        传递给父类Polygon的额外参数，如填充颜色（fill_color）、描边宽度（stroke_width）、颜色（color）等
+    
+    示例 :
+            rectangle = Rectangle(width=3, height=4, color=BLUE)  # 宽3、高4、蓝色的矩形
+            filled_rect = Rectangle(width=2, height=1, fill_color=GREEN, fill_opacity=0.8)  # 绿色半透明填充矩形
+    
+    返回
     -----
     out : Rectangle object
-        A Rectangle object satisfying the specified parameters
+        符合指定参数的矩形对象
     '''
 
     def __init__(
         self,
         width: float = 4.0,
-        height: float = 2.0,
-        **kwargs
+        height: float = 2.0,** kwargs
     ):
+        # 1. 以默认角点（UR右上、UL左上、DL左下、DR右下）创建基础矩形轮廓
         super().__init__(UR, UL, DL, DR, **kwargs)
+        # 2. 按指定宽度缩放矩形（stretch=True允许非均匀缩放，不强制保持宽高比）
         self.set_width(width, stretch=True)
+        # 3. 按指定高度缩放矩形
         self.set_height(height, stretch=True)
 
     def surround(self, mobject, buff=SMALL_BUFF) -> Self:
+        # 计算包围目标Mobject所需的形状：目标形状尺寸 + 2倍缓冲距离（确保不紧贴）
         target_shape = np.array(mobject.get_shape()) + 2 * buff
+        # 按目标形状调整矩形尺寸
         self.set_shape(*target_shape)
+        # 将矩形移动到与目标Mobject相同的位置（居中包围）
         self.move_to(mobject)
         return self
 
 
 class Square(Rectangle):
     '''
-    Creates a square at the center of the screen.
-    Parameters
+    创建正方形（Square）对象，基于Rectangle实现，宽高强制相等，默认居中显示。
+    
+    参数
     -----
-    side_length : float
-        Edge length of the square
-    Examples :
-            square = Square(side_length=5, color=PINK)
-    Returns
+    side_length : float, optional
+        正方形的边长（宽和高均等于该值），默认值为2.0
+    **kwargs
+        传递给父类Rectangle的额外参数，如填充颜色（fill_color）、描边宽度（stroke_width）、颜色（color）等
+    
+    示例 :
+            square = Square(side_length=5, color=PINK)  # 边长5、粉色的正方形
+            border_square = Square(side_length=3, stroke_color=BLACK, stroke_width=2, fill_opacity=0)  # 黑色边框、无填充的正方形
+    
+    返回
     -----
     out : Square object
-        A Square object satisfying the specified parameters
+        符合指定参数的正方形对象
     '''
 
     def __init__(self, side_length: float = 2.0, **kwargs):
+        # 调用父类Rectangle的初始化方法，强制宽和高均为边长（确保正方形形态）
         super().__init__(side_length, side_length, **kwargs)
-
 
 class RoundedRectangle(Rectangle):
     '''
-    Creates a rectangle with round edges at the center of the screen.
-    Parameters
+    创建圆角矩形（RoundedRectangle）对象，基于Rectangle扩展，通过添加圆角半径参数实现四角圆润效果，默认居中显示。
+    
+    参数
     -----
-    width : float
-        Width of the rounded rectangle
-    height : float
-        Height of the rounded rectangle
-    corner_radius : float
-        Corner radius of the rectangle
-    Examples :
-            rRectangle = RoundedRectangle(width=3, height=4, corner_radius=1, color=BLUE)
-    Returns
+    width : float, optional
+        圆角矩形的宽度（水平方向尺寸），默认值为4.0（继承自Rectangle）
+    height : float, optional
+        圆角矩形的高度（垂直方向尺寸），默认值为2.0（继承自Rectangle）
+    corner_radius : float, optional
+        圆角矩形的拐角半径，半径越大拐角越圆润，默认值为0.5
+    **kwargs
+        传递给父类Rectangle的额外参数，如填充颜色（fill_color）、描边宽度（stroke_width）、颜色（color）等
+    
+    示例 :
+            rRectangle = RoundedRectangle(width=3, height=4, corner_radius=1, color=BLUE)  # 宽3、高4、圆角1、蓝色的圆角矩形
+            soft_rect = RoundedRectangle(width=2, height=1, corner_radius=0.8, fill_color=GREY)  # 高圆角、灰色填充的圆角矩形
+    
+    返回
     -----
     out : RoundedRectangle object
-        A RoundedRectangle object satisfying the specified parameters
+        符合指定参数的圆角矩形对象
     '''
 
     def __init__(
         self,
         width: float = 4.0,
         height: float = 2.0,
-        corner_radius: float = 0.5,
-        **kwargs
+        corner_radius: float = 0.5,** kwargs
     ):
+        # 1. 调用父类Rectangle的初始化方法，先创建基础矩形
         super().__init__(width, height, **kwargs)
+        # 2. 调用Polygon类的round_corners方法，按指定半径添加圆角效果
         self.round_corners(corner_radius)
