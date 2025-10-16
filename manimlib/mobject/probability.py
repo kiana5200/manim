@@ -277,26 +277,30 @@ class SampleSpace(Rectangle):
 
 
 class BarChart(VGroup):
+    """柱状图类，继承自VGroup，用于在Manim中创建可视化柱状图"""
+    
     def __init__(
         self,
-        values: Iterable[float],
-        height: float = 4,
-        width: float = 6,
-        n_ticks: int = 4,
-        include_x_ticks: bool = False,
-        tick_width: float = 0.2,
-        tick_height: float = 0.15,
-        label_y_axis: bool = True,
-        y_axis_label_height: float = 0.25,
-        max_value: float = 1,
-        bar_colors: list[ManimColor] = [BLUE, YELLOW],
-        bar_fill_opacity: float = 0.8,
-        bar_stroke_width: float = 3,
-        bar_names: list[str] = [],
-        bar_label_scale_val: float = 0.75,
-        **kwargs
+        values: Iterable[float],    # 柱状图的核心数据值，每个值对应一根柱子
+        height: float = 4,          # 柱状图整体高度（含坐标轴），默认4
+        width: float = 6,           # 柱状图整体宽度（含坐标轴），默认6
+        n_ticks: int = 4,           # Y轴刻度数量，默认4
+        include_x_ticks: bool = False,  # 是否显示X轴刻度，默认不显示
+        tick_width: float = 0.2,    # Y轴刻度线宽度，默认0.2
+        tick_height: float = 0.15,  # X轴刻度线高度，默认0.15
+        label_y_axis: bool = True,  # 是否为Y轴添加数值标签，默认是
+        y_axis_label_height: float = 0.25,  # Y轴标签高度，默认0.25
+        max_value: float = 1,       # Y轴最大值（柱子高度的参考基准），默认1
+        bar_colors: list[ManimColor] = [BLUE, YELLOW],  # 柱子颜色渐变列表
+        bar_fill_opacity: float = 0.8,  # 柱子填充不透明度，默认0.8
+        bar_stroke_width: float = 3,    # 柱子边框宽度，默认3
+        bar_names: list[str] = [],  # 每根柱子的名称（X轴下方标签），默认空列表
+        bar_label_scale_val: float = 0.75,  # 柱子名称标签缩放比例，默认0.75
+        **kwargs                    # 其他关键字参数，传递给父类VGroup
     ):
+        # 调用父类VGroup的构造函数，初始化组合对象属性
         super().__init__(**kwargs)
+        # 存储柱状图的基础配置属性
         self.height = height
         self.width = width
         self.n_ticks = n_ticks
@@ -312,80 +316,146 @@ class BarChart(VGroup):
         self.bar_names = bar_names
         self.bar_label_scale_val = bar_label_scale_val
 
+        # 若未指定Y轴最大值，则自动设为数据值中的最大值
         if self.max_value is None:
             self.max_value = max(values)
 
+        # X轴刻度数量等于数据值数量（每根柱子对应一个刻度位置）
         self.n_ticks_x = len(values)
+        # 绘制并添加坐标轴
         self.add_axes()
+        # 绘制并添加柱状图的柱子
         self.add_bars(values)
+        # 将整个柱状图居中显示
         self.center()
 
     def add_axes(self) -> None:
+        """创建并添加柱状图的X轴和Y轴（含刻度线和标签）"""
+        # 创建X轴：从左侧刻度线一半宽度处延伸到指定宽度的右侧
         x_axis = Line(self.tick_width * LEFT / 2, self.width * RIGHT)
+        # 创建Y轴：从下方中等大间距处延伸到指定高度的上方
         y_axis = Line(MED_LARGE_BUFF * DOWN, self.height * UP)
+        # 用于存储所有Y轴刻度线的组合对象
         y_ticks = VGroup()
+        # 生成Y轴刻度线的高度位置（从0到总高度，分n_ticks+1个点）
         heights = np.linspace(0, self.height, self.n_ticks + 1)
+        # 生成Y轴刻度对应的数值（从0到max_value，分n_ticks+1个点）
         values = np.linspace(0, self.max_value, self.n_ticks + 1)
+        
+        # 遍历每个刻度的高度和对应数值，创建Y轴刻度线
         for y, value in zip(heights, values):
+            # 创建单条Y轴刻度线（水平方向）
             y_tick = Line(LEFT, RIGHT)
+            # 设置刻度线宽度
             y_tick.set_width(self.tick_width)
+            # 将刻度线移动到对应高度位置
             y_tick.move_to(y * UP)
+            # 将刻度线添加到Y轴刻度组合中
             y_ticks.add(y_tick)
+        # 将所有Y轴刻度线添加到Y轴对象中
         y_axis.add(y_ticks)
 
+        # 若需要显示X轴刻度线
         if self.include_x_ticks == True:
+            # 用于存储所有X轴刻度线的组合对象
             x_ticks = VGroup()
+            # 生成X轴刻度线的宽度位置（从0到总宽度，分n_ticks_x+1个点）
             widths = np.linspace(0, self.width, self.n_ticks_x + 1)
+            # 生成X轴刻度对应的标签值（从0到柱子数量，分n_ticks_x+1个点）
             label_values = np.linspace(0, len(self.bar_names), self.n_ticks_x + 1)
+            
+            # 遍历每个刻度的宽度和对应标签值，创建X轴刻度线
             for x, value in zip(widths, label_values):
+                # 创建单条X轴刻度线（垂直方向）
                 x_tick = Line(UP, DOWN)
+                # 设置刻度线高度
                 x_tick.set_height(self.tick_height)
+                # 将刻度线移动到对应宽度位置
                 x_tick.move_to(x * RIGHT)
+                # 将刻度线添加到X轴刻度组合中
                 x_ticks.add(x_tick)
+            # 将所有X轴刻度线添加到X轴对象中
             x_axis.add(x_ticks)
 
+        # 将X轴和Y轴添加到柱状图组合中
         self.add(x_axis, y_axis)
+        # 存储X轴和Y轴对象，方便后续调用
         self.x_axis, self.y_axis = x_axis, y_axis
 
+        # 若需要为Y轴添加数值标签
         if self.label_y_axis:
+            # 用于存储所有Y轴标签的组合对象
             labels = VGroup()
+            # 遍历每个Y轴刻度线和对应数值，创建标签
             for y_tick, value in zip(y_ticks, values):
+                # 创建标签文本（保留2位小数）
                 label = Tex(str(np.round(value, 2)))
+                # 设置标签高度
                 label.set_height(self.y_axis_label_height)
+                # 将标签放在刻度线左侧，保留小间距
                 label.next_to(y_tick, LEFT, SMALL_BUFF)
+                # 将标签添加到Y轴标签组合中
                 labels.add(label)
+            # 存储Y轴标签组合，方便后续调用
             self.y_axis_labels = labels
+            # 将Y轴标签添加到柱状图组合中
             self.add(labels)
 
     def add_bars(self, values: Iterable[float]) -> None:
+        """根据输入数据值，创建并添加所有柱状图的柱子（含柱子名称标签）"""
+        # 计算每根柱子的宽度：总宽度除以2倍柱子数量（预留间距）
         buff = float(self.width) / (2 * len(values))
+        # 用于存储所有柱子的组合对象
         bars = VGroup()
+        
+        # 遍历每个数据值，创建对应的柱子
         for i, value in enumerate(values):
+            # 创建矩形柱子
             bar = Rectangle(
+                # 柱子高度：数据值与max_value的比例乘以总高度（按比例缩放）
                 height=(value / self.max_value) * self.height,
+                # 柱子宽度：使用预计算的buff值
                 width=buff,
+                # 柱子边框宽度
                 stroke_width=self.bar_stroke_width,
+                # 柱子填充不透明度
                 fill_opacity=self.bar_fill_opacity,
             )
+            # 将柱子移动到指定位置：X方向按索引排列，Y方向靠下对齐
             bar.move_to((2 * i + 0.5) * buff * RIGHT, DOWN + LEFT * 5)
+            # 将柱子添加到柱子组合中
             bars.add(bar)
+        # 为柱子组合设置颜色渐变（从第一个颜色过渡到最后一个颜色）
         bars.set_color_by_gradient(*self.bar_colors)
 
+        # 用于存储所有柱子名称标签的组合对象
         bar_labels = VGroup()
+        # 遍历每个柱子和对应的名称，创建标签
         for bar, name in zip(bars, self.bar_names):
+            # 创建柱子名称标签文本
             label = Tex(str(name))
+            # 按指定比例缩放标签
             label.scale(self.bar_label_scale_val)
+            # 将标签放在柱子正下方，保留小间距
             label.next_to(bar, DOWN, SMALL_BUFF)
+            # 将标签添加到柱子名称标签组合中
             bar_labels.add(label)
 
+        # 将柱子和柱子名称标签添加到柱状图组合中
         self.add(bars, bar_labels)
+        # 存储柱子和柱子名称标签组合，方便后续调用（如更新柱子高度）
         self.bars = bars
         self.bar_labels = bar_labels
 
     def change_bar_values(self, values: Iterable[float]) -> None:
+        """更新柱状图中所有柱子的高度（根据新数据值）"""
+        # 遍历每个柱子和对应的新数据值
         for bar, value in zip(self.bars, values):
+            # 记录柱子当前的底部位置（确保更新高度后底部位置不变）
             bar_bottom = bar.get_bottom()
+            # 按新数据值缩放柱子高度：新高度 = (新值/max_value) * 总高度
             bar.stretch_to_fit_height(
                 (value / self.max_value) * self.height
             )
+            # 将更新高度后的柱子移动回原底部位置（保持底部对齐）
             bar.move_to(bar_bottom, DOWN)
