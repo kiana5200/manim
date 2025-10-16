@@ -1,32 +1,51 @@
+# 从__future__导入annotations，支持Python 3.7及以下版本的类型提示语法（延迟类型解析）
 from __future__ import annotations
 
+# 导入itertools库并简写为it，用于处理迭代器（如生成相邻对、笛卡尔积等）
 import itertools as it
 
+# 导入numpy库并简写为np，用于数值计算、数组操作（如向量运算、矩阵处理）
 import numpy as np
+# 从scipy.integrate导入solve_ivp，用于求解常微分方程组（可用于模拟运动、变化过程）
 from scipy.integrate import solve_ivp
 
+# 从manimlib.constants导入帧尺寸常量，控制画面宽高
 from manimlib.constants import FRAME_HEIGHT, FRAME_WIDTH
+# 从manimlib.constants导入默认图形颜色常量
 from manimlib.constants import DEFAULT_MOBJECT_COLOR
+# 从manimlib.animation.indication导入VShowPassingFlash，用于创建闪烁指示动画
 from manimlib.animation.indication import VShowPassingFlash
+# 从manimlib.mobject.types.vectorized_mobject导入向量图形组合类
 from manimlib.mobject.types.vectorized_mobject import VGroup
 from manimlib.mobject.types.vectorized_mobject import VMobject
+# 从manimlib.utils.bezier导入贝塞尔曲线相关函数，用于插值计算
 from manimlib.utils.bezier import interpolate
 from manimlib.utils.bezier import inverse_interpolate
+# 从manimlib.utils.color导入颜色处理函数，用于生成颜色映射、渐变色列表
 from manimlib.utils.color import get_colormap_list
 from manimlib.utils.color import get_color_map
+# 从manimlib.utils.iterables导入可迭代对象处理函数，用于生成笛卡尔积
 from manimlib.utils.iterables import cartesian_product
+# 从manimlib.utils.rate_functions导入线性速率函数，用于控制动画速度
 from manimlib.utils.rate_functions import linear
+# 从manimlib.utils.space_ops导入空间运算函数，用于计算向量的模（长度）
 from manimlib.utils.space_ops import get_norm
 
+# 导入typing模块中的TYPE_CHECKING常量，用于条件性导入类型提示（仅类型检查时生效，不影响运行）
 from typing import TYPE_CHECKING
 
+# 若处于类型检查阶段（非运行时），导入所需的类型提示类/工具
 if TYPE_CHECKING:
     from typing import Callable, Iterable, Sequence, TypeVar, Tuple, Optional
+    # 从manimlib.typing导入Manim自定义类型，用于类型注解（颜色、向量等）
     from manimlib.typing import ManimColor, Vect3, VectN, VectArray, Vect3Array, Vect4Array
 
+    # 从manimlib.mobject.coordinate_systems导入坐标系类，用于类型注解
     from manimlib.mobject.coordinate_systems import CoordinateSystem
+    # 从manimlib.mobject.mobject导入Mobject基类，用于类型注解
     from manimlib.mobject.mobject import Mobject
 
+    # 定义类型变量T，限定为Mobject的子类，用于泛型类型注解
     T = TypeVar("T")
 
 
