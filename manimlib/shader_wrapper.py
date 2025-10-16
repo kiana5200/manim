@@ -202,105 +202,180 @@ class ShaderWrapper(object):
         # 更新配置 ID（代码变更导致配置变化）
         self.refresh_id()
 
-    # Changing context
+    # ------------------------------ 着色器上下文与渲染控制方法 ------------------------------
     def use_clip_plane(self):
+        """
+        判断是否启用裁剪平面：检查统一变量中是否包含有效的裁剪平面参数（非全零）。
+        
+        裁剪平面用于在 3D 场景中隐藏部分几何体（如截面效果），仅当 `mobject_uniforms` 中
+        存在 "clip_plane" 且值不全为零时启用。
+        
+        返回：布尔值，True 表示启用裁剪平面。
+        """
         if "clip_plane" not in self.mobject_uniforms:
             return False
+        # 检查裁剪平面参数是否非全零（全零表示无效裁剪）
         return any(self.mobject_uniforms["clip_plane"])
 
     def set_ctx_depth_test(self, enable: bool = True) -> None:
+        """
+        控制 OpenGL 上下文的深度测试开关：启用时，GPU 会根据深度缓冲区判断像素遮挡关系（3D 必备），
+        禁用时，像素按绘制顺序覆盖（2D 常用）。
+        
+        参数：enable - 是否启用深度测试（True=启用，False=禁用）。
+        """
         if enable:
-            self.ctx.enable(moderngl.DEPTH_TEST)
+            self.ctx.enable(moderngl.DEPTH_TEST)  # 启用深度测试
         else:
-            self.ctx.disable(moderngl.DEPTH_TEST)
+            self.ctx.disable(moderngl.DEPTH_TEST)  # 禁用深度测试
 
     def set_ctx_clip_plane(self, enable: bool = True) -> None:
+        """
+        控制 OpenGL 裁剪平面开关：启用时，使用 `clip_plane` 统一变量定义的平面裁剪几何体。
+        
+        参数：enable - 是否启用裁剪平面（True=启用，False=禁用）。
+        """
         if enable:
+            # 启用第一个裁剪平面（GL_CLIP_DISTANCE0 对应着色器中的 gl_ClipDistance[0]）
             gl.glEnable(gl.GL_CLIP_DISTANCE0)
 
-    # Adding data
 
+# ------------------------------ 顶点数据加载与 GPU 对象管理 ------------------------------
     def read_in(self, data_list: Iterable[np.ndarray]):
+        """
+        加载顶点数据到 GPU：将多个顶点数据数组合并，更新顶点缓冲区（VBO）和顶点数组（VAO），
+        确保 GPU 中的数据与 Mobject 的几何信息同步。
+        
+        逻辑：
+        1. 计算总数据长度，空数据时清空 VBO；
+        2. 合并输入数据到 `vert_data`（复用现有数组或创建新数组）；
+        3. 根据数据大小判断是否需要重建 VBO（数据大小变化时）；
+        4. 新建 VBO 或更新现有 VBO 数据，并生成对应的 VAO。
+        
+        参数：data_list - 待合并的顶点数据数组列表（每个数组需与 `vert_data` 同结构）。
+        """
+        # 计算总数据长度（所有数组的元素数之和）
         total_len = sum(map(len, data_list))
         if total_len == 0:
+            # 空数据：清空现有 VBO
             if self.vbo is not None:
                 self.vbo.clear()
             return
 
-        # If possible, read concatenated data into existing list
+        # 合并数据到 vert_data（复用现有数组或创建新数组）
         if len(self.vert_data) != total_len:
-            self.vert_data = np.concatenate(data_list)
+            self.vert_data = np.concatenate(data_list)  # 数据长度变化：创建新数组
         else:
-            np.concatenate(data_list, out=self.vert_data)
+            np.concatenate(data_list, out=self.vert_data)  # 数据长度不变：复用现有数组
 
-        # Either create new vbo, or read data into it
+        # 计算总数据大小（字节数）
         total_size = self.vert_data.itemsize * total_len
+        # 数据大小变化或无 VBO 时：释放旧 VBO 并新建
         if self.vbo is not None and self.vbo.size != total_size:
-            self.release()  # This sets vbo to be None
+            self.release()  # 释放旧 VBO 和 VAO（vbo 会被设为 None）
         if self.vbo is None:
-            self.vbo = self.ctx.buffer(self.vert_data)
-            self.generate_vaos()
+            self.vbo = self.ctx.buffer(self.vert_data)  # 创建新 VBO（将数据上传到 GPU）
+            self.generate_vaos()  # 生成 VAO（关联 VBO 与着色器属性）
         else:
-            self.vbo.write(self.vert_data)
+            self.vbo.write(self.vert_data)  # 数据大小不变：直接更新 VBO 数据
 
     def generate_vaos(self):
-        # Vertex array object
+        """
+        生成顶点数组对象（VAO）：VAO 是 VBO 与着色器属性之间的桥梁，记录顶点数据如何传递给着色器，
+        每个着色器程序对应一个 VAO（存储在 `vaos` 列表中）。
+        """
         self.vaos = [
             self.ctx.vertex_array(
-                program=program,
+                program=program,  # 关联的着色器程序
+                # 绑定 VBO 与顶点属性：(VBO, 属性格式, 属性名1, 属性名2, ...)
                 content=[(self.vbo, self.vert_format, *self.vert_attributes)],
-                mode=self.render_primitive,
+                mode=self.render_primitive  # 渲染图元类型（如三角形带、三角形列表）
             )
-            for program in self.programs
+            for program in self.programs  # 为每个着色器程序生成 VAO
         ]
 
-    # Related to data and rendering
+
+# ------------------------------ 渲染流程控制方法 ------------------------------
     def pre_render(self):
+        """
+        渲染前准备工作：启用深度测试/裁剪平面，绑定纹理到对应的纹理单元，
+        确保渲染环境正确配置。
+        """
+        # 启用/禁用深度测试（根据自身配置）
         self.set_ctx_depth_test(self.depth_test)
+        # 启用/禁用裁剪平面（根据是否有有效裁剪参数）
         self.set_ctx_clip_plane(self.use_clip_plane())
+        # 绑定所有纹理到对应的纹理单元（ID=索引，如 0→GL_TEXTURE0，1→GL_TEXTURE1）
         for tid, texture in enumerate(self.textures):
             texture.use(tid)
 
     def render(self):
+        """
+        执行渲染：遍历所有顶点数组对象（VAO），调用其 `render` 方法，
+        触发 GPU 绘制几何图形（基于绑定的 VBO 数据和着色器程序）。
+        """
         for vao in self.vaos:
-            vao.render()
+            vao.render()  # 绘制 VAO 关联的几何数据
 
     def update_program_uniforms(self, camera_uniforms: UniformDict):
+        """
+        更新着色器程序的统一变量：合并 Mobject 自身、相机、纹理的统一变量，
+        传递给着色器（如变换矩阵、颜色、纹理单元 ID），确保渲染参数实时生效。
+        
+        参数：camera_uniforms - 相机相关的统一变量（如视图矩阵、投影矩阵）。
+        """
         for program in self.programs:
             if program is None:
                 continue
+            # 依次更新 Mobject 自身、相机、纹理的统一变量
             for uniforms in [self.mobject_uniforms, camera_uniforms, self.texture_names_to_ids]:
                 for name, value in uniforms.items():
-                    set_program_uniform(program, name, value)
+                    set_program_uniform(program, name, value)  # 设置着色器变量
 
+
+# ------------------------------ 资源释放方法 ------------------------------
     def release(self):
+        """
+        释放顶点相关 GPU 资源（VBO 和 VAO）：避免 GPU 内存泄漏，
+        调用后需重新调用 `read_in` 生成新资源。
+        """
         for obj in (self.vbo, *self.vaos):
             if obj is not None:
-                obj.release()
-        self.init_vertex_objects()
+                obj.release()  # 释放 GPU 资源
+        self.init_vertex_objects()  # 重置 VBO 和 VAO 为空
 
     def release_textures(self):
+        """
+        释放纹理资源：释放所有加载的纹理对象，清空纹理列表和映射，
+        适用于 Mobject 销毁或纹理更新时。
+        """
         for texture in self.textures:
-            texture.release()
-            del texture
+            texture.release()  # 释放纹理 GPU 资源
+            del texture  # 移除引用
         self.textures = []
         self.texture_names_to_ids = dict()
 
 
+# ------------------------------ 二次贝塞尔曲线专用着色器包装类 ------------------------------
 class VShaderWrapper(ShaderWrapper):
+    """
+    二次贝塞尔曲线着色器包装类：继承自 `ShaderWrapper`，专为处理二次贝塞尔曲线（如平滑边缘、填充）设计，
+    支持描边（stroke）、填充（fill）、深度（depth）三种渲染模式，使用专用着色器目录和纹理。
+    """
     def __init__(
         self,
         ctx: moderngl.context.Context,
         vert_data: np.ndarray,
         shader_folder: Optional[str] = None,
-        mobject_uniforms: Optional[UniformDict] = None,  # A dictionary mapping names of uniform variables
-        texture_paths: Optional[dict[str, str]] = None,  # A dictionary mapping names to filepaths for textures.
+        mobject_uniforms: Optional[UniformDict] = None,
+        texture_paths: Optional[dict[str, str]] = None,
         depth_test: bool = False,
-        render_primitive: int = moderngl.TRIANGLES,
+        render_primitive: int = moderngl.TRIANGLES,  # 二次贝塞尔曲线默认用三角形列表渲染
         code_replacements: dict[str, str] = dict(),
-        stroke_behind: bool = False,
+        stroke_behind: bool = False,  # 描边是否在填充之后渲染（控制层级）
     ):
-        self.stroke_behind = stroke_behind
+        self.stroke_behind = stroke_behind  # 描边层级控制
+        # 调用父类构造函数初始化基础属性
         super().__init__(
             ctx=ctx,
             vert_data=vert_data,
@@ -311,19 +386,24 @@ class VShaderWrapper(ShaderWrapper):
             render_primitive=render_primitive,
             code_replacements=code_replacements,
         )
+        # 创建填充画布（离屏渲染用帧缓冲）并添加为纹理
         self.fill_canvas = VShaderWrapper.get_fill_canvas(self.ctx)
+        # 添加颜色纹理和深度纹理（用于二次贝塞尔曲线的填充和描边计算）
         self.add_texture('Texture', self.fill_canvas[0].color_attachments[0])
         self.add_texture('DepthTexture', self.fill_canvas[2].color_attachments[0])
 
     def init_program_code(self) -> None:
+        """
+        初始化二次贝塞尔曲线专用着色器代码：从 "quadratic_bezier" 目录读取描边、填充、深度三种模式的
+        顶点/几何/片段着色器代码，存储在 `program_code` 字典中（键格式："{模式}_{着色器类型}"）。
+        """
         self.program_code = {
             f"{vtype}_{name}": get_shader_code_from_file(
                 os.path.join("quadratic_bezier", f"{vtype}", f"{name}.glsl")
             )
-            for vtype in ["stroke", "fill", "depth"]
-            for name in ["vert", "geom", "frag"]
+            for vtype in ["stroke", "fill", "depth"]  # 三种渲染模式
+            for name in ["vert", "geom", "frag"]      # 三种着色器类型
         }
-
     def init_program(self):
         self.stroke_program = get_shader_program(
             self.ctx,
