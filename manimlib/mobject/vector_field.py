@@ -704,35 +704,52 @@ class StreamLines(VGroup):
 
 
 class AnimatedStreamLines(VGroup):
+    """动态流线类，继承自VGroup，用于为StreamLines添加流动动画效果"""
+    
     def __init__(
         self,
-        stream_lines: StreamLines,
-        lag_range: float = 4,
-        rate_multiple: float = 1.0,
+        stream_lines: StreamLines,  # 静态流线对象（StreamLines实例）
+        lag_range: float = 4,       # 流线动画的时间延迟范围（随机延迟，避免同步）
+        rate_multiple: float = 1.0, # 动画速率倍数（值越大动画越快）
         line_anim_config: dict = dict(
-            rate_func=linear,
-            time_width=1.0,
+            rate_func=linear,       # 动画速率函数（默认线性）
+            time_width=1.0,         # 动画时间宽度（控制流动效果范围）
         ),
-        **kwargs
+        **kwargs                    # 传递给父类VGroup的参数
     ):
-        super().__init__(**kwargs)
+        # 调用父类VGroup的构造函数
+        super().__init__(** kwargs)
+        # 存储原始流线对象
         self.stream_lines = stream_lines
 
+        # 为每条流线创建动画
         for line in stream_lines:
+            # 创建"流动闪烁"动画：模拟流线的流动效果
             line.anim = VShowPassingFlash(
-                line,
+                line,  # 动画作用的流线
+                # 动画运行时间 = 流线虚拟时间 / 速率倍数
                 run_time=line.virtual_time / rate_multiple,
-                **line_anim_config,
+                **line_anim_config,  # 传入动画配置参数
             )
+            # 初始化动画（设置起始状态）
             line.anim.begin()
+            # 为每条流线设置随机初始时间（产生错落有致的动画效果）
             line.time = -lag_range * np.random.random()
+            # 将动画关联的图形添加到当前组合中
             self.add(line.anim.mobject)
 
+        # 添加更新器：每帧更新动画状态
         self.add_updater(lambda m, dt: m.update(dt))
 
     def update(self, dt: float = 0) -> None:
+        """更新方法：每帧更新所有流线的动画状态"""
+        # 简化变量名：原始流线对象
         stream_lines = self.stream_lines
+        # 遍历每条流线，更新其动画进度
         for line in stream_lines:
+            # 累加时间（当前帧的时间步长）
             line.time += dt
+            # 计算调整后的时间：确保非负并在动画周期内循环
             adjusted_time = max(line.time, 0) % line.anim.run_time
+            # 更新动画进度（范围0-1）
             line.anim.update(adjusted_time / line.anim.run_time)
