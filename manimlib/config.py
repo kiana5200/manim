@@ -249,167 +249,65 @@ def parse_cli():
         sys.exit(2)
 
 
-# 这组函数是 ManimGL 配置初始化的“细分执行器”，负责将合并后的全局配置（默认+自定义+命令行）
-# 分配到具体模块（目录、窗口、相机、文件写入器），并根据命令行参数修正配置，确保各组件参数正确生效。
-
-
 def update_directory_config(config: Dict):
-    """
-    初始化“目录配置”：将基础目录与子目录拼接，生成完整的文件路径（如视频导出路径、缓存路径），
-    避免后续模块使用时重复拼接路径，确保文件读写路径统一。
-    
-    核心逻辑：
-    1. 从全局配置中获取目录相关配置（`config.directories`，包含 `base` 基础目录和 `subdirs` 子目录字典）；
-    2. 遍历 `subdirs` 中的每个子目录（如 "videos"、"images"、"cache"），将“基础目录+子目录”拼接为完整路径；
-    3. 将完整路径赋值回配置字典（如 `config.directories.videos = "./media/videos/"`），供后续模块调用。
-    
-    参数：config - 全局配置字典（需包含 `directories` 字段，结构为 `{base: "...", subdirs: {key: "subdir"}}`）
-    """
-    dir_config = config.directories  # 获取目录配置子字典
-    base_dir = dir_config.base       # 基础目录（如默认的 "./media/"）
-    # 遍历所有子目录配置，拼接完整路径
-    for subdir_key, subdir_name in dir_config.subdirs.items():
-        # 示例：subdir_key="videos"，subdir_name="videos" → 完整路径="./media/videos/"
-        dir_config[subdir_key] = os.path.join(base_dir, subdir_name)
+    dir_config = config.directories
+    base = dir_config.base
+    for key, subdir in dir_config.subdirs.items():
+        dir_config[key] = os.path.join(base, subdir)
 
 
 def update_window_config(config: Dict, args: Namespace):
-    """
-    初始化“窗口配置”：处理窗口位置、大小的格式转换，并根据命令行参数（如全屏）修正窗口行为，
-    确保窗口初始化时参数格式正确（如整数坐标）、行为符合用户预期。
-    
-    核心逻辑：
-    1. 从全局配置中获取窗口相关配置（`config.window`，包含 `position` 窗口位置、`size` 窗口大小等）；
-    2. 格式转换：窗口位置和大小在配置文件中可能是字符串（如 "[100, 100]"），需用 `literal_eval` 转换为整数元组（如 (100, 100)），
-       避免窗口初始化时因格式错误崩溃；
-    3. 命令行参数修正：若用户指定 `--full_screen`（args.full_screen=True），强制将窗口配置的 `full_screen` 设为 True，
-       覆盖配置文件中的设置，优先满足用户即时需求。
-    
-    参数：
-        config - 全局配置字典（需包含 `window` 字段）；
-        args - 命令行参数对象（可能包含 `full_screen` 布尔值）。
-    """
-    window_config = config.window  # 获取窗口配置子字典
-    # 处理窗口位置和大小的格式转换（字符串→整数元组）
-    for key in ["position", "size"]:
-        # 若配置中存在该字段且非空，执行格式转换
+    window_config = config.window
+    for key in "position", "size":
         if window_config.get(key):
-            # literal_eval：安全解析字符串格式的元组/列表（如 "[100, 200]" → (100, 200)）
             window_config[key] = literal_eval(window_config[key])
-    # 命令行参数覆盖：若指定全屏，强制开启全屏模式
     if args.full_screen:
         window_config.full_screen = True
 
 
 def update_camera_config(config: Dict, args: Namespace):
-    """
-    初始化“相机配置”：确定相机的渲染分辨率、帧率、背景色和透明度，
-    是控制动画渲染质量和画面外观的核心步骤（相机决定“如何拍摄场景”）。
-    
-    核心逻辑：
-    1. 分辨率确定：调用 `get_resolution_from_args` 函数，根据命令行参数（如 `-l`/`--hd`/`-r`）获取最终渲染分辨率，
-       若未指定则使用配置文件中的分辨率（需用 `literal_eval` 转换格式，如 "1920x1080" → (1920, 1080)）；
-    2. 帧率修正：若命令行指定 `--fps`（如 `--fps 60`），覆盖配置文件中的帧率，控制动画流畅度；
-    3. 背景色修正：若命令行指定 `--color`（如 `--color white`），尝试将输入转换为 `colour.Color` 对象（确保颜色格式有效），
-       转换失败则打印错误并退出（避免无效颜色导致渲染异常）；
-    4. 透明度修正：若命令行指定 `--transparent`，将相机背景透明度（`background_opacity`）设为 0.0（完全透明），
-       用于导出带透明通道的视频。
-    
-    参数：
-        config - 全局配置字典（需包含 `camera` 和 `resolution_options` 字段）；
-        args - 命令行参数对象（可能包含 `fps`、`color`、`transparent` 等）。
-    
-    异常：若 `--color` 指定无效颜色（如 "invalid_color"），打印错误日志并退出程序（错误码2）。
-    """
-    camera_config = config.camera  # 获取相机配置子字典
-    # 1. 确定渲染分辨率（命令行参数优先于配置文件）
-    # get_resolution_from_args：根据 -l/-m/--hd/--uhd/-r 参数返回分辨率（如 (1280, 720)）
+    camera_config = config.camera
     arg_resolution = get_resolution_from_args(args, config.resolution_options)
-    # 若命令行未指定分辨率，使用配置文件中的值（需转换格式）
-    if arg_resolution:
-        camera_config.resolution = arg_resolution
-    else:
-        camera_config.resolution = literal_eval(camera_config.resolution)
-
-    # 2. 修正帧率（命令行参数优先）
+    camera_config.resolution = arg_resolution or literal_eval(camera_config.resolution)
     if args.fps:
         camera_config.fps = args.fps
-
-    # 3. 修正背景色（命令行参数优先，需验证颜色有效性）
     if args.color:
         try:
-            # 将输入颜色（如字符串 "red"、十六进制 "#FF0000"）转换为 colour.Color 对象
             camera_config.background_color = colour.Color(args.color)
         except Exception as err:
-            log.error("Please use a valid color")  # 提示用户输入有效颜色
-            log.error(err)  # 打印具体错误（如 "Invalid color specification: invalid_color"）
-            sys.exit(2)  # 颜色无效，退出程序（错误码2）
-
-    # 4. 修正背景透明度（透明导出时设为0）
+            log.error("Please use a valid color")
+            log.error(err)
+            sys.exit(2)
     if args.transparent:
         camera_config.background_opacity = 0.0
 
 
 def update_file_writer_config(config: Dict, args: Namespace):
-    """
-    初始化“文件写入器配置”：确定文件写入器的行为（如导出格式、文件路径、编码方式），
-    是控制动画“如何保存到本地”的核心步骤（文件写入器负责将相机渲染的帧合成为最终文件）。
-    
-    核心逻辑：
-    1. 基础行为配置：根据命令行参数设置文件写入器的核心行为（如是否导出视频、是否保存单帧、导出格式）；
-    2. 编码与像素格式配置：根据导出类型（普通视频、透明视频、GIF）自动选择默认编码，或使用命令行指定的编码；
-    3. 输出路径与文件名配置：确定最终文件的保存目录和名称，优先使用命令行参数，其次使用配置文件。
-    
-    参数：
-        config - 全局配置字典（需包含 `file_writer` 字段和 `directories` 字段）；
-        args - 命令行参数对象（可能包含 `skip_animations`、`write_file`、`subdivide` 等）。
-    """
-    file_writer_config = config.file_writer  # 获取文件写入器配置子字典
+    file_writer_config = config.file_writer
+    file_writer_config.update(
+        write_to_movie=(not args.skip_animations and args.write_file),
+        subdivide_output=args.subdivide,
+        save_last_frame=(args.skip_animations and args.write_file),
+        png_mode=("RGBA" if args.transparent else "RGB"),
+        movie_file_extension=(get_file_ext(args)),
+        output_directory=get_output_directory(args, config),
+        file_name=args.file_name,
+        open_file_upon_completion=args.open,
+        show_file_location_upon_completion=args.finder,
+        quiet=args.quiet,
+    )
 
-    # 1. 基础行为配置：确定写入器的核心功能开关
-    file_writer_config.update({
-        # 是否导出视频：不跳过动画且开启写入（--write_file/-o/--finder）
-        "write_to_movie": (not args.skip_animations and args.write_file),
-        # 是否按动画步骤拆分输出文件（--subdivide）
-        "subdivide_output": args.subdivide,
-        # 是否保存最后一帧：跳过动画且开启写入（-s -w）
-        "save_last_frame": (args.skip_animations and args.write_file),
-        # 图片模式：透明导出用 RGBA，否则用 RGB
-        "png_mode": "RGBA" if args.transparent else "RGB",
-        # 导出文件后缀：由 get_file_ext 确定（如 MP4/GIF/PNG）
-        "movie_file_extension": get_file_ext(args),
-        # 输出目录：由 get_output_directory 确定（命令行 --video_dir 优先于配置文件）
-        "output_directory": get_output_directory(args, config),
-        # 输出文件名：命令行 --file_name 优先于配置文件（默认用场景名）
-        "file_name": args.file_name,
-        # 导出后是否自动打开文件（-o）
-        "open_file_upon_completion": args.open,
-        # 导出后是否在文件管理器显示（--finder）
-        "show_file_location_upon_completion": args.finder,
-        # 是否静默模式：减少写入过程中的日志输出（-q）
-        "quiet": args.quiet,
-    })
-
-    # 2. 编码配置：根据导出类型选择默认编码，或使用命令行指定编码
-    # 命令行指定 --vcodec（如 --vcodec libx264），优先使用
     if args.vcodec:
         file_writer_config.video_codec = args.vcodec
-    # 透明导出（--transparent）：默认使用 prores_ks 编码（支持 alpha 通道），清空像素格式（由编码自动决定）
     elif args.transparent:
-        file_writer_config.video_codec = "prores_ks"
-        file_writer_config.pixel_format = ""
-    # GIF 导出（-i）：清空视频编码（GIF 无需视频编码，由 FFmpeg 自动处理）
+        file_writer_config.video_codec = 'prores_ks'
+        file_writer_config.pixel_format = ''
     elif args.gif:
-        file_writer_config.video_codec = ""
+        file_writer_config.video_codec = ''
 
-    # 3. 像素格式配置：命令行指定 --pix_fmt（如 --pix_fmt yuv420p），优先使用
     if args.pix_fmt:
         file_writer_config.pixel_format = args.pix_fmt
-# 这组函数继续完成 ManimGL 配置初始化的“细分执行”，覆盖场景、运行、嵌入调试三大模块，
-# 并提供配置加载、路径计算等辅助工具函数，最终生成全局生效的 `manim_config`，确保所有组件参数统一。
 
-
-# ------------------------------ 1. 模块配置更新函数 ------------------------------
 def update_scene_config(config: Dict, args: Namespace):
     """
     初始化“场景配置”：设置场景的核心行为（如是否跳过动画、演示模式、动画范围），
