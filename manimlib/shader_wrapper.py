@@ -255,189 +255,146 @@ class VShaderWrapper(ShaderWrapper):
         }
 
     def init_program(self):
-        """
-        初始化二次贝塞尔曲线专用着色器程序：创建四种着色器程序（描边、填充、填充边框、填充深度），
-        并定义每种程序对应的顶点属性格式和属性名，适配二次贝塞尔曲线的复杂渲染需求（如平滑边缘、填充计算）。
-        """
-        # 1. 创建四种着色器程序（针对不同渲染阶段）
-        # 描边程序：处理曲线边缘的绘制
         self.stroke_program = get_shader_program(
             self.ctx,
             vertex_shader=self.program_code["stroke_vert"],
             geometry_shader=self.program_code["stroke_geom"],
             fragment_shader=self.program_code["stroke_frag"],
         )
-        # 填充程序：处理曲线内部区域的填充
         self.fill_program = get_shader_program(
             self.ctx,
             vertex_shader=self.program_code["fill_vert"],
             geometry_shader=self.program_code["fill_geom"],
             fragment_shader=self.program_code["fill_frag"],
         )
-        # 填充边框程序：基于描边程序修改片段着色器，实现填充边缘的半透明效果
         self.fill_border_program = get_shader_program(
             self.ctx,
             vertex_shader=self.program_code["stroke_vert"],
             geometry_shader=self.program_code["stroke_geom"],
             fragment_shader=self.program_code["stroke_frag"].replace(
-                "// MODIFY FRAG COLOR",  # 替换标记
-                "frag_color.a *= 0.95; frag_color.rgb *= frag_color.a;",  # 半透明处理
+                "// MODIFY FRAG COLOR",
+                "frag_color.a *= 0.95; frag_color.rgb *= frag_color.a;",
             )
         )
-        # 填充深度程序：处理填充区域的深度信息（用于遮挡计算）
         self.fill_depth_program = get_shader_program(
             self.ctx,
             vertex_shader=self.program_code["depth_vert"],
             geometry_shader=self.program_code["depth_geom"],
             fragment_shader=self.program_code["depth_frag"],
         )
-        # 存储所有程序（用于后续渲染和统一变量更新）
         self.programs = [self.stroke_program, self.fill_program, self.fill_border_program, self.fill_depth_program]
 
-        # 2. 定义顶点属性格式（描述顶点数据在内存中的布局，供 GPU 解析）
-        # 描边顶点格式：3f(点坐标) + 4f(描边颜色RGBA) + 1f(描边宽度) + 1f(连接角) + 16x(预留16字节) + 3f(单位法向量) + 4x(预留4字节)
+        # Full vert format looks like this (total of 4x23 = 92 bytes):
+        # point 3
+        # stroke_rgba 4
+        # stroke_width 1
+        # joint_angle 1
+        # fill_rgba 4
+        # base_normal 3
+        # fill_border_width 1
         self.stroke_vert_format = '3f 4f 1f 1f 16x 3f 4x'
         self.stroke_vert_attributes = ['point', 'stroke_rgba', 'stroke_width', 'joint_angle', 'unit_normal']
 
-        # 填充顶点格式：3f(点坐标) + 24x(预留24字节) + 4f(填充颜色RGBA) + 3f(基础法向量) + 4x(预留4字节)
         self.fill_vert_format = '3f 24x 4f 3f 4x'
         self.fill_vert_attributes = ['point', 'fill_rgba', 'base_normal']
 
-        # 填充边框顶点格式：3f(点坐标) + 20x(预留20字节) + 1f(连接角) + 4f(描边颜色RGBA) + 3f(单位法向量) + 1f(描边宽度)
         self.fill_border_vert_format = '3f 20x 1f 4f 3f 1f'
         self.fill_border_vert_attributes = ['point', 'joint_angle', 'stroke_rgba', 'unit_normal', 'stroke_width']
 
-        # 填充深度顶点格式：3f(点坐标) + 40x(预留40字节) + 3f(基础法向量) + 4x(预留4字节)
         self.fill_depth_vert_format = '3f 40x 3f 4x'
         self.fill_depth_vert_attributes = ['point', 'base_normal']
 
     def init_vertex_objects(self):
-        """
-        初始化二次贝塞尔曲线专用顶点对象：为四种渲染程序分别创建顶点数组对象（VAO）的占位符，
-        后续在 `generate_vaos` 中根据 VBO 数据和属性格式生成具体 VAO。
-        """
-        self.vbo = None  # 顶点缓冲区对象（存储所有顶点数据）
-        # 四种渲染程序对应的 VAO 占位符
+        self.vbo = None
         self.stroke_vao = None
         self.fill_vao = None
         self.fill_border_vao = None
-        self.fill_depth_vao = None
-        self.vaos = []  # 存储所有 VAO 的列表
+        self.vaos = []
 
     def generate_vaos(self):
-        """
-        为四种着色器程序生成对应的顶点数组对象（VAO）：关联 VBO 数据与着色器属性，
-        确保每种渲染程序能正确解析顶点数据（如描边程序读取描边颜色，填充程序读取填充颜色）。
-        """
-        # 描边 VAO：关联描边程序、VBO、描边属性格式
         self.stroke_vao = self.ctx.vertex_array(
             program=self.stroke_program,
             content=[(self.vbo, self.stroke_vert_format, *self.stroke_vert_attributes)],
             mode=self.render_primitive,
         )
-        # 填充 VAO：关联填充程序、VBO、填充属性格式
         self.fill_vao = self.ctx.vertex_array(
             program=self.fill_program,
             content=[(self.vbo, self.fill_vert_format, *self.fill_vert_attributes)],
             mode=self.render_primitive,
         )
-        # 填充边框 VAO：关联填充边框程序、VBO、填充边框属性格式
         self.fill_border_vao = self.ctx.vertex_array(
             program=self.fill_border_program,
             content=[(self.vbo, self.fill_border_vert_format, *self.fill_border_vert_attributes)],
             mode=self.render_primitive,
         )
-        # 填充深度 VAO：关联填充深度程序、VBO、填充深度属性格式
         self.fill_depth_vao = self.ctx.vertex_array(
             program=self.fill_depth_program,
             content=[(self.vbo, self.fill_depth_vert_format, *self.fill_depth_vert_attributes)],
             mode=self.render_primitive,
         )
-        # 汇总所有 VAO 到列表
         self.vaos = [self.stroke_vao, self.fill_vao, self.fill_border_vao, self.fill_depth_vao]
 
-
-# ------------------------------ 渲染控制与配置更新 ------------------------------
     def set_backstroke(self, value: bool = True):
-        """
-        设置描边层级：控制描边是在填充之前还是之后渲染（影响视觉效果，如描边是否被填充覆盖）。
-        
-        参数：value - True 表示描边在填充之后渲染（显示在上方），False 表示相反。
-        """
         self.stroke_behind = value
 
     def refresh_id(self):
-        """
-        刷新配置 ID：在父类 ID 基础上添加描边层级（stroke_behind），确保层级变化时 ID 也变化，
-        避免不同层级配置的着色器被错误共享。
-        """
-        super().refresh_id()  # 先调用父类生成基础 ID
-        self.id = hash(str(self.id) + str(self.stroke_behind))  # 追加描边层级信息
+        super().refresh_id()
+        self.id = hash(str(self.id) + str(self.stroke_behind))
 
-
-# ------------------------------ 二次贝塞尔曲线渲染方法 ------------------------------
+    # Rendering
     def render_stroke(self):
-        """
-        渲染描边：使用描边 VAO 绘制曲线边缘，仅在 VAO 有效时执行（避免空数据渲染错误）。
-        """
         if self.stroke_vao is None:
             return
-        self.stroke_vao.render()  # 触发描边绘制
+        self.stroke_vao.render()
 
     def render_fill(self):
-        """
-        渲染填充（核心逻辑）：通过离屏渲染计算填充区域（解决复杂形状的 alpha 混合问题），
-        步骤包括：填充区域计算 → 深度信息处理 → 边框绘制 → 最终合成到主帧缓冲。
-        """
         if self.fill_vao is None:
-            return  # 填充 VAO 无效时直接返回
+            return
 
-        # 保存当前帧缓冲（主屏幕帧缓冲），获取填充画布的三个帧缓冲
         original_fbo = self.ctx.fbo
-        fill_tx_fbo, fill_tx_vao, depth_tx_fbo = self.fill_canvas  # 离屏渲染用帧缓冲
+        fill_tx_fbo, fill_tx_vao, depth_tx_fbo = self.fill_canvas
 
-        # ------------------------------ 步骤1：离屏渲染填充区域 ------------------------------
-        # 切换到填充纹理帧缓冲（离屏渲染，避免直接绘制到主屏幕）
-        fill_tx_fbo.clear()  # 清空离屏帧缓冲
+        # Render to a separate texture, due to strange alpha compositing
+        # for the blended winding calculation
+        fill_tx_fbo.clear()
         fill_tx_fbo.use()
 
-        # 暂存深度测试状态，渲染填充时禁用深度测试（避免填充被错误遮挡）
-        apply_depth_test = bool(gl.glGetBooleanv(gl.GL_DEPTH_TEST))  # 获取当前深度测试状态
+        # Be sure not to apply depth test while rendering fill
+        # but set it back to where it was after
+        apply_depth_test = bool(gl.glGetBooleanv(gl.GL_DEPTH_TEST))
         self.ctx.disable(moderngl.DEPTH_TEST)
 
-        # 设置特殊混合模式：通过正负方向三角形的 alpha 抵消，计算正确的填充区域（解决自相交形状）
+        # With this blend function, the effect of blending alpha a with
+        # -a / (1 - a) cancels out, so we can cancel positively and negatively
+        # oriented triangles
         gl.glBlendFuncSeparate(
-            gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA,  # RGB 通道混合函数
-            gl.GL_ONE_MINUS_DST_ALPHA, gl.GL_ONE           # Alpha 通道混合函数
+            gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA,
+            gl.GL_ONE_MINUS_DST_ALPHA, gl.GL_ONE
         )
-        self.fill_vao.render()  # 渲染填充区域到离屏帧缓冲
+        self.fill_vao.render()
 
-        # ------------------------------ 步骤2：处理深度信息（可选） ------------------------------
         if apply_depth_test:
-            self.ctx.enable(moderngl.DEPTH_TEST)  # 恢复深度测试
-            depth_tx_fbo.clear(1.0)  # 清空深度纹理帧缓冲
-            depth_tx_fbo.use()  # 切换到深度纹理帧缓冲
-
-            # 设置混合模式：取最小值（确保深度值正确叠加）
+            self.ctx.enable(moderngl.DEPTH_TEST)
+            depth_tx_fbo.clear(1.0)
+            depth_tx_fbo.use()
             gl.glBlendFunc(gl.GL_ONE, gl.GL_ONE)
             gl.glBlendEquation(gl.GL_MIN)
-            self.fill_depth_vao.render()  # 渲染深度信息到离屏帧缓冲
+            self.fill_depth_vao.render()
 
-        # ------------------------------ 步骤3：渲染填充边框（离屏） ------------------------------
-        # 设置混合模式：取最大值（确保边框 alpha 不被覆盖）
+        # Now add border, just taking the max alpha
         gl.glBlendFunc(gl.GL_ONE, gl.GL_ONE)
         gl.glBlendEquation(gl.GL_MAX)
-        self.fill_border_vao.render()  # 渲染填充边框到离屏帧缓冲
+        self.fill_border_vao.render()
 
-        # ------------------------------ 步骤4：合成到主屏幕 ------------------------------
-        original_fbo.use()  # 切换回主帧缓冲
-        # 设置标准混合模式：alpha 混合（确保填充区域正确叠加到主场景）
+        # Take the texture we were just drawing to, and render it to
+        # the main scene. Account for how alphas have been premultiplied
+        original_fbo.use()
         gl.glBlendFunc(gl.GL_ONE, gl.GL_ONE_MINUS_SRC_ALPHA)
         gl.glBlendEquation(gl.GL_FUNC_ADD)
-        fill_tx_vao.render()  # 将离屏渲染的填充结果绘制到主屏幕
+        fill_tx_vao.render()
 
-        # ------------------------------ 步骤5：恢复混合状态 ------------------------------
-        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)  # 恢复默认混合模式
+        # Return to original blending state
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
 
     # ------------------------------ 静态方法：创建共享填充画布（离屏渲染核心） ------------------------------
     @lru_cache
