@@ -528,109 +528,178 @@ def get_smooth_cubic_bezier_handle_points(
     # 分离两组控制点（h1s 对应每个段的第一个控制点，h2s 对应第二个）
     return handle_pairs[0::2], handle_pairs[1::2]
 
+# ManimGL 贝塞尔曲线辅助工具：提供对角矩阵转换、曲线闭合判断、三次转二次曲线逼近等功能，
+# 辅助处理复杂曲线的平滑化和格式转换，是贝塞尔曲线生成与优化的重要支撑。
+
+
+from __future__ import annotations
+
+import numpy as np
+from scipy import linalg
+
+# 导入基础工具函数
+from manimlib.utils.bezier import bezier  # 贝塞尔曲线生成
+from manimlib.utils.space_ops import cross2d  # 2D 叉积计算
+from manimlib.utils.space_ops import find_intersection  # 直线交点计算
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from manimlib.typing import FloatArray, VectN, Sequence  # 类型注解
+
+
+# ------------------------------ 对角矩阵转换 ------------------------------
 def diag_to_matrix(
     l_and_u: tuple[int, int], 
     diag: np.ndarray
 ) -> np.ndarray:
     """
-    Converts array whose rows represent diagonal
-    entries of a matrix into the matrix itself.
-    See scipy.linalg.solve_banded
+    将带状对角矩阵表示转换为完整矩阵形式，与 scipy.linalg.solve_banded 兼容。
+    
+    带状矩阵存储格式：每行代表矩阵的一条对角线（从下到上），适用于高效求解线性方程组，
+    该函数将其还原为标准的二维矩阵，便于后续处理（如闭合曲线的额外约束）。
+    
+    参数：
+        l_and_u : 元组 (l, u)，表示下三角和上三角的带宽；
+        diag : 带状矩阵的对角线数组（形状为 (l+u+1, n)）。
+    返回：np.ndarray - 完整的二维矩阵（形状为 (n, n)）。
     """
     l, u = l_and_u
-    dim = diag.shape[1]
-    matrix = np.zeros((dim, dim))
+    dim = diag.shape[1]  # 矩阵维度
+    matrix = np.zeros((dim, dim))  # 初始化完整矩阵
+
+    # 填充每条对角线到完整矩阵
     for i in range(l + u + 1):
+        # 计算对角线在完整矩阵中的起始位置
+        row_start = max(0, i - u)
+        col_start = max(0, u - i)
+        # 填充对角线元素
         np.fill_diagonal(
-            matrix[max(0, i - u):, max(0, u - i):],
-            diag[i, max(0, u - i):]
+            matrix[row_start:, col_start:],  # 目标对角线位置
+            diag[i, col_start:]  # 对应对角线的元素
         )
     return matrix
 
 
+# ------------------------------ 曲线闭合判断 ------------------------------
 def is_closed(points: FloatArray) -> bool:
-    return np.allclose(points[0], points[-1])
+    """
+    判断点序列是否形成闭合曲线（起点与终点是否接近）。
+    
+    参数：points - 点序列数组（N×D 形状）
+    返回：bool - 若起点与终点的所有维度均接近（默认精度），则返回 True。
+    """
+    return np.allclose(points[0], points[-1])  # 检查起点和终点是否接近
 
 
-# Given 4 control points for a cubic bezier curve (or arrays of such)
-# return control points for 2 quadratics (or 2n quadratics) approximating them.
+# ------------------------------ 三次贝塞尔转二次贝塞尔逼近 ------------------------------
 def get_quadratic_approximation_of_cubic(
     a0: FloatArray,
     h0: FloatArray,
     h1: FloatArray,
     a1: FloatArray
 ) -> FloatArray:
+    """
+    将三次贝塞尔曲线用两段二次贝塞尔曲线逼近，平衡精度与计算效率。
+    
+    算法流程：
+    1. 计算三次曲线的起点、终点和切线；
+    2. 检测拐点（若存在，以此为分段点；否则用中点）；
+    3. 计算分段点处的切线，求切线交点作为二次曲线的控制点；
+    4. 生成两段二次曲线的控制点序列。
+    
+    参数：
+        a0, a1 : 三次贝塞尔曲线的起点和终点；
+        h0, h1 : 三次贝塞尔曲线的两个控制点。
+    返回：np.ndarray - 二次贝塞尔曲线的控制点数组（形状为 (5*N, D)，每5个点代表两段二次曲线）。
+    """
+    # 确保输入为二维数组（支持批量处理多个曲线）
     a0 = np.array(a0, ndmin=2)
     h0 = np.array(h0, ndmin=2)
     h1 = np.array(h1, ndmin=2)
     a1 = np.array(a1, ndmin=2)
-    # Tangent vectors at the start and end.
-    T0 = h0 - a0
-    T1 = a1 - h1
 
-    # Search for inflection points.  If none are found, use the
-    # midpoint as a cut point.
-    # Based on http://www.caffeineowl.com/graphics/2d/vectorial/cubic-inflexion.html
-    has_infl = np.ones(len(a0), dtype=bool)
+    # 计算起点和终点的切线向量
+    T0 = h0 - a0  # 起点切线（h0 - a0）
+    T1 = a1 - h1  # 终点切线（a1 - h1）
 
+    # 检测三次曲线的拐点（基于二阶导数为零的条件）
+    # 参考：http://www.caffeineowl.com/graphics/2d/vectorial/cubic-inflexion.html
+    has_infl = np.ones(len(a0), dtype=bool)  # 标记是否有拐点
+
+    # 三次曲线的系数（用于计算拐点）
     p = h0 - a0
     q = h1 - 2 * h0 + a0
     r = a1 - 3 * h1 + 3 * h0 - a0
 
+    # 计算二阶导数为零的方程系数（ax² + bx + c = 0）
     a = cross2d(q, r)
     b = cross2d(p, r)
     c = cross2d(p, q)
 
+    # 判别式（判断是否有实根）
     disc = b * b - 4 * a * c
-    has_infl &= (disc > 0)
-    sqrt_disc = np.sqrt(np.abs(disc))
+    has_infl &= (disc > 0)  # 仅保留有实根的曲线
+    sqrt_disc = np.sqrt(np.abs(disc))  # 平方根（取绝对值避免负数）
+
+    # 计算拐点的参数 t（暂时忽略警告）
     settings = np.seterr(all='ignore')
     ti_bounds = []
     for sgn in [-1, +1]:
         ti = (-b + sgn * sqrt_disc) / (2 * a)
+        # 处理 a=0 的特殊情况（降为一次方程）
         ti[a == 0] = (-c / b)[a == 0]
+        # 处理 a=0 且 b=0 的退化情况
         ti[(a == 0) & (b == 0)] = 0
         ti_bounds.append(ti)
     ti_min, ti_max = ti_bounds
-    np.seterr(**settings)
+    np.seterr(** settings)  # 恢复警告设置
+
+    # 判断拐点是否在 [0, 1] 区间内
     ti_min_in_range = has_infl & (0 < ti_min) & (ti_min < 1)
     ti_max_in_range = has_infl & (0 < ti_max) & (ti_max < 1)
 
-    # Choose a value of t which starts at 0.5,
-    # but is updated to one of the inflection points
-    # if they lie between 0 and 1
-
-    t_mid = 0.5 * np.ones(len(a0))
-    t_mid[ti_min_in_range] = ti_min[ti_min_in_range]
+    # 选择分段点 t（优先用拐点，否则用中点）
+    t_mid = 0.5 * np.ones(len(a0))  # 默认中点 t=0.5
+    t_mid[ti_min_in_range] = ti_min[ti_min_in_range]  # 替换为有效拐点
     t_mid[ti_max_in_range] = ti_max[ti_max_in_range]
 
+    # 扩展 t_mid 维度以匹配点的维度（支持批量计算）
     m, n = a0.shape
     t_mid = t_mid.repeat(n).reshape((m, n))
 
-    # Compute bezier point and tangent at the chosen value of t
-    mid = bezier([a0, h0, h1, a1])(t_mid)
-    Tm = bezier([h0 - a0, h1 - h0, a1 - h1])(t_mid)
+    # 计算分段点的坐标和切线
+    mid = bezier([a0, h0, h1, a1])(t_mid)  # 分段点坐标
+    Tm = bezier([h0 - a0, h1 - h0, a1 - h1])(t_mid)  # 分段点切线
 
-    # Intersection between tangent lines at end points
-    # and tangent in the middle
-    i0 = find_intersection(a0, T0, mid, Tm)
-    i1 = find_intersection(a1, T1, mid, Tm)
+    # 计算切线交点作为二次曲线的控制点
+    i0 = find_intersection(a0, T0, mid, Tm)  # 起点切线与分段点切线的交点
+    i1 = find_intersection(a1, T1, mid, Tm)  # 终点切线与分段点切线的交点
 
+    # 构建二次贝塞尔曲线的控制点序列（每5个点代表两段曲线：a0→i0→mid→i1→a1）
     m, n = np.shape(a0)
     result = np.zeros((5 * m, n))
-    result[0::5] = a0
-    result[1::5] = i0
-    result[2::5] = mid
-    result[3::5] = i1
-    result[4::5] = a1
+    result[0::5] = a0   # 第一段起点
+    result[1::5] = i0   # 第一段控制点
+    result[2::5] = mid  # 两段连接点（第一段终点，第二段起点）
+    result[3::5] = i1   # 第二段控制点
+    result[4::5] = a1   # 第二段终点
     return result
 
 
+# ------------------------------ 平滑二次贝塞尔路径生成（待完善） ------------------------------
 def get_smooth_quadratic_bezier_path_through(
     points: Sequence[VectN]
 ) -> np.ndarray:
-    # TODO
-    h0, h1 = get_smooth_cubic_bezier_handle_points(points)
-    a0 = points[:-1]
-    a1 = points[1:]
-    return get_quadratic_approximation_of_cubic(a0, h0, h1, a1)
+    """
+    生成通过指定点的平滑二次贝塞尔路径（未完善）。
+    
+    思路：先计算三次贝塞尔曲线的平滑控制点，再转换为二次贝塞尔曲线逼近。
+    
+    参数：points - 点序列
+    返回：np.ndarray - 二次贝塞尔曲线的控制点数组。
+    """
+    # TODO: 完善路径生成逻辑，处理端点和平滑性
+    h0, h1 = get_smooth_cubic_bezier_handle_points(points)  # 获取三次曲线控制点
+    a0 = points[:-1]  # 各段起点
+    a1 = points[1:]   # 各段终点
+    return get_quadratic_approximation_of_cubic(a0, h0, h1, a1)  # 转换为二次曲线
