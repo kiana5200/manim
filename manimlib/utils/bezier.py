@@ -136,26 +136,71 @@ def partial_quadratic_bezier_points(
 # Linear interpolation variants
 
 
+# ManimGL 插值计算工具集：提供多种插值方式（线性、外插、整数插值等），
+# 支持数值、向量、数组的平滑过渡，是动画参数变化、图形变形、路径生成的核心计算模块。
+
+
+from __future__ import annotations
+
+import numpy as np
+
+from manimlib.logger import log  # 日志工具
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Callable
+    from manimlib.typing import Scalable, VectN, FloatArray  # 类型注解
+
+
+# ------------------------------ 基础线性插值 ------------------------------
 def interpolate(start: Scalable, end: Scalable, alpha: float | VectN) -> Scalable:
+    """
+    线性插值：计算 start 到 end 之间按 alpha 比例的插值结果，支持标量、向量和数组。
+    
+    公式：result = (1 - alpha) * start + alpha * end
+    
+    参数：
+        start : 起始值（标量、向量或数组，与 end 同类型/形状）；
+        end : 目标值（与 start 兼容）；
+        alpha : 插值比例（0→返回 start，1→返回 end，可超出范围实现外插）。
+    返回：插值结果（与 start 同类型/形状）。
+    异常处理：类型不兼容时输出调试信息并退出。
+    """
     try:
         return (1 - alpha) * start + alpha * end
     except TypeError:
-        log.debug(f"`start` parameter with type `{type(start)}` and dtype `{start.dtype}`")
-        log.debug(f"`end` parameter with type `{type(end)}` and dtype `{end.dtype}`")
-        log.debug(f"`alpha` parameter with value `{alpha}`")
+        # 输出调试信息帮助定位类型错误
+        log.debug(f"`start` type: `{type(start)}`, dtype: `{start.dtype}`")
+        log.debug(f"`end` type: `{type(end)}`, dtype: `{end.dtype}`")
+        log.debug(f"`alpha` value: `{alpha}`")
         import sys
-        sys.exit(2)
+        sys.exit(2)  # 非零退出码标识错误
 
 
+# ------------------------------ 外插值（多维度批量计算） ------------------------------
 def outer_interpolate(
     start: Scalable,
     end: Scalable,
     alpha: Scalable,
 ) -> np.ndarray:
+    """
+    外插值：对 alpha 数组中的每个元素与 start/end 进行插值，适用于批量计算多组插值。
+    
+    应用场景：当需要为多个 alpha 值（如动画的每帧）计算插值结果时，避免循环提高效率。
+    
+    参数：
+        start : 起始值（标量或数组）；
+        end : 目标值（与 start 同形状）；
+        alpha : 插值比例数组（1D 或高维）。
+    返回：np.ndarray - 插值结果数组，形状为 (*alpha.shape, *start.shape)。
+    """
+    # 计算外积插值：(1-alpha)与start的外积 + alpha与end的外积
     result = np.outer(1 - alpha, start) + np.outer(alpha, end)
+    # 调整形状以匹配 (alpha维度 + start维度)
     return result.reshape((*np.shape(alpha), *np.shape(start)))
 
 
+# ------------------------------ 数组插值（原地修改） ------------------------------
 def set_array_by_interpolation(
     arr: np.ndarray,
     arr1: np.ndarray,
@@ -163,43 +208,83 @@ def set_array_by_interpolation(
     alpha: float,
     interp_func: Callable[[np.ndarray, np.ndarray, float], np.ndarray] = interpolate
 ) -> np.ndarray:
-    arr[:] = interp_func(arr1, arr2, alpha)
+    """
+    数组插值并原地修改：将 arr1 和 arr2 的插值结果写入目标数组 arr（避免创建新对象），
+    支持自定义插值函数（默认线性插值）。
+    
+    优势：减少内存占用，适用于大型数组或高频调用场景。
+    
+    参数：
+        arr : 目标数组（将被修改）；
+        arr1 : 起始数组；
+        arr2 : 目标数组；
+        alpha : 插值比例；
+        interp_func : 自定义插值函数（默认使用 linear_interpolate）。
+    返回：修改后的 arr 数组（与输入 arr 同引用）。
+    """
+    arr[:] = interp_func(arr1, arr2, alpha)  # 原地赋值，覆盖原有数据
     return arr
 
 
+# ------------------------------ 整数插值（带余数） ------------------------------
 def integer_interpolate(
     start: int,
     end: int,
     alpha: float
 ) -> tuple[int, float]:
     """
-    alpha is a float between 0 and 1.  This returns
-    an integer between start and end (inclusive) representing
-    appropriate interpolation between them, along with a
-    "residue" representing a new proportion between the
-    returned integer and the next one of the
-    list.
-
-    For example, if start=0, end=10, alpha=0.46, This
-    would return (4, 0.6).
+    整数插值：在整数 start 到 end 之间插值，返回当前整数和到下一个整数的比例，
+    适用于需要离散整数但保持平滑过渡的场景（如帧索引、计数器动画）。
+    
+    示例：start=0, end=10, alpha=0.46 → (4, 0.6)，表示处于 4 到 5 之间的 60% 处。
+    
+    参数：
+        start : 起始整数；
+        end : 目标整数；
+        alpha : 插值比例（0→start，1→end）。
+    返回：tuple - (当前整数, 到下一个整数的比例)。
     """
     if alpha >= 1:
-        return (end - 1, 1.0)
+        return (end - 1, 1.0)  # alpha≥1 时取终点前一个整数，比例为1
     if alpha <= 0:
-        return (start, 0)
+        return (start, 0)       # alpha≤0 时取起点，比例为0
+    # 计算插值后的整数
     value = int(interpolate(start, end, alpha))
+    # 计算到下一个整数的比例（余数）
     residue = ((end - start) * alpha) % 1
     return (value, residue)
 
 
+# ------------------------------ 中点计算 ------------------------------
 def mid(start: Scalable, end: Scalable) -> Scalable:
+    """
+    计算 start 和 end 的中点（alpha=0.5 时的插值结果）。
+    
+    公式：mid = (start + end) / 2.0
+    
+    参数：start, end - 两个值（标量、向量或数组，需兼容）
+    返回：中点值（与输入同类型）。
+    """
     return (start + end) / 2.0
 
 
+# ------------------------------ 反向插值 ------------------------------
 def inverse_interpolate(start: Scalable, end: Scalable, value: Scalable) -> np.ndarray:
-    return np.true_divide(value - start, end - start)
+    """
+    反向插值：计算 value 在 start 到 end 区间内的相对比例（alpha 值）。
+    
+    公式：alpha = (value - start) / (end - start)
+    
+    参数：
+        start : 起始值；
+        end : 目标值；
+        value : 位于 [start, end] 区间内的值。
+    返回：np.ndarray - 相对比例 alpha（0→start，1→end，可外插）。
+    """
+    return np.true_divide(value - start, end - start)  # 安全除法，支持数组
 
 
+# ------------------------------ 匹配插值（映射区间） ------------------------------
 def match_interpolate(
     new_start: Scalable,
     new_end: Scalable,
@@ -207,19 +292,43 @@ def match_interpolate(
     old_end: Scalable,
     old_value: Scalable
 ) -> Scalable:
+    """
+    匹配插值：将 old_value 在 [old_start, old_end] 中的比例映射到 [new_start, new_end] 区间，
+    实现不同区间之间的比例转换。
+    
+    示例：old区间 [0,10] 中的 5 映射到 new区间 [100,200] 中为 150。
+    
+    参数：
+        new_start, new_end : 新区间的起止；
+        old_start, old_end : 原区间的起止；
+        old_value : 原区间中的值。
+    返回：新区间中对应比例的值。
+    """
     return interpolate(
         new_start, new_end,
-        inverse_interpolate(old_start, old_end, old_value)
+        inverse_interpolate(old_start, old_end, old_value)  # 先计算原比例
     )
 
 
-def quadratic_bezier_points_for_arc(angle: float, n_components: int = 8):
-    n_points = 2 * n_components + 1
+# ------------------------------ 圆弧的二次贝塞尔控制点生成 ------------------------------
+def quadratic_bezier_points_for_arc(angle: float, n_components: int = 8) -> np.ndarray:
+    """
+    生成圆弧的二次贝塞尔曲线控制点：将圆弧分段，用多段二次贝塞尔曲线逼近圆弧，
+    适用于需要用贝塞尔曲线绘制圆弧的场景（如SVG路径、平滑曲线动画）。
+    
+    参数：
+        angle : 圆弧角度（弧度）；
+        n_components : 分段数量（越多越逼近圆弧，默认8）。
+    返回：np.ndarray - 控制点数组（形状为 (2n_components+1, 3)，包含起点、控制点、终点）。
+    """
+    n_points = 2 * n_components + 1  # 总控制点数量（每段2个控制点）
+    # 生成从0到angle的均匀角度序列
     angles = np.linspace(0, angle, n_points)
+    # 计算单位圆上的点（x=cosθ, y=sinθ, z=0）
     points = np.array([np.cos(angles), np.sin(angles), np.zeros(n_points)]).T
-    # Adjust handles
-    theta = angle / n_components
-    points[1::2] /= np.cos(theta / 2)
+    # 调整控制点位置（使贝塞尔曲线更逼近圆弧）
+    theta = angle / n_components  # 每段的角度
+    points[1::2] /= np.cos(theta / 2)  # 奇数索引为控制点，按三角函数调整
     return points
 
 
