@@ -456,60 +456,149 @@ def get_unit_normal(
 ###
 
 
+# ManimGL 几何工具库：提供对角线矩阵、方向向量、坐标转换、交点计算等几何操作，
+# 支持2D/3D空间中的点、线、路径关系分析，是图形绘制和碰撞检测的基础工具。
+
+
+from __future__ import annotations
+
+import numpy as np
+
+# 导入基础工具函数和常量
+from manimlib.constants import TAU, PI  # 圆周率常量（TAU=2π）
+from manimlib.utils.iterables import adjacent_pairs  # 相邻元素对生成
+from manimlib.utils.space_ops import cross2d  # 2D叉积
+from manimlib.utils.space_ops import cross  # 3D叉积
+from manimlib.utils.space_ops import rotate_vector  # 向量旋转
+from manimlib.utils.space_ops import angle_of_vector  # 向量极角
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from typing import Callable, Sequence, Tuple
+    from manimlib.typing import Vect2, Vect3, VectN, Vect2Array, Vect3Array  # 类型注解
+
+
+# ------------------------------ 特殊矩阵生成 ------------------------------
 def thick_diagonal(dim: int, thickness: int = 2) -> np.ndarray:
+    """
+    生成带"粗对角线"的矩阵：对角线及附近区域为1，其余为0，用于掩码或权重矩阵。
+    
+    参数：
+        dim : 矩阵维度（dim×dim）；
+        thickness : 对角线厚度（默认2，即主对角线±1范围内为1）。
+    返回：np.ndarray - 二进制矩阵（0或1）。
+    """
+    # 生成行索引和列索引矩阵
     row_indices = np.arange(dim).repeat(dim).reshape((dim, dim))
     col_indices = np.transpose(row_indices)
+    # 行索引与列索引的差的绝对值小于厚度的位置为1
     return (np.abs(row_indices - col_indices) < thickness).astype('uint8')
 
 
-def compass_directions(n: int = 4, start_vect: Vect3 = RIGHT) -> Vect3:
-    angle = TAU / n
+# ------------------------------ 方向向量生成 ------------------------------
+def compass_directions(n: int = 4, start_vect: Vect3 = RIGHT) -> Vect3Array:
+    """
+    生成均匀分布的方向向量（如指南针方向），沿圆周等角度分布。
+    
+    参数：
+        n : 方向数量（默认4，即上下左右）；
+        start_vect : 起始方向（默认RIGHT，即x轴正方向）。
+    返回：Vect3Array - 形状为(n, 3)的方向向量数组。
+    示例：n=4 → [RIGHT, UP, LEFT, DOWN]
+    """
+    angle = TAU / n  # 每个方向的角度间隔
     return np.array([
-        rotate_vector(start_vect, k * angle)
+        rotate_vector(start_vect, k * angle)  # 旋转起始向量得到每个方向
         for k in range(n)
     ])
 
 
+# ------------------------------ 复数与3D坐标转换 ------------------------------
 def complex_to_R3(complex_num: complex) -> Vect3:
+    """
+    将复数转换为3D坐标（z分量为0）。
+    
+    参数：complex_num - 复数（实部为x，虚部为y）
+    返回：Vect3 - (real, imag, 0)
+    """
     return np.array((complex_num.real, complex_num.imag, 0))
 
 
 def R3_to_complex(point: Vect3) -> complex:
-    return complex(*point[:2])
+    """
+    将3D坐标转换为复数（取x和y分量）。
+    
+    参数：point - 3D点 (x, y, z)
+    返回：complex - x + y*i
+    """
+    return complex(*point[:2])  # 取前两个分量作为实部和虚部
 
 
 def complex_func_to_R3_func(complex_func: Callable[[complex], complex]) -> Callable[[Vect3], Vect3]:
+    """
+    将复数函数转换为3D坐标函数（仅作用于x-y平面）。
+    
+    参数：complex_func - 输入输出均为复数的函数
+    返回：Callable[[Vect3], Vect3] - 接收3D点，返回转换后的3D点。
+    示例：f(z) = z^2 → 转换后函数将(x,y,0)映射为(x²-y², 2xy, 0)
+    """
     def result(p: Vect3):
+        # 将3D点转为复数→应用函数→转回3D点
         return complex_to_R3(complex_func(R3_to_complex(p)))
     return result
 
 
+# ------------------------------ 质心与中点计算 ------------------------------
 def center_of_mass(points: Sequence[Vect3]) -> Vect3:
-    return np.array(points).sum(0) / len(points)
+    """
+    计算点集的质心（重心），即所有点的平均坐标。
+    
+    参数：points - 3D点序列
+    返回：Vect3 - 质心坐标。
+    """
+    return np.array(points).sum(0) / len(points)  # 按列求和再除以点数
 
 
 def midpoint(point1: VectN, point2: VectN) -> VectN:
-    return center_of_mass([point1, point2])
+    """
+    计算两点的中点（质心的特例，仅两个点）。
+    
+    参数：
+        point1 : N维点；
+        point2 : N维点。
+    返回：VectN - 中点坐标。
+    """
+    return center_of_mass([point1, point2])  # 复用质心计算
 
 
+# ------------------------------ 直线交点计算 ------------------------------
 def line_intersection(
     line1: Tuple[Vect3, Vect3],
     line2: Tuple[Vect3, Vect3]
 ) -> Vect3:
     """
-    return intersection point of two lines,
-    each defined with a pair of vectors determining
-    the end points
+    计算两条2D直线的交点（假设在同一平面z=0）。
+    
+    参数：
+        line1 : 第一条直线的两个端点；
+        line2 : 第二条直线的两个端点。
+    返回：Vect3 - 交点坐标（z=0）。
+    异常：直线平行时抛出异常。
     """
+    # 提取x和y方向的差分
     x_diff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
     y_diff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
 
+    # 2D行列式计算
     def det(a, b):
         return a[0] * b[1] - a[1] * b[0]
 
+    # 计算分母（判断是否平行）
     div = det(x_diff, y_diff)
     if div == 0:
-        raise Exception("Lines do not intersect")
+        raise Exception("Lines do not intersect")  # 平行或重合
+
+    # 计算分子（Cramer法则）
     d = (det(*line1), det(*line2))
     x = det(d, x_diff) / div
     y = det(d, y_diff) / div
@@ -522,79 +611,117 @@ def find_intersection(
     p1: Vect3 | Vect3Array,
     v1: Vect3 | Vect3Array,
     threshold: float = 1e-5,
-) -> Vect3:
+) -> Vect3 | Vect3Array:
     """
-    Return the intersection of a line passing through p0 in direction v0
-    with one passing through p1 in direction v1.  (Or array of intersections
-    from arrays of such points/directions).
-
-    For 3d values, it returns the point on the ray p0 + v0 * t closest to the
-    ray p1 + v1 * t
+    计算两条射线（或直线）的交点（3D中为最近点）。
+    
+    射线定义：
+    - 射线1：p0 + t*v0（t≥0）
+    - 射线2：p1 + s*v1（s≥0）
+    
+    参数：
+        p0, p1 : 射线起点；
+        v0, v1 : 射线方向向量；
+        threshold : 数值容差（避免除以零）。
+    返回：
+        2D：精确交点；
+        3D：两条射线的最近点（若不共面）。
     """
-    d = len(p0.shape)
+    d = len(p0.shape)  # 维度（1为单个向量，2为数组）
+    # 判断是否为3D（z分量不全为0）
     if d == 1:
         is_3d = any(arr[2] for arr in (p0, v0, p1, v1))
     else:
         is_3d = any(z for arr in (p0, v0, p1, v1) for z in arr.T[2])
+
     if not is_3d:
+        # 2D情况：用叉积计算交点
         numer = np.array(cross2d(v1, p1 - p0))
         denom = np.array(cross2d(v1, v0))
     else:
+        # 3D情况：计算最近点（基于向量投影）
         cp1 = cross(v1, p1 - p0)
         cp2 = cross(v1, v0)
-        numer = np.array((cp1 * cp1).sum(d - 1))
-        denom = np.array((cp1 * cp2).sum(d - 1))
+        numer = np.array((cp1 * cp1).sum(d - 1))  # 分子为点积和
+        denom = np.array((cp1 * cp2).sum(d - 1))   # 分母为点积和
+
+    # 处理接近零的分母（避免无穷大）
     denom[abs(denom) < threshold] = np.inf
-    ratio = numer / denom
-    return p0 + (ratio * v0.T).T
+    ratio = numer / denom  # 计算参数t
+    return p0 + (ratio * v0.T).T  # 计算交点
 
 
+# ------------------------------ 路径相交检测 ------------------------------
 def line_intersects_path(
     start: Vect2 | Vect3,
     end: Vect2 | Vect3,
     path: Vect2Array | Vect3Array,
 ) -> bool:
     """
-    Tests whether the line (start, end) intersects
-    a polygonal path defined by its vertices
+    判断直线段（start, end）是否与多边形路径相交。
+    
+    参数：
+        start, end : 直线段的端点；
+        path : 多边形路径的顶点数组（按顺序连接）。
+    返回：bool - 若相交则返回True，否则False。
     """
-    n = len(path) - 1
+    n = len(path) - 1  # 路径的线段数量
+    # 初始化线段端点数组（批量处理）
     p1 = np.empty((n, 2))
     q1 = np.empty((n, 2))
-    p1[:] = start[:2]
-    q1[:] = end[:2]
-    p2 = path[:-1, :2]
-    q2 = path[1:, :2]
+    p1[:] = start[:2]  # 直线段的起点（复制n次）
+    q1[:] = end[:2]    # 直线段的终点（复制n次）
+    p2 = path[:-1, :2]  # 路径各线段的起点
+    q2 = path[1:, :2]   # 路径各线段的终点
 
+    # 计算方向向量
     v1 = q1 - p1
     v2 = q2 - p2
 
+    # 检测相交（基于叉积符号判断）
+    # mis1：直线段与路径线段的起点/终点在v1两侧
     mis1 = cross2d(v1, p2 - p1) * cross2d(v1, q2 - p1) < 0
+    # mis2：路径线段与直线段的起点/终点在v2两侧
     mis2 = cross2d(v2, p1 - p2) * cross2d(v2, q1 - p2) < 0
+    # 两者均为True时表示相交
     return bool((mis1 * mis2).any())
 
 
+# ------------------------------ 直线上最近点 ------------------------------
 def get_closest_point_on_line(a: VectN, b: VectN, p: VectN) -> VectN:
     """
-        It returns point x such that
-        x is on line ab and xp is perpendicular to ab.
-        If x lies beyond ab line, then it returns nearest edge(a or b).
+    计算点p在直线ab上的最近点（若超出线段ab，则返回最近的端点）。
+    
+    参数：
+        a, b : 直线的两个端点；
+        p : 待投影的点。
+    返回：VectN - 直线上的最近点。
     """
-    # x = b + t*(a-b) = t*a + (1-t)*b
+    # 计算参数t：t=0→b，t=1→a，t∈[0,1]为线段ab上的点
     t = np.dot(p - b, a - b) / np.dot(a - b, a - b)
-    if t < 0:
-        t = 0
-    if t > 1:
-        t = 1
-    return ((t * a) + ((1 - t) * b))
+    # 裁剪t到[0,1]范围（超出线段则取端点）
+    t = np.clip(t, 0, 1)
+    # 计算最近点
+    return t * a + (1 - t) * b
 
 
+# ------------------------------ 绕数计算 ------------------------------
 def get_winding_number(points: Sequence[Vect2 | Vect3]) -> float:
-    total_angle = 0
+    """
+    计算多边形的绕数（winding number）：描述多边形环绕原点的次数，
+    用于判断点是否在多边形内部（绕数非零则在内部）。
+    
+    参数：points - 多边形顶点序列（闭合或非闭合）
+    返回：float - 绕数（整数，正数为逆时针，负数为顺时针）。
+    """
+    total_angle = 0.0
+    # 累加相邻顶点的角度差
     for p1, p2 in adjacent_pairs(points):
         d_angle = angle_of_vector(p2) - angle_of_vector(p1)
+        # 归一化角度差到[-π, π]
         d_angle = ((d_angle + PI) % TAU) - PI
         total_angle += d_angle
+    # 绕数 = 总角度 / TAU（2π）
     return total_angle / TAU
 
 
