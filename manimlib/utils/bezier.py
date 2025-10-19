@@ -1,17 +1,22 @@
+# ManimGL 贝塞尔曲线工具库：提供贝塞尔曲线生成、分段截取等核心功能，
+# 支持任意阶贝塞尔曲线的参数化表示，以及从曲线中提取指定区间的子曲线，
+# 是图形绘制（如 SVG 解析、自定义路径）和动画路径生成的基础。
+
+
 from __future__ import annotations
 
 import numpy as np
 from scipy import linalg
-from fontTools.cu2qu.cu2qu import curve_to_quadratic
+from fontTools.cu2qu.cu2qu import curve_to_quadratic  #  cubic→quadratic 曲线转换（字体工具）
 
-from manimlib.logger import log
-from manimlib.utils.simple_functions import choose
-from manimlib.utils.space_ops import cross2d
-from manimlib.utils.space_ops import cross
-from manimlib.utils.space_ops import find_intersection
-from manimlib.utils.space_ops import midpoint
-from manimlib.utils.space_ops import get_norm
-from manimlib.utils.space_ops import z_to_vector
+from manimlib.logger import log  # 日志工具
+from manimlib.utils.simple_functions import choose  # 组合数计算
+from manimlib.utils.space_ops import cross2d  # 2D 叉积
+from manimlib.utils.space_ops import cross  # 3D 叉积
+from manimlib.utils.space_ops import find_intersection  # 求交
+from manimlib.utils.space_ops import midpoint  # 中点计算
+from manimlib.utils.space_ops import get_norm  # 向量模长
+from manimlib.utils.space_ops import z_to_vector  # z值转向量
 
 from typing import TYPE_CHECKING
 
@@ -19,22 +24,36 @@ if TYPE_CHECKING:
     from typing import Callable, Sequence, TypeVar, Tuple
     from manimlib.typing import VectN, FloatArray, VectNArray, Vect3Array
 
-    Scalable = TypeVar("Scalable", float, FloatArray)
+    Scalable = TypeVar("Scalable", float, FloatArray)  # 支持标量和数组的泛型类型
 
 
+# 曲线闭合阈值：判断曲线是否闭合的距离阈值
 CLOSED_THRESHOLD = 0.001
 
 
+# ------------------------------ 贝塞尔曲线生成 ------------------------------
 def bezier(
     points: Sequence[float | FloatArray] | VectNArray
 ) -> Callable[[float], float | FloatArray]:
+    """
+    生成贝塞尔曲线函数：根据控制点序列创建参数化曲线函数，输入参数 t∈[0,1]，返回对应点坐标。
+    
+    贝塞尔曲线公式：B(t) = Σ (C(n,k) * t^k * (1-t)^(n-k) * Pk)，其中 n 为控制点数量-1，
+    C(n,k) 为组合数，Pk 为第 k 个控制点。
+    
+    参数：points - 控制点序列（长度 ≥1，支持标量或 N 维向量）
+    返回：函数，接收 t∈[0,1]，返回对应点的坐标（与控制点同维度）。
+    异常：控制点为空时抛出异常。
+    """
     if len(points) == 0:
-        raise Exception("bezier cannot be calld on an empty list")
+        raise Exception("bezier cannot be called on an empty list")
 
-    n = len(points) - 1
+    n = len(points) - 1  # 曲线阶数 = 控制点数量 - 1
 
     def result(t: float) -> float | FloatArray:
+        """参数 t 对应的贝塞尔曲线上的点"""
         return sum(
+            # 组合数 * t^k * (1-t)^(n-k) * 控制点
             ((1 - t)**(n - k)) * (t**k) * choose(n, k) * point
             for k, point in enumerate(points)
         )
@@ -42,54 +61,77 @@ def bezier(
     return result
 
 
+# ------------------------------ 贝塞尔曲线分段截取 ------------------------------
 def partial_bezier_points(
     points: Sequence[Scalable],
     a: float,
     b: float
 ) -> list[Scalable]:
     """
-    Given an list of points which define
-    a bezier curve, and two numbers 0<=a<b<=1,
-    return an list of the same size, which
-    describes the portion of the original bezier
-    curve on the interval [a, b].
-
-    This algorithm is pretty nifty, and pretty dense.
+    截取贝塞尔曲线的 [a, b] 区间：根据原曲线的控制点，计算子区间 [a, b] 对应的新控制点，
+    生成与原曲线同阶的子曲线，适用于任意阶贝塞尔曲线。
+    
+    算法逻辑：基于 de Casteljau 算法，通过递归细分曲线，提取指定区间的控制点。
+    
+    参数：
+        points : 原曲线的控制点序列；
+        a, b : 截取区间（0 ≤ a < b ≤ 1）。
+    返回：list[Scalable] - 子曲线的控制点序列（长度与原控制点相同）。
     """
     if a == 1:
+        # 特殊情况：a=1 时，子曲线退化为终点
         return [points[-1]] * len(points)
 
+    # 步骤1：计算原曲线从 a 到 1 的子曲线控制点
     a_to_1 = [
-        bezier(points[i:])(a)
+        bezier(points[i:])(a)  # 对原曲线的子序列应用 a 参数
         for i in range(len(points))
     ]
+    # 步骤2：计算 [a, b] 在 [a, 1] 中的相对比例
     end_prop = (b - a) / (1. - a)
+    # 步骤3：从 a_to_1 中截取 [0, end_prop] 区间，得到 [a, b] 对应的控制点
     return [
         bezier(a_to_1[:i + 1])(end_prop)
         for i in range(len(points))
     ]
 
 
-# Shortened version of partial_bezier_points just for quadratics,
-# since this is called a fair amount
 def partial_quadratic_bezier_points(
     points: Sequence[VectN] | VectNArray,
     a: float,
     b: float
 ) -> list[VectN]:
+    """
+    二次贝塞尔曲线的分段截取（优化版本）：针对二次贝塞尔曲线（3个控制点）的高效实现，
+    比通用的 partial_bezier_points 更快，适用于高频调用场景（如 SVG 路径解析）。
+    
+    参数：
+        points : 二次贝塞尔曲线的控制点（3个点）；
+        a, b : 截取区间（0 ≤ a < b ≤ 1）。
+    返回：list[VectN] - 子曲线的3个控制点。
+    """
     if a == 1:
+        # 特殊情况：a=1 时，子曲线退化为终点
         return 3 * [points[-1]]
 
+    # 二次贝塞尔曲线公式（直接展开，避免调用通用 bezier 函数的开销）
     def curve(t):
-        return points[0] * (1 - t) * (1 - t) + 2 * points[1] * t * (1 - t) + points[2] * t * t
-    # bezier(points)
-    h0 = curve(a) if a > 0 else points[0]
-    h2 = curve(b) if b < 1 else points[2]
-    h1_prime = (1 - a) * points[1] + a * points[2]
-    end_prop = (b - a) / (1. - a)
-    h1 = (1 - end_prop) * h0 + end_prop * h1_prime
-    return [h0, h1, h2]
+        return (
+            points[0] * (1 - t) * (1 - t) +  # 起点项
+            2 * points[1] * t * (1 - t) +    # 控制点项
+            points[2] * t * t                # 终点项
+        )
 
+    # 计算子曲线的起点 h0 和终点 h2
+    h0 = curve(a) if a > 0 else points[0]  # a=0 时直接取原起点
+    h2 = curve(b) if b < 1 else points[2]  # b=1 时直接取原终点
+
+    # 计算中间控制点 h1（基于 de Casteljau 算法的简化）
+    h1_prime = (1 - a) * points[1] + a * points[2]  # 辅助点
+    end_prop = (b - a) / (1. - a)  # 相对比例
+    h1 = (1 - end_prop) * h0 + end_prop * h1_prime   # 子曲线控制点
+
+    return [h0, h1, h2]
 
 # Linear interpolation variants
 
