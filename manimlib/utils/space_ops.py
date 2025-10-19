@@ -1,7 +1,3 @@
-# ManimGL 空间运算工具库：提供向量运算、距离计算、归一化、多边形长度等基础空间几何功能，
-# 支持 2D/3D 向量操作，是图形变换、碰撞检测、路径计算的核心工具。
-
-
 from __future__ import annotations
 
 from functools import reduce
@@ -9,113 +5,57 @@ import math
 import operator as op
 import platform
 
-from mapbox_earcut import triangulate_float32 as earcut  # 多边形三角化工具
+from mapbox_earcut import triangulate_float32 as earcut
 import numpy as np
-from scipy.spatial.transform import Rotation  # 旋转处理
-from tqdm.auto import tqdm as ProgressDisplay  # 进度条
+from scipy.spatial.transform import Rotation
+from tqdm.auto import tqdm as ProgressDisplay
 
-# 导入常量和工具函数
-from manimlib.constants import DOWN, OUT, RIGHT, UP  # 方向向量
-from manimlib.constants import PI, TAU  # 圆周率常量
-from manimlib.utils.iterables import adjacent_pairs  # 相邻元素对
-from manimlib.utils.simple_functions import clip  # 数值裁剪
+from manimlib.constants import DOWN, OUT, RIGHT, UP
+from manimlib.constants import PI, TAU
+from manimlib.utils.iterables import adjacent_pairs
+from manimlib.utils.simple_functions import clip
 
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from typing import Callable, Sequence, List, Tuple
-    from manimlib.typing import Vect2, Vect3, Vect4, VectN, Matrix3x3, Vect3Array, Vect2Array  # 类型注解
+    from manimlib.typing import Vect2, Vect3, Vect4, VectN, Matrix3x3, Vect3Array, Vect2Array
 
 
-# ------------------------------ 向量叉积 ------------------------------
 def cross(
     v1: Vect3 | List[float],
     v2: Vect3 | List[float],
     out: np.ndarray | None = None
 ) -> Vect3 | Vect3Array:
-    """
-    计算 3D 向量的叉积（向量积），支持单个向量和向量数组（批量计算）。
-    
-    叉积公式：
-    v1 × v2 = [
-        v1.y*v2.z - v1.z*v2.y,
-        v1.z*v2.x - v1.x*v2.z,
-        v1.x*v2.y - v1.y*v2.x
-    ]
-    
-    参数：
-        v1 : 第一个 3D 向量（或向量数组）；
-        v2 : 第二个 3D 向量（或向量数组）；
-        out : 输出数组（可选，用于原地计算）。
-    返回：Vect3 或 Vect3Array - 叉积结果，与输入同形状。
-    """
-    # 判断是否为批量处理（2D 数组，形状为 (N, 3)）
     is2d = isinstance(v1, np.ndarray) and len(v1.shape) == 2
     if is2d:
-        # 批量处理：分离 x, y, z 分量（按列提取）
         x1, y1, z1 = v1[:, 0], v1[:, 1], v1[:, 2]
         x2, y2, z2 = v2[:, 0], v2[:, 1], v2[:, 2]
     else:
-        # 单个向量：直接解包分量
         x1, y1, z1 = v1
         x2, y2, z2 = v2
-
-    # 初始化输出数组（若未提供则自动创建）
     if out is None:
         out = np.empty(np.shape(v1))
-    # 计算叉积并赋值（按行填充结果）
     out.T[:] = [
-        y1 * z2 - z1 * y2,  # x 分量
-        z1 * x2 - x1 * z2,  # y 分量
-        x1 * y2 - y1 * x2   # z 分量
+        y1 * z2 - z1 * y2,
+        z1 * x2 - x1 * z2,
+        x1 * y2 - y1 * x2,
     ]
     return out
 
 
-# ------------------------------ 向量模长与距离 ------------------------------
 def get_norm(vect: VectN | List[float]) -> float:
-    """
-    计算向量的模长（L2 范数）。
-    
-    公式：||v|| = sqrt(v1² + v2² + ... + vn²)
-    
-    参数：vect - N 维向量（或列表）
-    返回：float - 向量的模长。
-    """
-    return sum((x**2 for x in vect))** 0.5
+    return sum((x**2 for x in vect))**0.5
 
 
-def get_dist(vect1: VectN, vect2: VectN) -> float:
-    """
-    计算两个向量之间的欧氏距离（即两向量差的模长）。
-    
-    公式：distance = ||v2 - v1||
-    
-    参数：
-        vect1 : 第一个 N 维向量；
-        vect2 : 第二个 N 维向量。
-    返回：float - 两向量间的距离。
-    """
+def get_dist(vect1: VectN, vect2: VectN):
     return get_norm(vect2 - vect1)
 
 
-# ------------------------------ 向量归一化 ------------------------------
 def normalize(
     vect: VectN | List[float],
     fall_back: VectN | List[float] | None = None
 ) -> VectN:
-    """
-    将向量归一化（单位向量），即模长为 1 的向量。
-    
-    处理逻辑：
-    - 若向量模长 > 0，返回 vect / ||vect||；
-    - 若模长为 0 且提供 fall_back，返回 fall_back（默认归一化）；
-    - 否则返回零向量。
-    
-    参数：
-        vect : 待归一化的 N 维向量；
-        fall_back : 模长为 0 时的 fallback 向量（可选）。
-    返回：VectN - 归一化后的向量。
-    """
     norm = get_norm(vect)
     if norm > 0:
         return np.array(vect) / norm
@@ -125,67 +65,32 @@ def normalize(
         return np.zeros(len(vect))
 
 
-# ------------------------------ 多边形周长计算 ------------------------------
-def poly_line_length(points: VectNArray) -> float:
+def poly_line_length(points):
     """
-    计算折线（多边形边）的总长度，即相邻点之间距离的总和。
-    
-    参数：points - 点序列数组（形状为 (N, D)，D 为维度）
-    返回：float - 折线的总长度。
+    Return the sum of the lengths between adjacent points
     """
-    # 计算相邻点之间的差值
     diffs = points[1:] - points[:-1]
-    # 计算每个差值向量的模长并求和
     return np.sqrt((diffs**2).sum(1)).sum()
 
 # Operations related to rotation
 
 
-# ManimGL 三维旋转与向量运算工具库：提供四元数操作、旋转矩阵、角度计算等功能，
-# 支持三维空间中的向量旋转、坐标系转换和角度分析，是3D动画和图形变换的核心数学支撑。
-
-
-from __future__ import annotations
-
-import math
-import numpy as np
-from scipy.spatial.transform import Rotation  # 旋转处理库
-
-# 导入基础工具函数
-from manimlib.constants import OUT, RIGHT, UP, DOWN  # 方向向量常量
-from manimlib.utils.simple_functions import clip  # 数值裁剪
-from manimlib.utils.space_ops import cross  # 向量叉积
-from manimlib.utils.space_ops import get_norm  # 向量模长
-from manimlib.utils.space_ops import normalize  # 向量归一化
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from typing import Tuple
-    from manimlib.typing import Vect2, Vect3, Vect4, VectN, Matrix3x3  # 类型注解
-
-
-# ------------------------------ 四元数运算 ------------------------------
 def quaternion_mult(*quats: Vect4) -> Vect4:
     """
-    四元数乘法：计算多个四元数的乘积（遵循scipy旋转 convention，实部为最后一个元素）。
-    
-    四元数乘法用于组合旋转：q = q1 * q2 表示先应用 q2 旋转，再应用 q1 旋转。
-    
-    参数：*quats - 可变数量的四元数（每个为 [x, y, z, w]，w 为实部）
-    返回：Vect4 - 乘积四元数。
+    Inputs are treated as quaternions, where the real part is the
+    last entry, so as to follow the scipy Rotation conventions.
     """
     if len(quats) == 0:
-        return np.array([0, 0, 0, 1])  # 单位四元数（无旋转）
+        return np.array([0, 0, 0, 1])
     result = np.array(quats[0])
     for next_quat in quats[1:]:
         x1, y1, z1, w1 = result
         x2, y2, z2, w2 = next_quat
-        # 四元数乘法公式
         result[:] = [
-            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,  # x 分量
-            w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2,  # y 分量
-            w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2,  # z 分量
-            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,  # 实部 w
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2,
+            w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2,
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
         ]
     return result
 
@@ -194,160 +99,76 @@ def quaternion_from_angle_axis(
     angle: float,
     axis: Vect3,
 ) -> Vect4:
-    """
-    从角度和轴创建四元数：根据旋转角度和旋转轴生成对应的四元数。
-    
-    参数：
-        angle : 旋转角度（弧度）；
-        axis : 旋转轴向量（3D）。
-    返回：Vect4 - 四元数 [x, y, z, w]。
-    """
-    # 利用scipy的Rotation：旋转向量 = 角度 × 单位轴向量
     return Rotation.from_rotvec(angle * normalize(axis)).as_quat()
 
 
 def angle_axis_from_quaternion(quat: Vect4) -> Tuple[float, Vect3]:
-    """
-    从四元数提取角度和轴：将四元数转换为对应的旋转角度和旋转轴。
-    
-    参数：quat - 四元数 [x, y, z, w]
-    返回：Tuple[float, Vect3] - (旋转角度, 旋转轴向量)。
-    """
-    # 旋转向量 = 角度 × 单位轴向量
     rot_vec = Rotation.from_quat(quat).as_rotvec()
     norm = get_norm(rot_vec)
-    return norm, rot_vec / norm if norm != 0 else (0.0, np.array([0, 0, 1]))
+    return norm, rot_vec / norm
 
 
 def quaternion_conjugate(quaternion: Vect4) -> Vect4:
-    """
-    四元数共轭：计算四元数的共轭（虚部取反），用于逆转旋转。
-    
-    参数：quaternion - 四元数 [x, y, z, w]
-    返回：Vect4 - 共轭四元数 [-x, -y, -z, w]。
-    """
     result = np.array(quaternion)
-    result[:3] *= -1  # 虚部取反
+    result[:3] *= -1
     return result
 
 
-# ------------------------------ 向量旋转 ------------------------------
 def rotate_vector(
     vector: Vect3,
     angle: float,
     axis: Vect3 = OUT
 ) -> Vect3:
-    """
-    旋转3D向量：绕指定轴旋转向量一定角度。
-    
-    参数：
-        vector : 待旋转的3D向量；
-        angle : 旋转角度（弧度）；
-        axis : 旋转轴（默认OUT，即z轴正方向）。
-    返回：Vect3 - 旋转后的向量。
-    """
-    # 创建旋转对象：旋转向量 = 角度 × 单位轴
     rot = Rotation.from_rotvec(angle * normalize(axis))
-    # 应用旋转（矩阵转置是为了与Manim的坐标变换兼容）
     return np.dot(vector, rot.as_matrix().T)
 
 
 def rotate_vector_2d(vector: Vect2, angle: float) -> Vect2:
-    """
-    旋转2D向量：在xy平面内绕原点旋转向量（利用复数运算简化）。
-    
-    参数：
-        vector : 待旋转的2D向量；
-        angle : 旋转角度（弧度，逆时针为正）。
-    返回：Vect2 - 旋转后的向量。
-    """
-    # 复数乘法实现旋转：z' = z * e^(iθ)
+    # Use complex numbers...because why not
     z = complex(*vector) * np.exp(complex(0, angle))
     return np.array([z.real, z.imag])
 
 
-# ------------------------------ 旋转矩阵 ------------------------------
 def rotation_matrix_transpose_from_quaternion(quat: Vect4) -> Matrix3x3:
-    """
-    从四元数获取旋转矩阵的转置（用于Manim的坐标变换）。
-    
-    参数：quat - 四元数 [x, y, z, w]
-    返回：Matrix3x3 - 旋转矩阵的转置。
-    """
     return Rotation.from_quat(quat).as_matrix()
 
 
 def rotation_matrix_from_quaternion(quat: Vect4) -> Matrix3x3:
-    """
-    从四元数获取旋转矩阵。
-    
-    参数：quat - 四元数 [x, y, z, w]
-    返回：Matrix3x3 - 旋转矩阵。
-    """
     return np.transpose(rotation_matrix_transpose_from_quaternion(quat))
 
 
 def rotation_matrix(angle: float, axis: Vect3) -> Matrix3x3:
     """
-    生成3D旋转矩阵：绕指定轴旋转一定角度的旋转矩阵。
-    
-    参数：
-        angle : 旋转角度（弧度）；
-        axis : 旋转轴（3D向量）。
-    返回：Matrix3x3 - 旋转矩阵。
+    Rotation in R^3 about a specified axis of rotation.
     """
     return Rotation.from_rotvec(angle * normalize(axis)).as_matrix()
 
 
 def rotation_matrix_transpose(angle: float, axis: Vect3) -> Matrix3x3:
-    """
-    生成旋转矩阵的转置（用于Manim的坐标变换）。
-    
-    参数：
-        angle : 旋转角度（弧度）；
-        axis : 旋转轴（3D向量）。
-    返回：Matrix3x3 - 旋转矩阵的转置。
-    """
     return rotation_matrix(angle, axis).T
 
 
 def rotation_about_z(angle: float) -> Matrix3x3:
-    """
-    绕z轴旋转的矩阵（2D旋转的3D扩展）。
-    
-    参数：angle - 旋转角度（弧度）
-    返回：Matrix3x3 - z轴旋转矩阵。
-    """
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
     return np.array([
-        [cos_a, -sin_a, 0],  # x' = x cosθ - y sinθ
-        [sin_a, cos_a, 0],   # y' = x sinθ + y cosθ
-        [0, 0, 1]            # z不变
+        [cos_a, -sin_a, 0],
+        [sin_a, cos_a, 0],
+        [0, 0, 1]
     ])
 
 
 def rotation_between_vectors(v1: Vect3, v2: Vect3) -> Matrix3x3:
-    """
-    生成两个向量之间的旋转矩阵：将v1旋转到与v2同向的矩阵。
-    
-    参数：
-        v1 : 起始向量；
-        v2 : 目标向量。
-    返回：Matrix3x3 - 旋转矩阵。
-    """
     atol = 1e-8
-    # 若两向量已接近，返回单位矩阵
     if get_norm(v1 - v2) < atol:
         return np.identity(3)
-    # 旋转轴为两向量的叉积（垂直于两向量所在平面）
     axis = cross(v1, v2)
-    # 若叉积为零（两向量共线），则选择与v1垂直的轴
     if get_norm(axis) < atol:
-        axis = cross(v1, RIGHT)  # 尝试RIGHT方向
+        # v1 and v2 align
+        axis = cross(v1, RIGHT)
     if get_norm(axis) < atol:
-        axis = cross(v1, UP)     # 再尝试UP方向
-    # 旋转角度为两向量的夹角
+        # v1 and v2 _and_ RIGHT all align
+        axis = cross(v1, UP)
     return rotation_matrix(
         angle=angle_between_vectors(v1, v2),
         axis=axis,
@@ -355,56 +176,30 @@ def rotation_between_vectors(v1: Vect3, v2: Vect3) -> Matrix3x3:
 
 
 def z_to_vector(vector: Vect3) -> Matrix3x3:
-    """
-    生成将z轴（OUT方向）旋转到目标向量方向的矩阵。
-    
-    参数：vector - 目标方向向量（3D）
-    返回：Matrix3x3 - 旋转矩阵。
-    """
     return rotation_between_vectors(OUT, vector)
 
 
-# ------------------------------ 角度计算 ------------------------------
 def angle_of_vector(vector: Vect2 | Vect3) -> float:
     """
-    计算向量在xy平面上的极角（与x轴正方向的夹角）。
-    
-    参数：vector - 2D或3D向量（3D时取xy分量）
-    返回：float - 极角（弧度，范围[-π, π]）。
+    Returns polar coordinate theta when vector is project on xy plane
     """
-    return math.atan2(vector[1], vector[0])  # atan2(y, x)
+    return math.atan2(vector[1], vector[0])
 
 
 def angle_between_vectors(v1: VectN, v2: VectN) -> float:
     """
-    计算两个向量之间的夹角（范围[0, π]）。
-    
-    参数：
-        v1 : N维向量；
-        v2 : N维向量。
-    返回：float - 夹角（弧度）。
+    Returns the angle between two 3D vectors.
+    This angle will always be btw 0 and pi
     """
     n1 = get_norm(v1)
     n2 = get_norm(v2)
     if n1 == 0 or n2 == 0:
-        return 0.0  # 零向量夹角为0
-    # 点积公式：v1·v2 = |v1||v2|cosθ → cosθ = 点积 / (|v1||v2|)
+        return 0
     cos_angle = np.dot(v1, v2) / np.float64(n1 * n2)
-    # 裁剪到[-1, 1]避免数值误差导致的acos错误
     return math.acos(clip(cos_angle, -1, 1))
 
 
-# ------------------------------ 向量投影与归一化 ------------------------------
 def project_along_vector(point: Vect3, vector: Vect3) -> Vect3:
-    """
-    将点沿指定向量方向投影到垂直于该向量的平面上。
-    
-    参数：
-        point : 3D点；
-        vector : 投影方向向量（平面法向量）。
-    返回：Vect3 - 投影后的点。
-    """
-    # 投影矩阵：I - vv^T（v为单位向量）
     matrix = np.identity(3) - np.outer(vector, vector)
     return np.dot(point, matrix.T)
 
@@ -413,16 +208,8 @@ def normalize_along_axis(
     array: np.ndarray,
     axis: int,
 ) -> np.ndarray:
-    """
-    沿指定轴归一化数组（使每个子数组的模长为1）。
-    
-    参数：
-        array : 多维数组；
-        axis : 要归一化的轴。
-    返回：np.ndarray - 归一化后的数组。
-    """
     norms = np.sqrt((array * array).sum(axis))
-    norms[norms == 0] = 1  # 避免除以零
+    norms[norms == 0] = 1
     return array / norms[:, np.newaxis]
 
 
@@ -431,24 +218,16 @@ def get_unit_normal(
     v2: Vect3,
     tol: float = 1e-6
 ) -> Vect3:
-    """
-    计算两个向量所在平面的单位法向量（垂直于v1和v2）。
-    
-    参数：
-        v1, v2 : 3D向量；
-        tol : 数值容差（判断向量是否共线）。
-    返回：Vect3 - 单位法向量。
-    """
     v1 = normalize(v1)
     v2 = normalize(v2)
-    cp = cross(v1, v2)  # 叉积即法向量
+    cp = cross(v1, v2)
     cp_norm = get_norm(cp)
     if cp_norm < tol:
-        # 两向量共线，在与z轴形成的平面中找法向量
+        # Vectors align, so find a normal to them in the plane shared with the z-axis
         new_cp = cross(cross(v1, OUT), v1)
         new_cp_norm = get_norm(new_cp)
         if new_cp_norm < tol:
-            return DOWN  # 最终 fallback
+            return DOWN
         return new_cp / new_cp_norm
     return cp / cp_norm
 
