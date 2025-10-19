@@ -332,138 +332,201 @@ def quadratic_bezier_points_for_arc(angle: float, n_components: int = 8) -> np.n
     return points
 
 
+# ManimGL 贝塞尔曲线平滑处理工具：提供二次/三次贝塞尔曲线的平滑控制点计算、
+# 路径逼近等功能，用于将离散点序列转换为平滑曲线，适用于图形绘制和路径动画。
+
+
+from __future__ import annotations
+
+import numpy as np
+from scipy import linalg
+from fontTools.cu2qu.cu2qu import curve_to_quadratic  # cubic→quadratic 转换
+
+# 导入辅助函数
+from manimlib.utils.space_ops import cross  # 3D 叉积
+from manimlib.utils.space_ops import get_norm  # 向量模长
+from manimlib.utils.space_ops import z_to_vector  # z轴向量转换
+from manimlib.utils.space_ops import is_closed  # 判断曲线是否闭合
+from manimlib.utils.simple_functions import midpoint  # 中点计算
+from manimlib.utils.bezier import get_quadratic_approximation_of_cubic  # 三次转二次逼近
+from manimlib.utils.bezier import diag_to_matrix  # 对角矩阵转换
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from manimlib.typing import FloatArray, Vect3Array, VectN, VectNArray  # 类型注解
+
+
+# ------------------------------ 二次贝塞尔平滑控制点计算 ------------------------------
 def approx_smooth_quadratic_bezier_handles(
     points: FloatArray
 ) -> FloatArray:
     """
-    Figuring out which bezier curves most smoothly connect a sequence of points.
-
-    Given three successive points, P0, P1 and P2, you can compute that by defining
-    h = (1/4) P0 + P1 - (1/4)P2, the bezier curve defined by (P0, h, P1) will pass
-    through the point P2.
-
-    So for a given set of four successive points, P0, P1, P2, P3, if we want to add
-    a handle point h between P1 and P2 so that the quadratic bezier (P1, h, P2) is
-    part of a smooth curve passing through all four points, we calculate one solution
-    for h that would produce a parbola passing through P3, call it smooth_to_right, and
-    another that would produce a parabola passing through P0, call it smooth_to_left,
-    and use the midpoint between the two.
+    计算二次贝塞尔曲线的平滑控制点：为离散点序列生成中间控制点，使相邻曲线段平滑连接（一阶导数连续）。
+    
+    算法逻辑：
+    1. 对每个点 P1，计算两个候选控制点：
+       - smooth_to_right：使曲线 (P0, h, P1) 经过 P2；
+       - smooth_to_left：使曲线 (P1, h, P2) 经过 P0；
+    2. 取两个候选点的中点作为最终控制点，平衡平滑性和路径精度。
+    
+    参数：points - 离散点序列（N×D 数组，D为维度）
+    返回：FloatArray - 控制点数组（与输入点数量相同，每个点对应一个控制点）。
     """
     if len(points) == 1:
-        return points[0]
+        return points[0]  # 单点时控制点为自身
     elif len(points) == 2:
-        return midpoint(*points)
+        return midpoint(*points)  # 两点时控制点为中点
+
+    # 计算向右/向左平滑的候选控制点
     smooth_to_right, smooth_to_left = [
-        0.25 * ps[0:-2] + ps[1:-1] - 0.25 * ps[2:]
-        for ps in (points, points[::-1])
+        0.25 * ps[0:-2] + ps[1:-1] - 0.25 * ps[2:]  # 公式推导：确保曲线连贯性
+        for ps in (points, points[::-1])  # 正向和反向计算
     ]
+
+    # 处理闭合曲线的首尾连接（确保首尾控制点平滑）
     if np.isclose(points[0], points[-1]).all():
+        # 闭合曲线：单独计算首尾控制点
         last_str = 0.25 * points[-2] + points[-1] - 0.25 * points[1]
         last_stl = 0.25 * points[1] + points[0] - 0.25 * points[-2]
     else:
+        # 开放曲线：复用边缘的候选控制点
         last_str = smooth_to_left[0]
         last_stl = smooth_to_right[0]
+
+    # 合并候选控制点，取中点作为最终结果
     handles = 0.5 * np.vstack([smooth_to_right, [last_str]])
     handles += 0.5 * np.vstack([last_stl, smooth_to_left[::-1]])
     return handles
 
 
+# ------------------------------ 平滑二次贝塞尔路径生成 ------------------------------
 def smooth_quadratic_path(anchors: Vect3Array) -> Vect3Array:
     """
-    Returns a path defining a smooth quadratic bezier spline
-    through anchors.
+    生成平滑二次贝塞尔路径：将锚点序列转换为连续的二次贝塞尔曲线段，确保整体平滑（适用于3D点）。
+    
+    流程：
+    1. 处理3D锚点：若不在同一平面，旋转到2D平面计算；
+    2. 先生成三次贝塞尔曲线的平滑控制点；
+    3. 将三次曲线分段逼近为二次贝塞尔曲线；
+    4. 转回原3D坐标系（若有旋转）。
+    
+    参数：anchors - 3D锚点序列（N×3 数组）
+    返回：Vect3Array - 二次贝塞尔路径的控制点数组（包含锚点和中间控制点）。
     """
     if len(anchors) < 2:
-        return anchors
+        return anchors  # 少于2个点直接返回
     elif len(anchors) == 2:
+        # 两个点：生成简单二次曲线（起点-中点-终点）
         return np.array([anchors[0], anchors.mean(0), anchors[1]])
 
+    # 检查锚点是否在同一平面（z坐标均为0）
     is_flat = (anchors[:, 2] == 0).all()
     if not is_flat:
-        normal = cross(anchors[2] - anchors[1], anchors[1] - anchors[0])
-        rot = z_to_vector(normal)
-        anchors = np.dot(anchors, rot)
-        shift = anchors[0, 2]
-        anchors[:, 2] -= shift
+        # 非平面曲线：计算旋转矩阵，将3D点投影到2D平面
+        normal = cross(anchors[2] - anchors[1], anchors[1] - anchors[0])  # 平面法向量
+        rot = z_to_vector(normal)  # 生成旋转矩阵（将法向量转为z轴）
+        anchors = np.dot(anchors, rot)  # 旋转到2D平面（z坐标对齐）
+        shift = anchors[0, 2]  # 记录z轴偏移
+        anchors[:, 2] -= shift  # 归零z坐标
+
+    # 生成三次贝塞尔曲线的平滑控制点
     h1s, h2s = get_smooth_cubic_bezier_handle_points(anchors)
-    quads = [anchors[0, :2]]
+    quads = [anchors[0, :2]]  # 存储二次曲线控制点（先添加起点）
+
+    # 遍历每个三次曲线段，转换为二次曲线
     for cub_bs in zip(anchors[:-1], h1s, h2s, anchors[1:]):
-        # Try to use fontTools curve_to_quadratic
+        # 尝试用fontTools的高精度转换（cubic→quadratic）
         new_quads = curve_to_quadratic(
-            [b[:2] for b in cub_bs],
-            max_err=0.1 * get_norm(cub_bs[3] - cub_bs[0])
+            [b[:2] for b in cub_bs],  # 取2D坐标
+            max_err=0.1 * get_norm(cub_bs[3] - cub_bs[0])  # 误差阈值（与线段长度相关）
         )
-        # Otherwise fall back on home baked solution
+        # 转换失败时使用自定义逼近方法
         if new_quads is None or len(new_quads) % 2 == 0:
             new_quads = get_quadratic_approximation_of_cubic(*cub_bs)[:, :2]
-        quads.extend(new_quads[1:])
+        quads.extend(new_quads[1:])  # 跳过重复的起点
+
+    # 构建3D路径（恢复z坐标）
     new_path = np.zeros((len(quads), 3))
     new_path[:, :2] = quads
     if not is_flat:
-        new_path[:, 2] += shift
-        new_path = np.dot(new_path, rot.T)
+        new_path[:, 2] += shift  # 恢复z轴偏移
+        new_path = np.dot(new_path, rot.T)  # 旋转回原坐标系
+
     return new_path
 
 
+# ------------------------------ 三次贝塞尔平滑控制点计算 ------------------------------
 def get_smooth_cubic_bezier_handle_points(
     points: Sequence[VectN] | VectNArray
 ) -> tuple[FloatArray, FloatArray]:
+    """
+    计算三次贝塞尔曲线的平滑控制点：为离散点序列生成两组控制点（h1, h2），
+    使相邻三次贝塞尔曲线段（P0, h1, h2, P1）平滑连接（一阶导数连续）。
+    
+    算法：通过求解带状线性方程组，确保各段曲线在连接点处导数连续，适用于开放和闭合曲线。
+    
+    参数：points - 离散点序列（N×D 数组）
+    返回：tuple[FloatArray, FloatArray] - (h1s, h2s)，每组控制点数量为 N-1。
+    """
     points = np.array(points)
-    num_handles = len(points) - 1
-    dim = points.shape[1]
+    num_handles = len(points) - 1  # 控制点对数量 = 点数量 - 1
+    dim = points.shape[1]  # 维度（2D或3D）
     if num_handles < 1:
-        return np.zeros((0, dim)), np.zeros((0, dim))
-    # Must solve 2*num_handles equations to get the handles.
-    # l and u are the number of lower an upper diagonal rows
-    # in the matrix to solve.
-    l, u = 2, 1
-    # diag is a representation of the matrix in diagonal form
-    # See https://www.particleincell.com/2012/bezier-splines/
-    # for how to arrive at these equations
-    diag = np.zeros((l + u + 1, 2 * num_handles))
+        return np.zeros((0, dim)), np.zeros((0, dim))  # 不足1段时返回空
+
+    # 构建带状矩阵（用于求解线性方程组 Ax = b）
+    # 参考：https://www.particleincell.com/2012/bezier-splines/
+    l, u = 2, 1  # 下三角/上三角带宽
+    diag = np.zeros((l + u + 1, 2 * num_handles))  # 对角矩阵表示
+    # 填充矩阵元素（根据平滑条件推导的系数）
     diag[0, 1::2] = -1
     diag[0, 2::2] = 1
     diag[1, 0::2] = 2
     diag[1, 1::2] = 1
     diag[2, 1:-2:2] = -2
     diag[3, 0:-3:2] = 1
-    # last
+    # 最后一行特殊处理
     diag[2, -2] = -1
     diag[1, -1] = 2
-    # This is the b as in Ax = b, where we are solving for x,
-    # and A is represented using diag.  However, think of entries
-    # to x and b as being points in space, not numbers
-    b = np.zeros((2 * num_handles, dim))
-    b[1::2] = 2 * points[1:]
-    b[0] = points[0]
-    b[-1] = points[-1]
 
+    # 构建方程组的右侧向量 b（每个维度独立求解）
+    b = np.zeros((2 * num_handles, dim))
+    b[1::2] = 2 * points[1:]  # 奇数索引：2×中间点
+    b[0] = points[0]           # 第一个元素：起点
+    b[-1] = points[-1]         # 最后一个元素：终点
+
+    # 求解带状矩阵方程组的函数
     def solve_func(b):
         return linalg.solve_banded((l, u), diag, b)
 
+    # 处理闭合曲线（首尾点相同）
     use_closed_solve_function = is_closed(points)
     if use_closed_solve_function:
-        # Get equations to relate first and last points
-        matrix = diag_to_matrix((l, u), diag)
-        # last row handles second derivative
+        # 闭合曲线需要额外约束：首尾导数连续
+        matrix = diag_to_matrix((l, u), diag)  # 转换为完整矩阵
+        # 最后一行：二阶导数约束
         matrix[-1, [0, 1, -2, -1]] = [2, -1, 1, -2]
-        # first row handles first derivative
+        # 第一行：一阶导数约束
         matrix[0, :] = np.zeros(matrix.shape[1])
         matrix[0, [0, -1]] = [1, 1]
+        # 调整右侧向量 b
         b[0] = 2 * points[0]
         b[-1] = np.zeros(dim)
 
+        # 闭合曲线的求解函数
         def closed_curve_solve_func(b):
             return linalg.solve(matrix, b)
 
+    # 求解各维度的控制点
     handle_pairs = np.zeros((2 * num_handles, dim))
     for i in range(dim):
         if use_closed_solve_function:
             handle_pairs[:, i] = closed_curve_solve_func(b[:, i])
         else:
             handle_pairs[:, i] = solve_func(b[:, i])
-    return handle_pairs[0::2], handle_pairs[1::2]
 
+    # 分离两组控制点（h1s 对应每个段的第一个控制点，h2s 对应第二个）
+    return handle_pairs[0::2], handle_pairs[1::2]
 
 def diag_to_matrix(
     l_and_u: tuple[int, int], 
