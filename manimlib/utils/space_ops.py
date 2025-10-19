@@ -1,3 +1,7 @@
+# ManimGL 空间运算工具库：提供向量运算、距离计算、归一化、多边形长度等基础空间几何功能，
+# 支持 2D/3D 向量操作，是图形变换、碰撞检测、路径计算的核心工具。
+
+
 from __future__ import annotations
 
 from functools import reduce
@@ -5,57 +9,113 @@ import math
 import operator as op
 import platform
 
-from mapbox_earcut import triangulate_float32 as earcut
+from mapbox_earcut import triangulate_float32 as earcut  # 多边形三角化工具
 import numpy as np
-from scipy.spatial.transform import Rotation
-from tqdm.auto import tqdm as ProgressDisplay
+from scipy.spatial.transform import Rotation  # 旋转处理
+from tqdm.auto import tqdm as ProgressDisplay  # 进度条
 
-from manimlib.constants import DOWN, OUT, RIGHT, UP
-from manimlib.constants import PI, TAU
-from manimlib.utils.iterables import adjacent_pairs
-from manimlib.utils.simple_functions import clip
+# 导入常量和工具函数
+from manimlib.constants import DOWN, OUT, RIGHT, UP  # 方向向量
+from manimlib.constants import PI, TAU  # 圆周率常量
+from manimlib.utils.iterables import adjacent_pairs  # 相邻元素对
+from manimlib.utils.simple_functions import clip  # 数值裁剪
 
 from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from typing import Callable, Sequence, List, Tuple
-    from manimlib.typing import Vect2, Vect3, Vect4, VectN, Matrix3x3, Vect3Array, Vect2Array
+    from manimlib.typing import Vect2, Vect3, Vect4, VectN, Matrix3x3, Vect3Array, Vect2Array  # 类型注解
 
 
+# ------------------------------ 向量叉积 ------------------------------
 def cross(
     v1: Vect3 | List[float],
     v2: Vect3 | List[float],
     out: np.ndarray | None = None
 ) -> Vect3 | Vect3Array:
+    """
+    计算 3D 向量的叉积（向量积），支持单个向量和向量数组（批量计算）。
+    
+    叉积公式：
+    v1 × v2 = [
+        v1.y*v2.z - v1.z*v2.y,
+        v1.z*v2.x - v1.x*v2.z,
+        v1.x*v2.y - v1.y*v2.x
+    ]
+    
+    参数：
+        v1 : 第一个 3D 向量（或向量数组）；
+        v2 : 第二个 3D 向量（或向量数组）；
+        out : 输出数组（可选，用于原地计算）。
+    返回：Vect3 或 Vect3Array - 叉积结果，与输入同形状。
+    """
+    # 判断是否为批量处理（2D 数组，形状为 (N, 3)）
     is2d = isinstance(v1, np.ndarray) and len(v1.shape) == 2
     if is2d:
+        # 批量处理：分离 x, y, z 分量（按列提取）
         x1, y1, z1 = v1[:, 0], v1[:, 1], v1[:, 2]
         x2, y2, z2 = v2[:, 0], v2[:, 1], v2[:, 2]
     else:
+        # 单个向量：直接解包分量
         x1, y1, z1 = v1
         x2, y2, z2 = v2
+
+    # 初始化输出数组（若未提供则自动创建）
     if out is None:
         out = np.empty(np.shape(v1))
+    # 计算叉积并赋值（按行填充结果）
     out.T[:] = [
-        y1 * z2 - z1 * y2,
-        z1 * x2 - x1 * z2,
-        x1 * y2 - y1 * x2,
+        y1 * z2 - z1 * y2,  # x 分量
+        z1 * x2 - x1 * z2,  # y 分量
+        x1 * y2 - y1 * x2   # z 分量
     ]
     return out
 
 
+# ------------------------------ 向量模长与距离 ------------------------------
 def get_norm(vect: VectN | List[float]) -> float:
-    return sum((x**2 for x in vect))**0.5
+    """
+    计算向量的模长（L2 范数）。
+    
+    公式：||v|| = sqrt(v1² + v2² + ... + vn²)
+    
+    参数：vect - N 维向量（或列表）
+    返回：float - 向量的模长。
+    """
+    return sum((x**2 for x in vect))** 0.5
 
 
-def get_dist(vect1: VectN, vect2: VectN):
+def get_dist(vect1: VectN, vect2: VectN) -> float:
+    """
+    计算两个向量之间的欧氏距离（即两向量差的模长）。
+    
+    公式：distance = ||v2 - v1||
+    
+    参数：
+        vect1 : 第一个 N 维向量；
+        vect2 : 第二个 N 维向量。
+    返回：float - 两向量间的距离。
+    """
     return get_norm(vect2 - vect1)
 
 
+# ------------------------------ 向量归一化 ------------------------------
 def normalize(
     vect: VectN | List[float],
     fall_back: VectN | List[float] | None = None
 ) -> VectN:
+    """
+    将向量归一化（单位向量），即模长为 1 的向量。
+    
+    处理逻辑：
+    - 若向量模长 > 0，返回 vect / ||vect||；
+    - 若模长为 0 且提供 fall_back，返回 fall_back（默认归一化）；
+    - 否则返回零向量。
+    
+    参数：
+        vect : 待归一化的 N 维向量；
+        fall_back : 模长为 0 时的 fallback 向量（可选）。
+    返回：VectN - 归一化后的向量。
+    """
     norm = get_norm(vect)
     if norm > 0:
         return np.array(vect) / norm
@@ -65,11 +125,17 @@ def normalize(
         return np.zeros(len(vect))
 
 
-def poly_line_length(points):
+# ------------------------------ 多边形周长计算 ------------------------------
+def poly_line_length(points: VectNArray) -> float:
     """
-    Return the sum of the lengths between adjacent points
+    计算折线（多边形边）的总长度，即相邻点之间距离的总和。
+    
+    参数：points - 点序列数组（形状为 (N, D)，D 为维度）
+    返回：float - 折线的总长度。
     """
+    # 计算相邻点之间的差值
     diffs = points[1:] - points[:-1]
+    # 计算每个差值向量的模长并求和
     return np.sqrt((diffs**2).sum(1)).sum()
 
 # Operations related to rotation
