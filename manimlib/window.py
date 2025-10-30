@@ -116,7 +116,6 @@ class Window(PygletWindow):
         self.size = (w - 1, h - 1)
         self.size = (w, h)
 
-    # Delegate event handling to scene
     def pixel_coords_to_space_coords(
         self,
         px: int,
